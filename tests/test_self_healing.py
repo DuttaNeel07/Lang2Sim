@@ -57,11 +57,16 @@ def test_missing_tf_when_rsp_dies_or_lookups_fail():
     died = Observation(lines=["[ERROR] [robot_state_publisher-3]: process has died [pid 41, exit code -9]"],
                        snap=healthy_snap(), alive={**ALIVE, "robot_state_publisher": False}, was_localized=True)
     assert set(kinds(classify(died))) == {"missing_tf"}
-    tf = Observation(lines=["[WARN] Timed out waiting for transform from base_link to map"],
-                     snap=healthy_snap(), alive=ALIVE, was_localized=True)
-    assert kinds(classify(tf)) == ["missing_tf"]
+    warn = ["[WARN] Timed out waiting for transform from base_link to map"]
+    tf = Observation(lines=warn, snap=healthy_snap(), alive={**ALIVE, "robot_state_publisher": False},
+                     was_localized=True)
+    assert set(kinds(classify(tf))) == {"missing_tf"}
+    # stale warnings while the publisher runs (e.g. right after a restart): report, never restart
+    stale = Observation(lines=warn, snap=healthy_snap(), alive=ALIVE, was_localized=True)
+    assert kinds(classify(stale)) == ["tf_warning"]
+    assert plan_recovery(classify(stale)[0]).kind == "report"
     # the same warning during startup (never localized yet) is normal, not a fault
-    assert classify(Observation(lines=tf.lines, snap=healthy_snap(), alive=ALIVE)) == []
+    assert classify(Observation(lines=warn, snap=healthy_snap(), alive=ALIVE)) == []
 
 
 def test_unlinked_scan_when_bridge_dies_or_scan_stops():
@@ -250,3 +255,20 @@ def test_two_symptoms_one_restart(tmp_path):
                    Fault("unlinked_scan", "no /scan while the clock runs", ""),
                    Fault("missing_tf", "robot_state_publisher died", "")])
     assert restarts == ["bridge", "robot_state_publisher"] and len(ev) == 2
+
+
+def test_restarted_node_is_not_killed_again_by_lingering_warnings(tmp_path):
+    """Regression (seen on macOS): Nav2 TF warnings after a restart re-triggered a restart."""
+    restarts = []
+    clock = Clock()
+    h = SelfHealer(tmp_path, restart_node=lambda n: restarts.append(n) or True,
+                   limit=RateLimit(cooldown_s=15, max_attempts=3, window_s=300), clock=clock)
+    died = Observation(lines=["[ERROR] [robot_state_publisher-3]: process has died [pid 41, exit code -9]"],
+                       snap=healthy_snap(), alive={**ALIVE, "robot_state_publisher": False}, was_localized=True)
+    h.handle(classify(died))
+    assert restarts == ["robot_state_publisher"]
+    for _ in range(10):                       # 10 later passes, publisher alive, warnings still coming
+        clock.t += 20
+        h.handle(classify(Observation(lines=["[WARN] Timed out waiting for transform from base_link to map"],
+                                      snap=healthy_snap(), alive=ALIVE, was_localized=True)))
+    assert restarts == ["robot_state_publisher"]

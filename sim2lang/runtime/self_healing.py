@@ -11,8 +11,8 @@ Four rules (issue #3, plan v2):
 | Fault            | Seen as                                                  | Recovery                          |
 |------------------|----------------------------------------------------------|-----------------------------------|
 | missing_package  | "Package 'x' not found" / ModuleNotFoundError in the log | report only: never install at runtime |
-| missing_tf       | robot_state_publisher dead, or TF lookup errors while    | restart robot_state_publisher     |
-|                  | odometry flows but the robot is not localized            |                                   |
+| missing_tf       | robot_state_publisher dead (process gone, "process has   | restart robot_state_publisher     |
+|                  | died", or TF errors while it is not running)             | (TF errors alone: reported once)  |
 | unlinked_scan    | ros_gz_bridge dead, or no /scan while the clock runs     | restart the bridge                |
 | goal_in_collision| planner says the goal is occupied / no valid path        | move the goal to the nearest free |
 |                  |                                                          | map cell and resend it            |
@@ -103,7 +103,13 @@ def classify(obs: Observation) -> List[Fault]:
                     add("goal_in_collision", "goal not plannable", line.strip()[:240])
         for p in TF_PATTERNS:
             if p.search(line) and obs.was_localized:
-                add("missing_tf", "tf lookup failing", line.strip()[:240])
+                # Nav2 keeps logging these for a while after robot_state_publisher is
+                # restarted; only a dead publisher justifies restarting it. Otherwise
+                # report once, never kill a healthy node over stale warnings.
+                if obs.alive.get("robot_state_publisher") is False:
+                    add("missing_tf", "tf lookup failing", line.strip()[:240])
+                else:
+                    add("tf_warning", "tf lookups failing", line.strip()[:240])
 
     if obs.sim_running:
         if obs.alive.get("robot_state_publisher") is False:
@@ -140,6 +146,9 @@ def plan_recovery(f: Fault) -> Action:
         return Action("restart_node", "bridge")
     if f.kind == "goal_in_collision":
         return Action("snap_goal")
+    if f.kind == "tf_warning":
+        return Action("report", f.signature, {"hint": "TF lookups failed while robot_state_publisher "
+                                                       "was running; no restart (often transient)"})
     return Action("report", f.signature)
 
 

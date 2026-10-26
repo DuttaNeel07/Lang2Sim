@@ -91,15 +91,23 @@ def test_killed_nodes_are_restarted_and_logged(runner, tmp_path):
                     st = await session.api.sim_status()
                     return st.readiness.get(check) and st.ready
                 await wait_for(back, timeout=120)
-                assert runner.exec(["pgrep", "-f", pattern], name=NAME).returncode == 0
+
+                async def running():
+                    return runner.exec(["pgrep", "-f", pattern], name=NAME).returncode == 0
+                await wait_for(running, timeout=30)
+
+            # and it stays up: no restart flapping from lingering warnings
+            await asyncio.sleep(40)
+            log = await session.api._request("GET", "/heal/log")
+            restarts = [e for e in log["events"] if e["action_taken"].startswith("restart_node")]
+            assert len(restarts) == len(FAULTS), f"expected one restart per fault, got {restarts}"
+        except BaseException:
+            print(runner.logs(NAME, tail=80))      # before stop() removes the container
+            raise
         finally:
             await session.stop()
 
-    try:
-        asyncio.run(go())
-    except BaseException:
-        print(runner.logs(NAME, tail=80))
-        raise
+    asyncio.run(go())
     lines = [json.loads(x) for x in (run / "logs" / "heal_log.jsonl").read_text().splitlines()]
     targets = {e["action_taken"] for e in lines if e["success"]}
     assert {"restart_node robot_state_publisher", "restart_node bridge"} <= targets
