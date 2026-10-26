@@ -16,12 +16,44 @@ SESSIONS_DIR = DEFAULT_LANG2SIM_ROOT / "sessions"
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+class ToolCallRecord(BaseModel):
+    """Execution record of an agentic tool call."""
+    tool_name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    duration_str: str = "0.0s"
+    status: str = "completed"  # "running", "completed", "failed"
+    output: Optional[Any] = None
+    error: Optional[str] = None
+
+
+class ArtifactRecord(BaseModel):
+    """Artifact produced during the session (worlds, maps, benchmark reports)."""
+    type: str  # "world_sdf", "map_pgm", "map_yaml", "benchmark_report"
+    path: str
+    created_at: float = Field(default_factory=time.time)
+    size_bytes: int = 0
+
+
+class SimulationStateSnapshot(BaseModel):
+    """Real-time simulation state snapshot."""
+    world_sdf: Optional[str] = None
+    map_yaml: Optional[str] = None
+    active_robot: str = "turtlebot3_waffle"
+    ate_drift_m: float = 0.0
+    status: str = "idle"  # "idle", "sim_running", "navigating", "paused"
+
+
 class ChatMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
-    role: str  # "user", "assistant", "system"
-    content: str
+    role: str  # "user", "assistant", "system", "tool"
+    content: str = ""
     timestamp: float = Field(default_factory=time.time)
     tokens: int = 0
+    # Thinking & Cognitive Reasoning
+    thought: Optional[str] = None
+    thought_duration_str: Optional[str] = None
+    # Tool Invocation Actions
+    actions: List[ToolCallRecord] = Field(default_factory=list)
 
 
 class ChatSession(BaseModel):
@@ -35,6 +67,9 @@ class ChatSession(BaseModel):
     messages: List[ChatMessage] = Field(default_factory=list)
     total_tokens: int = 0
     workspace_name: str = "active_project"
+    active_run_dir: Optional[str] = None
+    artifacts: List[ArtifactRecord] = Field(default_factory=list)
+    simulation_state: SimulationStateSnapshot = Field(default_factory=SimulationStateSnapshot)
 
 
 class SessionManager:

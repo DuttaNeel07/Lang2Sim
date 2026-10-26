@@ -11,7 +11,18 @@ from textual.binding import Binding
 from textual import work
 from ..widgets.prompt_card import PromptCard
 from ..widgets.telemetry_sidebar import TelemetrySidebar
+from ..widgets.thought_box import ThoughtBox
+from ..widgets.action_pill import ActionPill
 from ...agent.nemotron_client import NemotronClient
+from ...agent.react_loop import (
+    ReActSupervisor,
+    ThoughtChunk,
+    ThoughtCompleted,
+    ActionStarted,
+    ActionCompleted,
+    ContentChunk,
+    TurnCompleted,
+)
 from ...core.session_manager import session_manager, ChatSession, ChatMessage
 
 SYSTEM_PROMPT = (
@@ -105,6 +116,18 @@ class WorkspaceScreen(Screen):
                 user_card = Static(f"[bold #ffffff]{msg.content}[/]", classes="user-prompt-card")
                 chat_scroll.mount(user_card)
             elif msg.role == "assistant":
+                if msg.thought:
+                    dur = msg.thought_duration_str or "1.2s"
+                    thought_box = ThoughtBox(duration_str=dur, content=msg.thought)
+                    chat_scroll.mount(thought_box)
+                if msg.actions:
+                    for act in msg.actions:
+                        pill = ActionPill(
+                            tool_name=act.tool_name,
+                            duration_str=act.duration_str,
+                            status=act.status,
+                        )
+                        chat_scroll.mount(pill)
                 resp_md = Markdown(msg.content, classes="assistant-response")
                 chat_scroll.mount(resp_md)
 
@@ -153,6 +176,18 @@ class WorkspaceScreen(Screen):
                 user_card = Static(f"[bold #ffffff]{msg.content}[/]", classes="user-prompt-card")
                 chat_scroll.mount(user_card)
             elif msg.role == "assistant":
+                if msg.thought:
+                    dur = msg.thought_duration_str or "1.2s"
+                    thought_box = ThoughtBox(duration_str=dur, content=msg.thought)
+                    chat_scroll.mount(thought_box)
+                if msg.actions:
+                    for act in msg.actions:
+                        pill = ActionPill(
+                            tool_name=act.tool_name,
+                            duration_str=act.duration_str,
+                            status=act.status,
+                        )
+                        chat_scroll.mount(pill)
                 resp_md = Markdown(msg.content, classes="assistant-response")
                 chat_scroll.mount(resp_md)
 
@@ -218,7 +253,7 @@ class WorkspaceScreen(Screen):
 
     @work(exclusive=True)
     async def stream_response(self, response_widget: Markdown, prompt: str) -> None:
-        """Stream conversational response directly from LLM with low latency."""
+        """Stream conversational response directly from LLM / ReAct supervisor with low latency."""
         self.is_streaming = True
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
         sidebar = self.query_one(TelemetrySidebar)
@@ -236,40 +271,87 @@ class WorkspaceScreen(Screen):
             sticky_card.focus_input()
             return
 
-        chunks: List[str] = []
+        supervisor = ReActSupervisor(client=self.client, workspace_name=self.workspace_name)
+        thought_box: Optional[ThoughtBox] = None
+        thought_text_parts: List[str] = []
+        content_parts: List[str] = []
+        active_pills: Dict[str, ActionPill] = {}
+
         try:
-            async for chunk in self.client.stream_chat(self.conversation_history):
-                chunks.append(chunk)
-                await response_widget.update("".join(chunks))
-                chat_scroll.scroll_end(animate=False)
+            async for event in supervisor.stream_turn(self.session, prompt, self.conversation_history):
+                if isinstance(event, ThoughtChunk):
+                    if not thought_box:
+                        thought_box = ThoughtBox(duration_str="...", content="")
+                        chat_scroll.mount(thought_box, before=response_widget)
+                        chat_scroll.scroll_end(animate=False)
+                    thought_text_parts.append(event.chunk)
+                    thought_box.update_content("".join(thought_text_parts))
 
-            full_text = "".join(chunks).strip()
-            if full_text:
-                self.conversation_history.append({"role": "assistant", "content": full_text})
-                prompt_tokens = max(1, len(prompt) // 4)
-                resp_tokens = max(1, len(full_text) // 4)
-                self.total_tokens_used += prompt_tokens + resp_tokens
-                capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
+                elif isinstance(event, ThoughtCompleted):
+                    if not thought_box:
+                        thought_box = ThoughtBox(duration_str=event.duration_str, content=event.thought)
+                        chat_scroll.mount(thought_box, before=response_widget)
+                    else:
+                        thought_box.update_content(event.thought, duration_str=event.duration_str)
+                    chat_scroll.scroll_end(animate=False)
 
-                self.session.messages.append(
-                    ChatMessage(role="assistant", content=full_text, tokens=resp_tokens)
-                )
-                self.session.total_tokens = self.total_tokens_used
-                session_manager.save_session(self.session)
+                elif isinstance(event, ActionStarted):
+                    pill = ActionPill(tool_name=event.tool_name, duration_str="0.0s", status="running")
+                    active_pills[event.tool_name] = pill
+                    chat_scroll.mount(pill, before=response_widget)
+                    chat_scroll.scroll_end(animate=False)
 
-                sidebar.update_telemetry(
-                    tokens_used=self.total_tokens_used,
-                    context_capacity_pct=capacity_pct,
-                )
+                elif isinstance(event, ActionCompleted):
+                    pill = active_pills.get(event.tool_name)
+                    if pill:
+                        pill.set_completed(event.duration_str)
+                    else:
+                        pill = ActionPill(tool_name=event.tool_name, duration_str=event.duration_str, status=event.status)
+                        chat_scroll.mount(pill, before=response_widget)
+                    chat_scroll.scroll_end(animate=False)
 
-                footer_right = self.query_one("#footer-status", Static)
-                if footer_right:
-                    footer_right.update(
-                        f"[#ced6e0]{self.total_tokens_used:,} tokens ({capacity_pct}%)[/]   "
-                        "[#57606f]ctrl+s sessions[/]   [#57606f]ctrl+p commands[/]   [#2ed573]●[/] [#57606f]lang2sim 2.0.0[/]"
-                    )
-            else:
-                await response_widget.update("*(No response received from model)*")
+                elif isinstance(event, ContentChunk):
+                    content_parts.append(event.chunk)
+                    await response_widget.update("".join(content_parts))
+                    chat_scroll.scroll_end(animate=False)
+
+                elif isinstance(event, TurnCompleted):
+                    full_text = event.full_content
+                    if not full_text:
+                        full_text = "".join(content_parts).strip()
+                    if full_text:
+                        self.conversation_history.append({"role": "assistant", "content": full_text})
+                        prompt_tokens = max(1, len(prompt) // 4)
+                        resp_tokens = max(1, len(full_text) // 4)
+                        self.total_tokens_used += prompt_tokens + resp_tokens
+                        capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
+
+                        self.session.messages.append(
+                            ChatMessage(
+                                role="assistant",
+                                content=full_text,
+                                thought=event.thought,
+                                thought_duration_str=event.thought_duration_str,
+                                actions=event.actions,
+                                tokens=resp_tokens,
+                            )
+                        )
+                        self.session.total_tokens = self.total_tokens_used
+                        session_manager.save_session(self.session)
+
+                        sidebar.update_telemetry(
+                            tokens_used=self.total_tokens_used,
+                            context_capacity_pct=capacity_pct,
+                        )
+
+                        footer_right = self.query_one("#footer-status", Static)
+                        if footer_right:
+                            footer_right.update(
+                                f"[#ced6e0]{self.total_tokens_used:,} tokens ({capacity_pct}%)[/]   "
+                                "[#57606f]ctrl+s sessions[/]   [#57606f]ctrl+p commands[/]   [#2ed573]●[/] [#57606f]lang2sim 2.0.0[/]"
+                            )
+                    else:
+                        await response_widget.update("*(No response received from model)*")
         except Exception as e:
             await response_widget.update(f"[bold #ef4444]⚠ Connection Error:[/] {str(e)}")
         finally:
