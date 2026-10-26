@@ -292,14 +292,14 @@ class RosBridge:
 
     # --- telemetry -------------------------------------------------------------
     def record_start(self, label: str, goal: Optional[Tuple[float, float, float]] = None,
-                     rate_hz: float = 20.0) -> None:
+                     rate_hz: float = 20.0, stream_path: Any = None) -> None:
         with self._lock:
             spawn = self._s.spawn
         self._record_wall0 = time.time()
-        self.recorder.start(label, goal=goal, rate_hz=rate_hz, spawn=spawn)
+        self.recorder.start(label, goal=goal, rate_hz=rate_hz, spawn=spawn, stream_path=stream_path)
 
-    def record_stop(self) -> Optional[Dict[str, Any]]:
-        return self.recorder.stop()
+    def record_stop(self, keep_partial: bool = False) -> Optional[Dict[str, Any]]:
+        return self.recorder.stop(keep_partial=keep_partial)
 
     def live(self, goal: Optional[Tuple[float, float, float]] = None) -> Dict[str, Any]:
         """TelemetryLive fields (core.models) for the current state."""

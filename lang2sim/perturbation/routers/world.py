@@ -32,6 +32,12 @@ SPAWN_FOOTPRINT_RADIUS: Dict[str, float] = {
 }
 _SPAWN_LOG: List[Dict[str, Any]] = []
 _SPAWN_LOCK = threading.Lock()
+_SPAWN_FILE: Dict[str, Any] = {"path": None}   # <run>/logs/spawns.jsonl, set per run by the server
+
+
+def set_spawn_log_file(path: Optional[str]) -> None:
+    """Also append every spawn to this JSON-lines file (survives an API crash mid-run)."""
+    _SPAWN_FILE["path"] = path
 
 
 def record_spawn(name: str, model: str, x: float, y: float, yaw: float = 0.0) -> Dict[str, Any]:
@@ -42,6 +48,13 @@ def record_spawn(name: str, model: str, x: float, y: float, yaw: float = 0.0) ->
              "wall_time": time.time()}
     with _SPAWN_LOCK:
         _SPAWN_LOG.append(entry)
+        if _SPAWN_FILE["path"]:
+            try:
+                import json
+                with open(_SPAWN_FILE["path"], "a", encoding="utf-8") as f:
+                    f.write(json.dumps(entry) + "\n")
+            except OSError:
+                pass
     return entry
 
 

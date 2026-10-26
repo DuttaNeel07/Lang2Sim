@@ -161,3 +161,19 @@ def test_client_methods(setup):
                 await api.record_stop()
 
     asyncio.run(go())
+
+
+def test_recording_streams_to_partial_file_until_stop(setup):
+    app, bridge, req, run = setup
+    with TestClient(app) as c:
+        c.post("/v1/sim/start", json=req.model_dump(mode="json"))
+        c.post("/v1/telemetry/record/start", json={"label": "nominal", "rate_hz": 10})
+        for i in range(5):
+            bridge._on_odom(odom(20.0 + 0.1 * i, 0.1 * i))
+        partial = run / "logs" / "trajectory_nominal.partial.jsonl"
+        assert partial.is_file() and partial.read_text().count('"type": "sample"') == 5
+        world_router.record_spawn("wooden_crate_1", "wooden_crate", 1.0, 0.0)
+        assert "wooden_crate_1" in (run / "logs" / "spawns.jsonl").read_text()
+        res = c.post("/v1/telemetry/record/stop").json()
+        assert res["samples"] == 5 and not partial.exists()
+        assert (run / "logs" / "trajectory_nominal.json").is_file()

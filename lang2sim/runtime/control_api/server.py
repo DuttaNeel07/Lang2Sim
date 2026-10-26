@@ -489,7 +489,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         new_healer(req)
         if state["bridge"]:
             state["bridge"].expect_ground_truth = bool(sim.telemetry_setup.get("enabled"))
-        point_world_bridge(sim.world_name)
+        point_world_bridge(sim.world_name, Path(req.run_dir) / "logs")
         return current_status()
 
     @v1.post("/sim/stop", response_model=SimStatusResponse)
@@ -551,18 +551,20 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             return TelemetryLive()
         return TelemetryLive(**bridge.live())
 
-    def point_world_bridge(world_name: str) -> None:
-        """Aim Part 4's /v1/world mutations (spawn, light, reset) at this run's Gazebo world;
-        otherwise they target /world/default and silently do nothing."""
+    def point_world_bridge(world_name: str, logs_dir: Optional[Path] = None) -> None:
+        """Aim Part 4's /v1/world mutations (spawn, light, reset) at this run's Gazebo world
+        (otherwise they target /world/default and silently do nothing), and log spawns into
+        the run folder."""
         try:
             from lang2sim.perturbation.gazebo_bridge import get_bridge
-            from lang2sim.perturbation.routers.world import clear_spawn_log
+            from lang2sim.perturbation.routers.world import clear_spawn_log, set_spawn_log_file
         except ImportError:
             return
         if world_name:
             os.environ["LANG2SIM_WORLD_NAME"] = world_name
             get_bridge().world_name = world_name
         clear_spawn_log()
+        set_spawn_log_file(str(logs_dir / "spawns.jsonl") if logs_dir is not None else None)
 
     def recording_bridge():
         bridge = state["bridge"]
@@ -585,14 +587,24 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             raise HTTPException(409, "no simulation running")
         bridge = recording_bridge()
         goal = (req.goal.x, req.goal.y, req.goal.yaw) if req.goal else None
-        bridge.record_start(req.label, goal=goal, rate_hz=req.rate_hz)
-        state["record"] = {"label": req.label, "wall0": time.time()}
+        stream = None
+        if sim.request is not None:
+            from lang2sim.runtime.telemetry_recorder import partial_path
+            stream = partial_path(Path(sim.request.run_dir) / "logs", req.label)
+        try:
+            bridge.record_start(req.label, goal=goal, rate_hz=req.rate_hz, stream_path=stream)
+        except TypeError:   # bridge without streaming support
+            bridge.record_start(req.label, goal=goal, rate_hz=req.rate_hz)
+        state["record"] = {"label": req.label, "wall0": time.time(), "partial": stream}
         return live_now()
 
     @v1.post("/telemetry/record/stop", response_model=TelemetryRecordResult)
     def telemetry_record_stop() -> TelemetryRecordResult:
         bridge = recording_bridge()
-        data = bridge.record_stop()
+        try:
+            data = bridge.record_stop(keep_partial=True)
+        except TypeError:
+            data = bridge.record_stop()
         if data is None:
             raise HTTPException(409, "not recording")
         rec = state.get("record") or {"wall0": time.time()}
@@ -611,6 +623,8 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(json.dumps(data, indent=1), encoding="utf-8")
                 path = str(out)
+                if rec.get("partial"):                       # final file is safe: drop the stream
+                    Path(rec["partial"]).unlink(missing_ok=True)
             except OSError:
                 path = None
         return TelemetryRecordResult(

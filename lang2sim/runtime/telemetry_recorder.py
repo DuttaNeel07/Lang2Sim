@@ -22,13 +22,20 @@ Three rules keep the numbers comparable across machines and runs:
   * collisions are rising-edge contact events on the chassis, counted in sim
     time, ignoring the ground and the robot itself.
 
+Crash safety: with a `stream_path`, every kept sample (and every collision) is
+also appended to a JSON-lines file as it happens, so a run whose sim or API dies
+mid-mission can still be scored (load_partial / telemetry.benchmark CLI).
+
 Everything here is pure and unit-tested on the host.
 """
 
 from __future__ import annotations
 
+import json
 import math
 import threading
+import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -87,6 +94,9 @@ class ContactEvent:
                 "force_n": None if self.force_n is None else round(self.force_n, 2), "source": self.source}
 
 
+PARTIAL_SUFFIX = ".partial.jsonl"
+
+
 class ContactMonitor:
     """Counts chassis collisions (C_force) from contact messages, in sim time.
 
@@ -102,6 +112,7 @@ class ContactMonitor:
                  cooldown_s: float = CONTACT_COOLDOWN_S, release_s: float = CONTACT_RELEASE_S,
                  geometric_fallback: bool = True,
                  ignored: Sequence[str] = IGNORED_CONTACT_ENTITIES) -> None:
+        self.on_event = None                     # callable(ContactEvent), e.g. the recorder's stream
         self.robot_name = robot_name
         self.threshold_n = threshold_n
         self.cooldown_s = cooldown_s
@@ -160,7 +171,13 @@ class ContactMonitor:
         if new:
             self.count += 1
             self.last_counted_t = t
-            self.events.append(ContactEvent(t, entity, force, "wrench" if force is not None else "geometric"))
+            ev = ContactEvent(t, entity, force, "wrench" if force is not None else "geometric")
+            self.events.append(ev)
+            if self.on_event is not None:
+                try:
+                    self.on_event(ev)
+                except Exception:  # noqa: BLE001 - a logging failure must not lose the count
+                    pass
         return new
 
 
@@ -176,6 +193,8 @@ class _Run:
     sources: Dict[str, int] = field(default_factory=dict)
     min_scan: Optional[float] = None
     last_t: Optional[float] = None
+    stream: Any = None                      # open JSON-lines file, or None
+    stream_path: Optional[Path] = None
 
 
 class TelemetryRecorder:
@@ -215,11 +234,40 @@ class TelemetryRecorder:
         return self.contacts.count - (run.start_count if run else 0)
 
     def start(self, label: str, goal: Optional[Pose] = None, rate_hz: float = 20.0,
-              spawn: Optional[Pose] = None) -> None:
-        """Begin a recording (replacing any in progress). Collisions are counted from here."""
+              spawn: Optional[Pose] = None, stream_path: Optional[Path] = None) -> None:
+        """Begin a recording (replacing any in progress). Collisions are counted from here.
+
+        With `stream_path`, samples and collisions are also appended there as JSON lines."""
+        self.stop()
+        stream = None
+        if stream_path is not None:
+            try:
+                Path(stream_path).parent.mkdir(parents=True, exist_ok=True)
+                stream = open(stream_path, "w", buffering=1, encoding="utf-8")   # line-buffered
+                stream.write(json.dumps({"type": "header", "label": label, "rate_hz": max(1.0, rate_hz),
+                                         "goal": list(goal) if goal else None,
+                                         "spawn": list(spawn) if spawn else None,
+                                         "wall_time": time.time()}) + "\n")
+            except OSError:
+                stream = None
         with self._lock:
             self._run = _Run(label=label, goal=goal, rate_hz=max(1.0, rate_hz), spawn=spawn,
-                             start_count=self.contacts.count)
+                             start_count=self.contacts.count, stream=stream,
+                             stream_path=Path(stream_path) if stream is not None else None)
+        self.contacts.on_event = self._stream_event if stream is not None else None
+
+    def _write(self, run: "_Run", record: Dict[str, Any]) -> None:
+        if run.stream is None:
+            return
+        try:
+            run.stream.write(json.dumps(record) + "\n")
+        except (OSError, ValueError):
+            run.stream = None
+
+    def _stream_event(self, ev: ContactEvent) -> None:
+        run = self._run
+        if run is not None:
+            self._write(run, {"type": "contact", **ev.to_dict()})
 
     def offer(self, t: float, pose: Optional[Pose], source: str, v: float, w: float,
               estimate: Optional[Pose] = None, scan_min: Optional[float] = None) -> bool:
@@ -244,41 +292,112 @@ class TelemetryRecorder:
             run.samples.append(s)
             run.sources[source] = run.sources.get(source, 0) + 1
             run.last_t = t
+            self._write(run, {"type": "sample", "source": source, "scan_min": scan_min, **s})
             return True
 
-    def stop(self) -> Optional[Dict[str, Any]]:
-        """End the recording; None if nothing was recording."""
+    def stop(self, keep_partial: bool = False) -> Optional[Dict[str, Any]]:
+        """End the recording; None if nothing was recording.
+
+        The streamed partial file is removed unless `keep_partial` (the caller writes the
+        final trajectory JSON next to it)."""
         with self._lock:
             run, self._run = self._run, None
         if run is None:
             return None
-        samples = run.samples
-        # slam_x/slam_y must be on every sample for Trajectory to keep the column.
-        if samples and not all("slam_x" in s for s in samples):
-            samples = [{k: v for k, v in s.items() if k not in ("slam_x", "slam_y")} for s in samples]
-        main_source = max(run.sources, key=run.sources.get) if run.sources else "none"
+        self.contacts.on_event = None
+        if run.stream is not None:
+            try:
+                run.stream.close()
+            except OSError:
+                pass
+            if not keep_partial and run.stream_path is not None:
+                try:
+                    run.stream_path.unlink()
+                except OSError:
+                    pass
         events = [e.to_dict() for e in self.contacts.events[run.start_count:]]
-        return {
-            "label": run.label,
-            "goal": [run.goal[0], run.goal[1]] if run.goal else None,
-            "l_optimal": None,
-            "collisions": len(events),
-            "meta": {
-                "time_base": "sim",
-                "frame": "world",
-                "rate_hz": run.rate_hz,
-                "pose_source": main_source,
-                "pose_sources": dict(run.sources),
-                "spawn": list(run.spawn) if run.spawn else None,
-                "goal_yaw": run.goal[2] if run.goal else None,
-                "min_scan_range_m": None if run.min_scan is None else round(run.min_scan, 4),
-                "contact_force_source": self.contacts.force_source,
-                "contact_events": events,
-                "localization_error": "slam_x/slam_y hold AMCL's estimate vs Gazebo ground truth"
-                if samples and "slam_x" in samples[0] else None,
-            },
-            "samples": samples,
-        }
+        return assemble_trajectory(label=run.label, goal=run.goal, rate_hz=run.rate_hz, spawn=run.spawn,
+                                   samples=run.samples, sources=run.sources, min_scan=run.min_scan,
+                                   contact_force_source=self.contacts.force_source, events=events)
+
+
+def assemble_trajectory(*, label: str, goal: Optional[Sequence[float]], rate_hz: float,
+                        spawn: Optional[Sequence[float]], samples: List[Dict[str, float]],
+                        sources: Dict[str, int], min_scan: Optional[float], contact_force_source: str,
+                        events: List[Dict[str, Any]], partial: bool = False) -> Dict[str, Any]:
+    """Trajectory.to_dict() format + telemetry meta, from recorded samples."""
+    # slam_x/slam_y must be on every sample for Trajectory to keep the column.
+    if samples and not all("slam_x" in s for s in samples):
+        samples = [{k: v for k, v in s.items() if k not in ("slam_x", "slam_y")} for s in samples]
+    main_source = max(sources, key=sources.get) if sources else "none"
+    return {
+        "label": label,
+        "goal": [goal[0], goal[1]] if goal else None,
+        "l_optimal": None,
+        "collisions": len(events),
+        "meta": {
+            "time_base": "sim",
+            "frame": "world",
+            "rate_hz": rate_hz,
+            "pose_source": main_source,
+            "pose_sources": dict(sources),
+            "spawn": list(spawn) if spawn else None,
+            "goal_yaw": goal[2] if goal and len(goal) > 2 else None,
+            "min_scan_range_m": None if min_scan is None else round(min_scan, 4),
+            "contact_force_source": contact_force_source,
+            "contact_events": events,
+            "localization_error": "slam_x/slam_y hold AMCL's estimate vs Gazebo ground truth"
+            if samples and "slam_x" in samples[0] else None,
+            "partial": partial,
+        },
+        "samples": samples,
+    }
+
+
+def partial_path(logs_dir: Path, label: str) -> Path:
+    return Path(logs_dir) / f"trajectory_{label}{PARTIAL_SUFFIX}"
+
+
+def load_partial(path: Path) -> Optional[Dict[str, Any]]:
+    """Rebuild a trajectory dict from a streamed .partial.jsonl (a run that never reached
+    record/stop). Tolerates a torn last line. None if it holds fewer than 2 samples."""
+    header: Dict[str, Any] = {}
+    samples: List[Dict[str, float]] = []
+    sources: Dict[str, int] = {}
+    events: List[Dict[str, Any]] = []
+    min_scan: Optional[float] = None
+    force_source = "none"
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue                                   # torn write at the crash point
+        kind = rec.pop("type", None)
+        if kind == "header":
+            header = rec
+        elif kind == "sample":
+            src = rec.pop("source", "none")
+            sm = rec.pop("scan_min", None)
+            if sm is not None:
+                min_scan = sm if min_scan is None else min(min_scan, sm)
+            sources[src] = sources.get(src, 0) + 1
+            samples.append(rec)
+        elif kind == "contact":
+            events.append(rec)
+            if rec.get("source") == "wrench" or force_source == "none":
+                force_source = rec.get("source", force_source)
+    if len(samples) < 2:
+        return None
+    data = assemble_trajectory(label=header.get("label", Path(path).name), goal=header.get("goal"),
+                               rate_hz=float(header.get("rate_hz", 20.0)), spawn=header.get("spawn"),
+                               samples=samples, sources=sources, min_scan=min_scan,
+                               contact_force_source=force_source, events=events, partial=True)
+    data["meta"]["recording_wall_time"] = header.get("wall_time")
+    return data
 
 
 def build_live(*, sim_time: float, rtf: Optional[float], pose: Optional[Pose], source: str,
