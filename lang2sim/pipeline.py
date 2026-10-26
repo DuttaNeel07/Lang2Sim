@@ -44,15 +44,19 @@ WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "a": 1, "an": 1, "single": 1
 
 SPEC_SYSTEM_PROMPT = """You convert a robotics test scenario into JSON for a Gazebo simulation.
 Reply with ONLY one JSON object, no prose, no code fences, in exactly this shape:
-{"environment": {"environment_type": "indoor_warehouse"|"indoor_office", "room_dimensions": {"x": <8-14>, "y": <6-12>, "z": 3},
+{"environment": {"environment_type": "indoor_warehouse"|"indoor_office", "room_dimensions": {"x": <10-20>, "y": <8-14>, "z": 4},
   "ambient_light_luminance": <0.15-1.0>, "surface_friction": <0.15-1.2>},
- "objects": [{"id": "rack_1", "model_name": "aws_warehouse_rack"|"wooden_crate"|"workbench", "dimensions": {"x":..,"y":..,"z":..},
-              "pose": {"x":..,"y":..,"yaw": 0}}],
- "mission": {"initial_pose": {"x":..,"y":..,"yaw":0}, "waypoints": [{"x":..,"y":..}], "goal_pose": {"x":..,"y":..,"yaw":0},
+ "objects": [{"id": "rack_1", "model_name": "aws_warehouse_rack", "dimensions": {"x": 2.8, "y": 1.2, "z": 3.0},
+              "pose": {"x": <x>, "y": <y>, "yaw": 0.0}}],
+ "mission": {"initial_pose": {"x": <spawn_x>, "y": <spawn_y>, "yaw": 0.0}, "waypoints": [{"x": <x>, "y": <y>}], "goal_pose": {"x": <goal_x>, "y": <goal_y>, "yaw": 0.0},
              "timeout_seconds": 300}}
-Rules: the room is centred on (0,0); keep every object and pose 0.8 m inside the walls; objects must not overlap;
-leave aisles at least 2.2 m wide; racks are 3.0 x 0.8 x 2.0 m, crates 0.8 x 0.8 x 0.8 m; every waypoint and the goal
-must be at least 0.6 m from any object; at most 4 waypoints."""
+Rules:
+1. Warehouse Rack Layout: Racks (2.8m long x 1.2m wide) MUST have yaw=0.0 and be organized in 2 clean, parallel rows:
+   - Row 1 (North row): along y = 2.8 (e.g. rack_1 at x=-3.5, rack_2 at x=0.0, rack_3 at x=3.5)
+   - Row 2 (South row): along y = -2.8 (e.g. rack_4 at x=-3.5, rack_5 at x=0.0, rack_6 at x=3.5)
+   - Keep a wide, straight central driving corridor (corridor width >= 3.5m) along y=0.0 between the two rows.
+2. The room is centered at (0,0). Keep all objects at least 0.8m away from boundary walls.
+3. Waypoints and goal must be in the open corridor along y=0.0. If navigating to a rack (e.g. rack 3), set the goal pose in the free aisle in front of that rack (e.g. for rack at x=3.5, y=2.8, goal pose is x=3.5, y=1.0, yaw=0.0)."""
 
 
 def _count(prompt: str, noun: str, default: int) -> int:

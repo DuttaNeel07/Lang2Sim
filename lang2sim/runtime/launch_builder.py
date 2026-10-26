@@ -67,6 +67,12 @@ def _nav2_params(tb3_nav):
     amcl["set_initial_pose"] = True
     amcl["initial_pose"] = {"x": float(CONFIG["x"]), "y": float(CONFIG["y"]), "z": 0.0,
                             "yaw": float(CONFIG["yaw"])}
+    for cm_key in ("global_costmap", "local_costmap"):
+        cm_dict = params.get(cm_key, {}).get(cm_key, {}).get("ros__parameters", {})
+        infl = cm_dict.get("inflation_layer", {})
+        if infl:
+            infl["inflation_radius"] = 0.35
+            infl["cost_scaling_factor"] = 5.0
     out = os.path.join(CONFIG["run_dir"], "nav2_params.l2s.yaml")
     with open(out, "w") as f:
         yaml.safe_dump(params, f, sort_keys=False)

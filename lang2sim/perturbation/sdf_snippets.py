@@ -99,10 +99,36 @@ _CARGO_BOX_SDF = """<?xml version="1.0" ?>
 </sdf>
 """
 
+_RACK_SDF = """<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="{name}">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <geometry>
+          <box><size>2.8 1.2 3.6</size></box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box><size>2.8 1.2 3.6</size></box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.3 0.5 1</ambient>
+          <diffuse>0.2 0.3 0.5 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
+"""
+
 MODELS = {
     "wooden_crate": _WOODEN_CRATE_SDF,
     "barrel": _BARREL_SDF,
     "cargo_box": _CARGO_BOX_SDF,
+    "rack": _RACK_SDF,
+    "aws_warehouse_rack": _RACK_SDF,
 }
 
 
