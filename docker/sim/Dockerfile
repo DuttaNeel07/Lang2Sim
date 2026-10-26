@@ -105,6 +105,23 @@ RUN if id ubuntu &>/dev/null; then userdel -r ubuntu; fi \
  && chown -R "${USERNAME}:${USERNAME}" /lang2sim "${L2S_HOME}/src" \
  && echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> "/home/${USERNAME}/.bashrc"
 
+# Pre-cache the Gazebo Fuel models the TurtleBot3 worlds <include> by URL
+# (Ground Plane, Sun). Without this, gz downloads them at sim start and the world
+# fails to load offline / behind a proxy, which then kills the robot spawn.
+# Unpacked straight into gz's cache layout (<host>/<owner>/models/<name>/<ver>/,
+# lowercased) with curl; `gz fuel download` is flakier behind proxies.
+ENV GZ_FUEL_CACHE_PATH=/opt/lang2sim/fuel
+RUN for m in "Ground Plane" "Sun"; do \
+      d="${GZ_FUEL_CACHE_PATH}/fuel.gazebosim.org/openrobotics/models/${m,,}/1"; \
+      mkdir -p "$d" \
+   && curl -fsSL --retry 3 -o /tmp/model.zip \
+        "https://fuel.gazebosim.org/1.0/OpenRobotics/models/${m// /%20}.zip" \
+   && python3 -m zipfile -e /tmp/model.zip "$d" \
+   && rm -f /tmp/model.zip \
+   && test -f "$d/model.sdf" || exit 1; \
+    done \
+ && chmod -R a+rwX "${GZ_FUEL_CACHE_PATH}"
+
 COPY --chmod=0755 docker/sim/entrypoint.sh docker/sim/smoke_test.sh ${L2S_HOME}/bin/
 
 # Paths and ports below are the contract with sim2lang/core/config.py (Step 2).
