@@ -5,16 +5,15 @@ File: sim2lang/runtime/control_api/server.py
 Started by docker/sim/entrypoint.sh (`serve`):
     uvicorn sim2lang.runtime.control_api.server:app --host 0.0.0.0 --port 9090
 
-Step 2 scope:
     GET  /v1/health        liveness + version
     GET  /v1/info          what the container resolved (display, gpu, ros, gz, arch)
-    GET  /v1/sim/status    SimStatusResponse
-    POST /v1/sim/start     SimStartRequest -> launches the sim process
+    POST /v1/sim/start     SimStartRequest -> world pre-flight, sim_launch.py, launch
+    GET  /v1/sim/status    SimStatusResponse incl. readiness checks and RTF
     POST /v1/sim/stop      SimStopRequest
     GET  /v1/sim/logs      tail of the sim process output (for the self-healer)
 
-Step 3 swaps SimProcess's command for `ros2 launch <run_dir>/sim_launch.py` and
-adds /v1/nav/*; Part 4 mounts routers/world.py under /v1/world.
+Navigation (/v1/nav/*) and telemetry are added by later modules; Part 4 mounts
+routers/world.py under /v1/world.
 """
 
 from __future__ import annotations
@@ -28,16 +27,19 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
 
 import sim2lang
 from sim2lang.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
+from sim2lang.runtime import launch_builder, world_check
 from sim2lang.runtime.control_api import API_PREFIX
+from sim2lang.runtime.ros_bridge import readiness
 
 RUNTIME_ENV_FILE = Path(os.getenv("L2S_RUNTIME_ENV_FILE", "/tmp/l2s_runtime.env"))
 LOG_RING_LINES = 2000
+LAUNCH_GRACE_S = 3.0
 _STARTED_AT = time.time()
 
 
@@ -54,8 +56,25 @@ def read_runtime_env(path: Path = RUNTIME_ENV_FILE) -> Dict[str, str]:
     return out
 
 
+def model_search_paths(run_dir: Path) -> List[Path]:
+    """Where model:// URIs may resolve: Gazebo's path, TurtleBot3 models, catalog, the run's own models/."""
+    paths = world_check.default_model_paths()
+    for p in (os.getenv("L2S_CATALOG_DIR", "/lang2sim/catalog") + "/models",
+              str(run_dir / "models"),
+              f"/opt/ros/{os.getenv('ROS_DISTRO', 'jazzy')}/share/turtlebot3_gazebo/models"):
+        if Path(p).is_dir():
+            paths.append(Path(p))
+    return paths
+
+
+class WorldRejected(Exception):
+    def __init__(self, report: world_check.WorldReport):
+        super().__init__(report.summary())
+        self.report = report
+
+
 class SimProcess:
-    """One simulation process group, its log ring and lifecycle state."""
+    """One simulation (a `ros2 launch` process group), its log ring and lifecycle state."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -63,58 +82,101 @@ class SimProcess:
         self.request: Optional[SimStartRequest] = None
         self.started_at: Optional[float] = None
         self.stopped = False
+        self.was_ready = False
+        self.world_report: Optional[world_check.WorldReport] = None
+        self.launch_file: Optional[Path] = None
         self.log: Deque[str] = collections.deque(maxlen=LOG_RING_LINES)
         self._log_file: Optional[Path] = None
 
-    # Overridden in Step 3 (sim_launch.py) and in tests.
-    def build_command(self, req: SimStartRequest) -> List[str]:
-        cmd = ["gz", "sim", "-r", "-v", "3"]
-        if not req.use_gui or not os.getenv("DISPLAY"):
-            cmd.append("-s")
-        cmd.append(req.world_sdf_path)
-        return cmd
+    # --- preparation ---------------------------------------------------------
+    def prepare(self, req: SimStartRequest) -> Path:
+        """World pre-flight + sim_launch.py. Returns the launch file; raises on a bad run."""
+        run_dir = Path(req.run_dir)
+        world = Path(req.world_sdf_path)
+        for p in (world, Path(req.map_yaml_path)):
+            if not p.exists():
+                raise FileNotFoundError(p)
+        search = model_search_paths(run_dir)
+        report, world_to_load = world_check.prepare_world(world, model_paths=search)
+        self.world_report = report
+        if world_to_load is None:
+            raise WorldRejected(report)
+        has_display = bool(os.getenv("DISPLAY"))
+        cfg = launch_builder.LaunchConfig(
+            run_dir=str(run_dir),
+            world_sdf=str(world_to_load),
+            world_name=req.world_name or report.world_name or "",
+            map_yaml=req.map_yaml_path,
+            x=req.initial_pose.x, y=req.initial_pose.y, yaw=req.initial_pose.yaw,
+            gui=req.use_gui and has_display,
+            rviz=req.use_rviz and has_display,
+            camera=os.getenv("L2S_CAMERA", "1") != "0",
+            nav2_params=req.nav2_params_path or "",
+            resource_paths=[str(p) for p in search if "turtlebot3_gazebo" not in str(p)],
+        )
+        return launch_builder.write(cfg)
 
+    # Overridden in tests.
+    def build_command(self, req: SimStartRequest) -> List[str]:
+        return ["ros2", "launch", str(self.launch_file)]
+
+    # --- lifecycle -----------------------------------------------------------
     @property
-    def status(self) -> str:
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def status(self, ready: Optional[bool] = None) -> str:
+        """idle | launching | running | degraded | stopped | error.
+
+        `ready` comes from the ROS readiness checks (None = no ROS bridge here).
+        """
         if self.proc is None:
             return "stopped" if self.stopped else "idle"
         rc = self.proc.poll()
-        if rc is None:
-            # Treat the first few seconds as launching.
-            return "launching" if self.started_at and time.time() - self.started_at < 3 else "running"
-        if self.stopped:
-            return "stopped"
-        return "stopped" if rc == 0 else "error"
+        if rc is not None:
+            return "stopped" if (self.stopped or rc == 0) else "error"
+        if ready is None:
+            age = time.time() - (self.started_at or 0)
+            return "launching" if age < LAUNCH_GRACE_S else "running"
+        if ready:
+            self.was_ready = True
+            return "running"
+        return "degraded" if self.was_ready else "launching"
 
     def start(self, req: SimStartRequest) -> None:
         with self._lock:
-            if self.proc is not None and self.proc.poll() is None:
+            if self.alive:
                 raise RuntimeError("simulation already running")
-            for p in (req.world_sdf_path,):
-                if not Path(p).exists():
-                    raise FileNotFoundError(p)
             run_dir = Path(req.run_dir)
             (run_dir / "logs").mkdir(parents=True, exist_ok=True)
+            self.launch_file = self.prepare(req)
+            (run_dir / "logs" / "world_check.txt").write_text(self.world_report.summary() + "\n")
             self._log_file = run_dir / "logs" / "sim.log"
             self.log.clear()
             self.request = req
             self.stopped = False
+            self.was_ready = False
             self.started_at = time.time()
             self.proc = subprocess.Popen(
                 self.build_command(req),
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
                 cwd=str(run_dir), start_new_session=True,  # own process group for clean stop
             )
-            threading.Thread(target=self._pump, args=(self.proc,), daemon=True).start()
+            threading.Thread(target=self._pump, args=(self.proc, self._log_file), daemon=True).start()
 
-    def _pump(self, proc: subprocess.Popen) -> None:
+    def _pump(self, proc: subprocess.Popen, log_file: Optional[Path]) -> None:
         assert proc.stdout is not None
-        with open(self._log_file, "a", buffering=1) if self._log_file else _NullFile() as fh:
+        fh = open(log_file, "a", buffering=1) if log_file else None
+        try:
             for line in proc.stdout:
                 self.log.append(line.rstrip("\n"))
-                fh.write(line)
+                if fh:
+                    fh.write(line)
+        finally:
+            if fh:
+                fh.close()
 
-    def stop(self, force: bool = False, grace_s: float = 10.0) -> None:
+    def stop(self, force: bool = False, grace_s: float = 15.0) -> None:
         with self._lock:
             proc = self.proc
             self.stopped = True
@@ -134,33 +196,47 @@ class SimProcess:
         return list(self.log)[-n:]
 
 
-class _NullFile:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def write(self, _s: str) -> None:
-        pass
-
-
-def create_app(sim: Optional[SimProcess] = None) -> FastAPI:
+def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True) -> FastAPI:
+    """`use_ros=False` (tests) skips the rclpy bridge; it is also skipped where ROS is absent."""
     sim = sim or SimProcess()
+    state: Dict[str, Any] = {"bridge": None}
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
+        if use_ros:
+            from sim2lang.runtime.ros_bridge import RosBridge
+            state["bridge"] = RosBridge.try_create()
         yield
         sim.stop()  # don't leave gz/ros2 running when uvicorn exits
+        if state["bridge"]:
+            state["bridge"].stop()
 
     app = FastAPI(title="Lang2Sim control API", version=sim2lang.__version__, lifespan=lifespan)
     app.state.sim = sim
+    app.state.ros = state
     v1 = APIRouter(prefix=API_PREFIX)
+
+    def current_status() -> SimStatusResponse:
+        bridge = state["bridge"]
+        snap = bridge.snapshot() if bridge else None
+        checks = readiness(snap) if snap else {}
+        ready = all(checks.values()) if checks else None
+        st = sim.status(ready if sim.alive else None)
+        return SimStatusResponse(
+            status=st,
+            rtf=round(snap.rtf, 3) if snap and snap.rtf is not None else 0.0,
+            sim_time=round(snap.sim_time, 3) if snap else 0.0,
+            ready=bool(ready) and st == "running",
+            readiness=checks,
+            world_report=[f"[{i.level}] {i.code}: {i.message}" for i in sim.world_report.issues]
+            if sim.world_report else [],
+        )
 
     @v1.get("/health")
     def health() -> dict:
         return {"status": "ok", "version": sim2lang.__version__,
-                "uptime_s": round(time.time() - _STARTED_AT, 1)}
+                "uptime_s": round(time.time() - _STARTED_AT, 1),
+                "ros": state["bridge"] is not None}
 
     @v1.get("/info")
     def info() -> dict:
@@ -180,27 +256,31 @@ def create_app(sim: Optional[SimProcess] = None) -> FastAPI:
 
     @v1.get("/sim/status", response_model=SimStatusResponse)
     def sim_status() -> SimStatusResponse:
-        # rtf/sim_time come from health_monitor (Step 4); nodes/topics from Step 3.
-        return SimStatusResponse(status=sim.status)
+        return current_status()
 
     @v1.post("/sim/start", response_model=SimStatusResponse, status_code=202)
     def sim_start(req: SimStartRequest) -> SimStatusResponse:
+        if state["bridge"]:
+            state["bridge"].reset()
         try:
             sim.start(req)
         except RuntimeError as e:
             raise HTTPException(409, str(e))
         except FileNotFoundError as e:
             raise HTTPException(404, f"not found in container: {e}")
-        return SimStatusResponse(status=sim.status)
+        except WorldRejected as e:
+            raise HTTPException(422, {"message": "world rejected by pre-flight check",
+                                      "issues": [vars(i) for i in e.report.issues]})
+        return current_status()
 
     @v1.post("/sim/stop", response_model=SimStatusResponse)
     def sim_stop(req: Optional[SimStopRequest] = None) -> SimStatusResponse:
         sim.stop(force=bool(req and req.force))
-        return SimStatusResponse(status=sim.status)
+        return current_status()
 
     @v1.get("/sim/logs")
     def sim_logs(tail: int = Query(200, ge=1, le=LOG_RING_LINES)) -> dict:
-        return {"status": sim.status, "lines": sim.tail(tail)}
+        return {"status": sim.status(None), "lines": sim.tail(tail)}
 
     app.include_router(v1)
     return app
