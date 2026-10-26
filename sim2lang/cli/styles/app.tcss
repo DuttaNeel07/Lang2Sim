@@ -12,50 +12,45 @@ Screen {
     height: 100%;
 }
 
+#landing-inner {
+    width: 78;
+    height: auto;
+    align: center middle;
+}
+
 #landing-logo {
     text-align: center;
-    color: #f1f2f6;
     margin-bottom: 2;
-    text-style: bold;
 }
 
 #landing-card {
-    width: 80;
+    width: 74;
     height: auto;
+    max-height: 5;
     background: #161616;
     border-left: thick #00d2ff;
-    padding: 1 2;
+    padding: 0 1;
     margin-bottom: 1;
 }
 
-#landing-input {
+Input {
     background: transparent;
-    border: none;
-    color: #ffffff;
+    border: none !important;
+    height: 1;
     padding: 0;
-    margin-bottom: 1;
+    margin: 0;
+    color: #ffffff;
 }
 
-#landing-input:focus {
-    border: none;
+Input:focus {
+    border: none !important;
+    background: transparent;
 }
 
 #badge-row {
     height: 1;
+    margin-top: 1;
     color: #747d8c;
-}
-
-.badge-build {
-    color: #38bdf8;
-    text-style: bold;
-}
-
-.badge-model {
-    color: #a4b0be;
-}
-
-.badge-tier {
-    color: #f39c12;
 }
 
 #landing-shortcuts {
@@ -67,11 +62,7 @@ Screen {
 #landing-tip {
     text-align: center;
     color: #747d8c;
-    margin-top: 2;
-}
-
-.tip-dot {
-    color: #f39c12;
+    margin-top: 1;
 }
 
 /* Workspace Screen (80/20 Split) */
@@ -109,14 +100,10 @@ Screen {
     padding: 1 2;
 }
 
-.message-card {
-    margin-bottom: 1;
-}
-
 .user-prompt-card {
     background: #141414;
     border-left: thick #00d2ff;
-    padding: 1 2;
+    padding: 0 1;
     margin-bottom: 1;
     color: #ffffff;
 }
@@ -147,45 +134,22 @@ Screen {
 /* Action Status Pills */
 .action-pill {
     background: #161616;
-    border: solid #2f3542;
+    border: solid #222222;
     padding: 0 1;
     margin-bottom: 1;
     color: #ced6e0;
-    height: 3;
-}
-
-.pill-icon {
-    color: #38bdf8;
-    text-style: bold;
-}
-
-.pill-completed {
-    color: #2ed573;
-}
-
-.pill-running {
-    color: #ffa502;
+    height: auto;
 }
 
 /* Sticky Bottom Input Card */
 #sticky-input-card {
     dock: bottom;
     height: auto;
+    max-height: 5;
     background: #161616;
     border-left: thick #00d2ff;
-    padding: 1 2;
+    padding: 0 1;
     margin: 1 2;
-}
-
-#sticky-input {
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    padding: 0;
-}
-
-#sticky-input:focus {
-    border: none;
 }
 
 /* Right Sidebar Sections */
@@ -199,16 +163,6 @@ Screen {
 .sidebar-metric {
     color: #a4b0be;
     margin-left: 1;
-}
-
-.metric-highlight {
-    color: #2ed573;
-    text-style: bold;
-}
-
-.metric-alert {
-    color: #ff4757;
-    text-style: bold;
 }
 
 /* Footer Bar */

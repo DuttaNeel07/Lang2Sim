@@ -14,9 +14,34 @@ class PromptCard(Widget):
     DEFAULT_CSS = """
     PromptCard {
         height: auto;
+        max-height: 5;
         background: #161616;
         border-left: thick #00d2ff;
-        padding: 1 2;
+        padding: 0 1;
+    }
+
+    PromptCard > Vertical {
+        height: auto;
+    }
+
+    PromptCard Input {
+        background: transparent;
+        border: none;
+        height: 1;
+        padding: 0;
+        margin: 0;
+        color: #ffffff;
+    }
+
+    PromptCard Input:focus {
+        border: none;
+        background: transparent;
+    }
+
+    PromptCard #badge-row {
+        height: 1;
+        margin-top: 1;
+        color: #747d8c;
     }
     """
 
