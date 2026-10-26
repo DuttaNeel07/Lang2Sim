@@ -72,6 +72,22 @@ class SimNotReady(RuntimeError):
         self.status, self.logs = status, logs
 
 
+def host_run_dir(run_info: Mapping[str, Any]) -> Optional[Path]:
+    """The host path of the run a control API reports (GET /v1/run).
+
+    In the container the run folder is <projects>/<project_path>; the host mounts the same
+    tree at ~/.lang2sim/projects. A replay server reports a host path directly."""
+    rel = run_info.get("project_path")
+    if rel:
+        p = cfg.get_projects_dir() / rel
+        if p.is_dir():
+            return p
+    raw = run_info.get("run_dir")
+    if raw and Path(raw).is_dir():
+        return Path(raw)
+    return None
+
+
 def copy_fixture(name: str, project: Optional[str] = None) -> Path:
     """Copy catalog/fixtures/<name> into a fresh ~/.lang2sim/projects/<project>/runs/<ts>/."""
     src = FIXTURES_DIR / name
@@ -95,6 +111,19 @@ class SimSession:
         self.opts = dataclasses.replace(base, extra_env={**base.extra_env, **(extra_env or {})})
         self.api = ControlClient(f"http://127.0.0.1:{self.opts.api_port}", timeout=30)
         self.run_dir: Optional[Path] = None
+
+    @classmethod
+    def attach(cls, base_url: Optional[str] = None, run_dir: Optional[Path] = None) -> "SimSession":
+        """A session bound to an already-running control API (live sim or replay), e.g. from the TUI.
+
+        It does not own the container: stop() only closes the client."""
+        from lang2sim.runtime.control_api.client import default_base_url
+
+        s = cls.__new__(cls)
+        s.plan, s.runner, s.opts = None, None, None
+        s.api = ControlClient(base_url or default_base_url(), timeout=30)
+        s.run_dir = Path(run_dir) if run_dir else None
+        return s
 
     @property
     def view_hint(self) -> str:
@@ -274,6 +303,9 @@ class SimSession:
         return report
 
     async def stop(self) -> None:
+        if self.runner is None:          # attached session: the sim is not ours to stop
+            await self.api.aclose()
+            return
         try:
             await self.api.sim_stop()
         except Exception:  # noqa: BLE001 - container may already be gone

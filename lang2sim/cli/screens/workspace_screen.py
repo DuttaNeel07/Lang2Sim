@@ -9,6 +9,7 @@ from textual.widgets import Static, Markdown
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.binding import Binding
 from textual import work
+from rich.markup import escape
 from ..widgets.prompt_card import PromptCard
 from ..widgets.telemetry_sidebar import TelemetrySidebar
 from ...agent.nemotron_client import NemotronClient
@@ -64,6 +65,8 @@ class WorkspaceScreen(Screen):
         ]
         self.total_tokens_used: int = self.session.total_tokens
         self.is_streaming: bool = False
+        from ..demo_commands import DemoRunner
+        self.demo = DemoRunner(say=self._demo_say, show=self._demo_show)
 
     def compose(self):
         # Top title bar
@@ -76,7 +79,7 @@ class WorkspaceScreen(Screen):
                 with VerticalScroll(id="chat-scroll"):
                     yield Static("", id="scroll-anchor")
                 yield PromptCard(
-                    placeholder='lang2sim > Type follow-up (e.g. "drop light to 20%, spawn crate")',
+                    placeholder='lang2sim > Ask, or /mission · /stress · /benchmark · /report · /help',
                     card_id="sticky-prompt-input",
                     id="sticky-input-card",
                 )
@@ -187,7 +190,23 @@ class WorkspaceScreen(Screen):
     def handle_user_prompt(self, prompt: str) -> None:
         """Mount user message and launch async LLM streaming worker."""
         cleaned_prompt = prompt.strip()
-        if not cleaned_prompt or self.is_streaming:
+        if not cleaned_prompt:
+            return
+
+        # Demo commands (/mission, /stress, /benchmark, ...) and plain-language stress requests act on
+        # the running simulation directly; they never wait for (or depend on) the LLM.
+        from ..demo_commands import parse_command, parse_stress_intent
+        command = parse_command(cleaned_prompt) or parse_stress_intent(cleaned_prompt)
+        if command is not None:
+            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+            chat_scroll.mount(Static(f"[bold #ffffff]{escape(cleaned_prompt)}[/]", classes="user-prompt-card"))
+            chat_scroll.scroll_end(animate=False)
+            self.session.messages.append(ChatMessage(role="user", content=cleaned_prompt,
+                                                     tokens=max(1, len(cleaned_prompt) // 4)))
+            session_manager.save_session(self.session)
+            self.run_demo_command(command)
+            return
+        if self.is_streaming:
             return
 
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
@@ -218,6 +237,26 @@ class WorkspaceScreen(Screen):
 
         # 4. Stream response asynchronously with low latency
         self.stream_response(response_widget, cleaned_prompt)
+
+    # --- demo commands ------------------------------------------------------------
+    @work(exclusive=False, group="demo")
+    async def run_demo_command(self, command) -> None:
+        await self.demo.run(command)
+        self.poll_telemetry()
+
+    def _demo_say(self, markup: str) -> None:
+        self._mount_chat(Static(markup, classes="demo-line"))
+
+    def _demo_show(self, renderable) -> None:
+        self._mount_chat(Static(renderable, classes="demo-table"))
+
+    def _mount_chat(self, widget) -> None:
+        try:
+            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+        except Exception:  # noqa: BLE001 - screen gone
+            return
+        chat_scroll.mount(widget)
+        chat_scroll.scroll_end(animate=False)
 
     @work(thread=True, exclusive=True, group="telemetry")
     def poll_telemetry(self) -> None:
