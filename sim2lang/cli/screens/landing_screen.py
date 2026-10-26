@@ -8,11 +8,10 @@ from textual.widgets import Static
 from textual.containers import Vertical, Center, Horizontal
 from ..widgets.prompt_card import PromptCard
 
-LOGO_TEXT = """[#9ca3af]█                     [#ffffff] ▀▀▀▀█          ▀▀        [/]
-[#9ca3af]█  ▄▀▀▀█ █▀▀▀█ ▄▀▀▀█  [#ffffff]    ▄█ ▄▀▀▀▀   ██ █▀▀█▀▀█[/]
-[#9ca3af]█  █ ▀▀█ █   █ █▄▄▄█  [#ffffff] ▄▀▀   ▀▀▀▀█   ██ █  █  █[/]
-[#9ca3af]█  █▄▄▄█ █   █     █  [#ffffff] █▄▄▄█ ▄▄▄▄▀   ██ █  █  █[/]
-[#9ca3af]               ▄▄▄▄█  [#ffffff]                            [/]"""
+LOGO_TEXT = """[#9ca3af]██                  [/] [#ffffff]▀▀▀▀█       ▀▀        [/]
+[#9ca3af]██  ▀▀▀█ █▀▀▀█ █▀▀▀█[/] [#ffffff]▄▄▄▄█ █▀▀▀▀ ██ █▀▀█▀▀█[/]
+[#9ca3af]██ █▄▄▄█ █   █ █▄▄▄█[/] [#ffffff]█▄▄▄▄ ▄▄▄▄█ ██ █  █  █[/]
+[#9ca3af]                ▄▄▄▄█[/] [#ffffff]                      [/]"""
 
 class LandingScreen(Screen):
     """The initial landing screen matching the reference image."""
