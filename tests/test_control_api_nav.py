@@ -36,8 +36,8 @@ class FakeBridge:
     def __init__(self, ready=True):
         self.ready = ready
 
-    def reset(self):
-        pass
+    def reset(self, spawn=None):
+        self.spawn = spawn
 
     def snapshot(self):
         now = time.time()
