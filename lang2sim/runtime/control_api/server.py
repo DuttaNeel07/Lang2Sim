@@ -61,7 +61,7 @@ from lang2sim.core.models import (
     SimStatusResponse,
     SimStopRequest,
 )
-from lang2sim.runtime import launch_builder, world_check
+from lang2sim.runtime import launch_builder, robot_instrument, world_check
 from lang2sim.runtime.control_api import API_PREFIX
 from lang2sim.runtime.health_monitor import HealthMonitor
 from lang2sim.runtime.ros_bridge import readiness
@@ -97,6 +97,19 @@ def model_search_paths(run_dir: Path) -> List[Path]:
     return paths
 
 
+ROBOT_NAME = "waffle"   # TurtleBot3 variant, and the entity name it is spawned under
+
+
+def tb3_gazebo_share() -> Optional[Path]:
+    """turtlebot3_gazebo's share directory inside the container, or None."""
+    try:
+        from ament_index_python.packages import get_package_share_directory  # type: ignore[import-not-found]
+        return Path(get_package_share_directory("turtlebot3_gazebo"))
+    except Exception:  # noqa: BLE001 - no ament index (host tests) or package missing
+        p = Path(f"/opt/ros/{os.getenv('ROS_DISTRO', 'jazzy')}/share/turtlebot3_gazebo")
+        return p if p.is_dir() else None
+
+
 class WorldRejected(Exception):
     def __init__(self, report: world_check.WorldReport):
         super().__init__(report.summary())
@@ -115,6 +128,7 @@ class SimProcess:
         self.was_ready = False
         self.world_report: Optional[world_check.WorldReport] = None
         self.launch_file: Optional[Path] = None
+        self.telemetry_setup: Dict[str, Any] = {"enabled": False, "collision": None, "reason": "not started"}
         self.log: Deque[str] = collections.deque(maxlen=LOG_RING_LINES)
         self.lines_total = 0                      # monotonic, unlike the ring's length
         self._log_file: Optional[Path] = None
@@ -133,10 +147,12 @@ class SimProcess:
         if world_to_load is None:
             raise WorldRejected(report)
         has_display = bool(os.getenv("DISPLAY"))
+        world_name = req.world_name or report.world_name or ""
+        robot_sdf, bridge_cfg = self.instrument_robot(run_dir, world_name)
         cfg = launch_builder.LaunchConfig(
             run_dir=str(run_dir),
             world_sdf=str(world_to_load),
-            world_name=req.world_name or report.world_name or "",
+            world_name=world_name,
             map_yaml=req.map_yaml_path,
             x=req.initial_pose.x, y=req.initial_pose.y, yaw=req.initial_pose.yaw,
             gui=req.use_gui and has_display,
@@ -144,8 +160,43 @@ class SimProcess:
             camera=os.getenv("L2S_CAMERA", "1") != "0",
             nav2_params=req.nav2_params_path or "",
             resource_paths=[str(p) for p in search if "turtlebot3_gazebo" not in str(p)],
+            robot=ROBOT_NAME,
+            robot_sdf=robot_sdf,
+            bridge_config=bridge_cfg,
         )
         return launch_builder.write(cfg)
+
+    def instrument_robot(self, run_dir: Path, world_name: str) -> tuple:
+        """Bumper + ground-truth copies of the TurtleBot3 model and bridge config for this run.
+
+        Returns (robot_sdf, bridge_config) paths, or ("", "") to use the stock files
+        (telemetry off via L2S_TELEMETRY=0, or stock files not found). Either way the
+        outcome is written to logs/telemetry_setup.txt.
+        """
+        self.telemetry_setup = {"enabled": False, "collision": None, "reason": ""}
+        log = run_dir / "logs" / "telemetry_setup.txt"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        if os.getenv("L2S_TELEMETRY", "1") == "0":
+            self.telemetry_setup["reason"] = "disabled (L2S_TELEMETRY=0)"
+        else:
+            share = tb3_gazebo_share()
+            model = f"turtlebot3_{ROBOT_NAME}"
+            stock_sdf = share / "models" / model / "model.sdf" if share else None
+            stock_bridge = share / "params" / f"{model}_bridge.yaml" if share else None
+            if not (stock_sdf and stock_sdf.is_file() and stock_bridge and stock_bridge.is_file()):
+                self.telemetry_setup["reason"] = "turtlebot3_gazebo model/bridge files not found"
+            else:
+                try:
+                    sdf, yml, coll = robot_instrument.write_instrumented(
+                        run_dir, stock_sdf, stock_bridge, world=world_name, robot=ROBOT_NAME)
+                    self.telemetry_setup.update(enabled=True, collision=coll, reason="ok")
+                    log.write_text(f"telemetry: instrumented {model} (bumper on {coll}, ground truth)\n"
+                                   f"robot: {sdf}\nbridge: {yml}\n")
+                    return str(sdf), str(yml)
+                except (OSError, robot_instrument.InstrumentError) as e:
+                    self.telemetry_setup["reason"] = f"instrumentation failed: {e}"
+        log.write_text(f"telemetry: stock robot, no bumper/ground truth: {self.telemetry_setup['reason']}\n")
+        return "", ""
 
     # Overridden in tests.
     def build_command(self, req: SimStartRequest) -> List[str]:
