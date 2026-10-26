@@ -3,8 +3,8 @@ Health monitor states and reasons (no ROS).
 File: tests/test_health_monitor.py
 """
 
-from sim2lang.runtime.health_monitor import HealthMonitor
-from sim2lang.runtime.ros_bridge import NAV2_NODES, RosSnapshot
+from lang2sim.runtime.health_monitor import HealthMonitor
+from lang2sim.runtime.ros_bridge import NAV2_NODES, RosSnapshot
 
 
 def snap(now=100.0, rtf=1.0, **kw):

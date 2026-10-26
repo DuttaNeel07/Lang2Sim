@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from sim2lang.core.models import NavStatus, Pose2D
-from sim2lang.runtime.ros_bridge import NAV2_NODES, RosSnapshot
-from sim2lang.runtime.self_healing import (
+from lang2sim.core.models import NavStatus, Pose2D
+from lang2sim.runtime.ros_bridge import NAV2_NODES, RosSnapshot
+from lang2sim.runtime.self_healing import (
     Fault,
     Observation,
     RateLimit,
@@ -186,9 +186,9 @@ def test_server_heal_tick_restarts_dead_node_and_logs(tmp_path):
 
     pytest.importorskip("fastapi")
     httpx = pytest.importorskip("httpx")
-    from sim2lang.core.models import SimStartRequest
-    from sim2lang.runtime.control_api.client import ControlClient
-    from sim2lang.runtime.control_api.server import SimProcess, create_app
+    from lang2sim.core.models import SimStartRequest
+    from lang2sim.runtime.control_api.client import ControlClient
+    from lang2sim.runtime.control_api.server import SimProcess, create_app
 
     class DyingRsp(SimProcess):
         def build_command(self, req):

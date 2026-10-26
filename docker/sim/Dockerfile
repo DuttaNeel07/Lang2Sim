@@ -132,7 +132,7 @@ ENV L2S_USER=${USERNAME} \
     L2S_API_PORT=9090 \
     L2S_FOXGLOVE_PORT=8765 \
     L2S_NOVNC_PORT=6080 \
-    L2S_API_APP=sim2lang.runtime.control_api.server:app \
+    L2S_API_APP=lang2sim.runtime.control_api.server:app \
     L2S_DISPLAY_MODE=auto \
     L2S_GPU=auto \
     L2S_FOXGLOVE=auto \
@@ -145,12 +145,12 @@ ENV L2S_USER=${USERNAME} \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=all
 
-# The sim2lang package (control API now; launch/nav/self-healing later). It is
+# The lang2sim package (control API now; launch/nav/self-healing later). It is
 # imported via PYTHONPATH, not pip-installed, so the host's heavy deps (textual,
 # openai, shapely...) stay out of the image. Dev runs bind-mount the repo over
 # this path (docker_runner src_dir) to skip rebuilds.
 COPY --chown=root:root pyproject.toml ${L2S_SRC}/pyproject.toml
-COPY --chown=root:root sim2lang ${L2S_SRC}/sim2lang
+COPY --chown=root:root lang2sim ${L2S_SRC}/lang2sim
 
 EXPOSE 9090 8765
 WORKDIR /lang2sim

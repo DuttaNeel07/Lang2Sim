@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from sim2lang.core.models import SimSpec
-from sim2lang.runtime.run_folder import load_manifest
-from sim2lang.runtime.world_check import check_world
+from lang2sim.core.models import SimSpec
+from lang2sim.runtime.run_folder import load_manifest
+from lang2sim.runtime.world_check import check_world
 
 FIXTURES = Path(__file__).resolve().parents[1] / "catalog" / "fixtures"
 NAMES = ["empty_room", "small_warehouse", "tb3_world"]

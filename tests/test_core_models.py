@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from pydantic import ValidationError
 
-from sim2lang.core.models import (
+from lang2sim.core.models import (
     Pose2D,
     Vector3D,
     SkyWeatherSpec,
@@ -29,7 +29,7 @@ from sim2lang.core.models import (
     NavGoalRequest,
     HealEvent,
 )
-from sim2lang.core.config import (
+from lang2sim.core.config import (
     config,
     get_projects_dir,
     get_active_project_dir,

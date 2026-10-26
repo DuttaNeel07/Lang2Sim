@@ -28,16 +28,16 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from sim2lang.runtime import doctor, hardware_probe  # noqa: E402
-from sim2lang.runtime import platform as host_platform  # noqa: E402
-from sim2lang.runtime.display import DISPLAY_MODES, choose_display  # noqa: E402
-from sim2lang.runtime.docker_runner import (  # noqa: E402
+from lang2sim.runtime import doctor, hardware_probe  # noqa: E402
+from lang2sim.runtime import platform as host_platform  # noqa: E402
+from lang2sim.runtime.display import DISPLAY_MODES, choose_display  # noqa: E402
+from lang2sim.runtime.docker_runner import (  # noqa: E402
     DockerRunner,
     default_run_options,
     host_to_container_path,
 )
 
-cfg = importlib.import_module("sim2lang.core.config")
+cfg = importlib.import_module("lang2sim.core.config")
 NAME = "lang2sim-demo"
 
 

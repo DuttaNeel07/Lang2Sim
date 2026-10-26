@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from sim2lang.core.models import (
+from lang2sim.core.models import (
     EnvironmentSpec,
     MissionSpec,
     Pose2D,
@@ -16,7 +16,7 @@ from sim2lang.core.models import (
     SimSpec,
     Vector3D,
 )
-from sim2lang.runtime.run_folder import (
+from lang2sim.runtime.run_folder import (
     RunFolderError,
     load_manifest,
     to_start_request,

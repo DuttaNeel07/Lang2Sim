@@ -18,11 +18,11 @@ httpx = pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from sim2lang.core.models import Pose2D, SimStartRequest  # noqa: E402
-from sim2lang.runtime.control_api.client import ControlAPIError, ControlClient  # noqa: E402
-from sim2lang.runtime.control_api.server import SimProcess, create_app  # noqa: E402
-from sim2lang.runtime.nav2_dispatcher import NavDispatcher  # noqa: E402
-from sim2lang.runtime.ros_bridge import NAV2_NODES, RosSnapshot  # noqa: E402
+from lang2sim.core.models import Pose2D, SimStartRequest  # noqa: E402
+from lang2sim.runtime.control_api.client import ControlAPIError, ControlClient  # noqa: E402
+from lang2sim.runtime.control_api.server import SimProcess, create_app  # noqa: E402
+from lang2sim.runtime.nav2_dispatcher import NavDispatcher  # noqa: E402
+from lang2sim.runtime.ros_bridge import NAV2_NODES, RosSnapshot  # noqa: E402
 
 WORLD = '<?xml version="1.0"?><sdf version="1.9"><world name="w"></world></sdf>'
 

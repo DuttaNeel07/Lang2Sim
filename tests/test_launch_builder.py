@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from sim2lang.runtime.launch_builder import LAUNCH_FILE, LaunchConfig, render, write
+from lang2sim.runtime.launch_builder import LAUNCH_FILE, LaunchConfig, render, write
 
 
 def cfg(**kw):
