@@ -18,14 +18,14 @@ import sys
 from dataclasses import asdict, dataclass
 from typing import List, Literal, Optional
 
-from sim2lang.runtime import hardware_probe
-from sim2lang.runtime import platform as host_platform
-from sim2lang.runtime.display import DISPLAY_MODES, DisplayPlan, choose_display
-from sim2lang.runtime.docker_runner import CONTAINER_NAME, DockerRunner, image_for
+from lang2sim.runtime import hardware_probe
+from lang2sim.runtime import platform as host_platform
+from lang2sim.runtime.display import DISPLAY_MODES, DisplayPlan, choose_display
+from lang2sim.runtime.docker_runner import CONTAINER_NAME, DockerRunner, image_for
 
-# NB: `from sim2lang.core import config` yields the Config *instance* (core/__init__
+# NB: `from lang2sim.core import config` yields the Config *instance* (core/__init__
 # re-exports it under the module's name), so load the module explicitly.
-cfg = importlib.import_module("sim2lang.core.config")
+cfg = importlib.import_module("lang2sim.core.config")
 
 Status = Literal["ok", "warn", "fail"]
 
@@ -157,7 +157,7 @@ def run_checks(plat: Optional[host_platform.HostPlatform] = None,
 
 
 async def _check_api() -> CheckResult:
-    from sim2lang.runtime.control_api.client import ControlAPIError, ControlClient
+    from lang2sim.runtime.control_api.client import ControlAPIError, ControlClient
 
     try:
         async with ControlClient(timeout=3) as api:

@@ -20,15 +20,15 @@ import time
 
 import pytest
 
-from sim2lang.core.models import Pose2D, SimStartRequest
-from sim2lang.runtime.control_api.client import ControlClient
-from sim2lang.runtime.display import DisplayPlan
-from sim2lang.runtime.docker_runner import (
+from lang2sim.core.models import Pose2D, SimStartRequest
+from lang2sim.runtime.control_api.client import ControlClient
+from lang2sim.runtime.display import DisplayPlan
+from lang2sim.runtime.docker_runner import (
     DockerRunner,
     RunOptions,
     host_to_container_path,
 )
-from sim2lang.runtime.platform import detect_docker
+from lang2sim.runtime.platform import detect_docker
 
 pytestmark = pytest.mark.skipif(os.getenv("L2S_INTEGRATION") != "1",
                                 reason="set L2S_INTEGRATION=1 to run Docker integration tests")

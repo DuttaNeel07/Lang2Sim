@@ -20,11 +20,11 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Callable, Dict, List, Optional, Sequence
 
-from sim2lang.runtime.display import DisplayPlan
+from lang2sim.runtime.display import DisplayPlan
 
-# NB: `from sim2lang.core import config` yields the Config *instance* (core/__init__
+# NB: `from lang2sim.core import config` yields the Config *instance* (core/__init__
 # re-exports it under the module's name), so load the module explicitly.
-cfg = importlib.import_module("sim2lang.core.config")
+cfg = importlib.import_module("lang2sim.core.config")
 
 CONTAINER_NAME = "lang2sim-sim"
 LABEL = "dev.lang2sim.role=sim"

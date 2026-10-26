@@ -18,8 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Literal, Optional, Tuple
 
-from sim2lang.runtime.hardware_probe import LOW_VRAM_MB, HardwareInfo
-from sim2lang.runtime.platform import HostPlatform
+from lang2sim.runtime.hardware_probe import LOW_VRAM_MB, HardwareInfo
+from lang2sim.runtime.platform import HostPlatform
 
 DisplayMode = Literal["x11", "wslg", "vnc", "headless"]
 GpuMode = Literal["nvidia", "dri", "software"]

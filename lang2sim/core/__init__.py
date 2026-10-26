@@ -1,6 +1,6 @@
 """Core data contracts, schemas, and configurations for Sim2Lang."""
 
-from sim2lang.core.models import (
+from lang2sim.core.models import (
     Pose2D,
     Vector3D,
     SkyWeatherSpec,
@@ -21,7 +21,7 @@ from sim2lang.core.models import (
     NavWaypointsRequest,
     NavStatus,
 )
-from sim2lang.core.config import Config, config
+from lang2sim.core.config import Config, config
 
 __all__ = [
     "Pose2D",

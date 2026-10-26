@@ -20,12 +20,12 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from sim2lang.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
-from sim2lang.runtime.control_api import API_PREFIX
+from lang2sim.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
+from lang2sim.runtime.control_api import API_PREFIX
 
-# NB: `from sim2lang.core import config` yields the Config *instance* (core/__init__
+# NB: `from lang2sim.core import config` yields the Config *instance* (core/__init__
 # re-exports it under the module's name), so load the module explicitly.
-cfg = importlib.import_module("sim2lang.core.config")
+cfg = importlib.import_module("lang2sim.core.config")
 
 
 class ControlAPIError(RuntimeError):

@@ -18,9 +18,9 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 httpx = pytest.importorskip("httpx")
 
-from sim2lang.core.models import Pose2D, SimStartRequest  # noqa: E402
-from sim2lang.runtime.control_api.client import ControlAPIError, ControlClient  # noqa: E402
-from sim2lang.runtime.control_api.server import SimProcess, create_app  # noqa: E402
+from lang2sim.core.models import Pose2D, SimStartRequest  # noqa: E402
+from lang2sim.runtime.control_api.client import ControlAPIError, ControlClient  # noqa: E402
+from lang2sim.runtime.control_api.server import SimProcess, create_app  # noqa: E402
 
 
 class FakeSim(SimProcess):
@@ -82,7 +82,7 @@ def test_api_start_missing_world_is_404(tmp_path):
 
 
 def test_client_unavailable_is_typed():
-    from sim2lang.runtime.control_api.client import ControlAPIUnavailable
+    from lang2sim.runtime.control_api.client import ControlAPIUnavailable
 
     async def go():
         async with ControlClient("http://127.0.0.1:9", timeout=1) as api:

@@ -91,7 +91,7 @@ class Config:
     def __init__(self, workspace_root: Optional[Path] = None):
         self.workspace_root = workspace_root or Path(__file__).resolve().parent.parent.parent
         self.catalog_dir = CATALOG_DIR
-        self.templates_dir = self.workspace_root / "sim2lang" / "compiler" / "templates"
+        self.templates_dir = self.workspace_root / "lang2sim" / "compiler" / "templates"
         self.base_projects_dir = PROJECTS_DIR
 
         self.sim_image_tag = DEFAULT_SIM_IMAGE

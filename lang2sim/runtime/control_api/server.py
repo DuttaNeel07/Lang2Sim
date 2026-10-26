@@ -32,9 +32,9 @@ from typing import Deque, Dict, List, Optional
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
 
-import sim2lang
-from sim2lang.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
-from sim2lang.runtime.control_api import API_PREFIX
+import lang2sim
+from lang2sim.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
+from lang2sim.runtime.control_api import API_PREFIX
 
 RUNTIME_ENV_FILE = Path(os.getenv("L2S_RUNTIME_ENV_FILE", "/tmp/l2s_runtime.env"))
 LOG_RING_LINES = 2000
@@ -118,17 +118,29 @@ class SimProcess:
         with self._lock:
             proc = self.proc
             self.stopped = True
-            if proc is None or proc.poll() is not None:
-                return
-            sig = signal.SIGKILL if force else signal.SIGINT
-            try:
-                os.killpg(proc.pid, sig)
-                proc.wait(timeout=grace_s)
-            except subprocess.TimeoutExpired:
-                os.killpg(proc.pid, signal.SIGKILL)
-                proc.wait(timeout=5)
-            except ProcessLookupError:
-                pass
+            if hasattr(os, "killpg"):
+                sig_kill = getattr(signal, "SIGKILL", signal.SIGTERM)
+                sig = sig_kill if force else signal.SIGINT
+                try:
+                    os.killpg(proc.pid, sig)
+                    proc.wait(timeout=grace_s)
+                except subprocess.TimeoutExpired:
+                    os.killpg(proc.pid, sig_kill)
+                    proc.wait(timeout=5)
+                except ProcessLookupError:
+                    pass
+            else:
+                try:
+                    if force:
+                        proc.kill()
+                    else:
+                        proc.terminate()
+                    proc.wait(timeout=grace_s)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                except ProcessLookupError:
+                    pass
 
     def tail(self, n: int) -> List[str]:
         return list(self.log)[-n:]
@@ -153,20 +165,20 @@ def create_app(sim: Optional[SimProcess] = None) -> FastAPI:
         yield
         sim.stop()  # don't leave gz/ros2 running when uvicorn exits
 
-    app = FastAPI(title="Lang2Sim control API", version=sim2lang.__version__, lifespan=lifespan)
+    app = FastAPI(title="Lang2Sim control API", version=lang2sim.__version__, lifespan=lifespan)
     app.state.sim = sim
     v1 = APIRouter(prefix=API_PREFIX)
 
     @v1.get("/health")
     def health() -> dict:
-        return {"status": "ok", "version": sim2lang.__version__,
+        return {"status": "ok", "version": lang2sim.__version__,
                 "uptime_s": round(time.time() - _STARTED_AT, 1)}
 
     @v1.get("/info")
     def info() -> dict:
         env = read_runtime_env()
         return {
-            "version": sim2lang.__version__,
+            "version": lang2sim.__version__,
             "display_mode": env.get("L2S_EFFECTIVE_DISPLAY_MODE"),
             "gpu": env.get("L2S_EFFECTIVE_GPU"),
             "display": env.get("DISPLAY") or None,

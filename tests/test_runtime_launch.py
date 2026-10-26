@@ -13,23 +13,23 @@ from pathlib import Path
 
 import pytest
 
-from sim2lang.runtime import doctor
-from sim2lang.runtime.display import DisplayPlan, choose_display
-from sim2lang.runtime.docker_runner import (
+from lang2sim.runtime import doctor
+from lang2sim.runtime.display import DisplayPlan, choose_display
+from lang2sim.runtime.docker_runner import (
     DockerRunner,
     RunOptions,
     build_run_args,
     host_to_container_path,
     image_for,
 )
-from sim2lang.runtime.hardware_probe import (
+from lang2sim.runtime.hardware_probe import (
     GpuInfo,
     HardwareInfo,
     parse_meminfo,
     parse_nvidia_smi,
     vendor_from_pci_id,
 )
-from sim2lang.runtime.platform import (
+from lang2sim.runtime.platform import (
     DockerInfo,
     HostPlatform,
     classify_os,
