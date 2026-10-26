@@ -25,6 +25,10 @@ Per-OS setup, the run-folder contract, the control API and troubleshooting:
 
 
 ## Benchmark and demo
+- One sentence to a scored run: in the TUI `/sim build a dark warehouse with 3 racks and 2 crates`
+  (or `bash pitch_demo.sh "..."` / `python scripts/prompt_to_sim.py "..."`)
+- While it runs, just say it: "drop a crate in front of the robot", "put a rack across the aisle",
+  "dim the lights to 10%", "detour and reach rack 2", "stop the robot"; `/stop` ends the sim
 - Live dashboard: `http://localhost:9090/dashboard` while a sim runs
 - In the TUI: `/mission`, `/stress`, `/benchmark`, `/report`, `/dashboard`, `/replay demo`, `/help`
 - Score a run folder (also recovers runs cut short by a crash): `python -m lang2sim.telemetry.benchmark <run_dir>`
