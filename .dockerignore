@@ -5,9 +5,9 @@
 
 !docker/sim/
 
-# Step 2+: uncomment once the package exists and the Dockerfile COPYs it.
-# !pyproject.toml
-# !sim2lang/
+# The control API (and later launch/nav/self-healing code) ships in the image.
+!pyproject.toml
+!sim2lang/
 
 **/__pycache__
 **/*.pyc

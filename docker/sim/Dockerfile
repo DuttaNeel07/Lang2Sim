@@ -128,10 +128,12 @@ ENV L2S_USER=${USERNAME} \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=all
 
-# TODO(step 2): COPY pyproject.toml + sim2lang/ into ${L2S_SRC} (and un-ignore
-# them in .dockerignore) so the GHCR image ships the control API. Until then,
-# dev runs bind-mount the repo at ${L2S_SRC} and the entrypoint idles if the
-# API module isn't importable.
+# The sim2lang package (control API now; launch/nav/self-healing later). It is
+# imported via PYTHONPATH, not pip-installed, so the host's heavy deps (textual,
+# openai, shapely...) stay out of the image. Dev runs bind-mount the repo over
+# this path (docker_runner src_dir) to skip rebuilds.
+COPY --chown=root:root pyproject.toml ${L2S_SRC}/pyproject.toml
+COPY --chown=root:root sim2lang ${L2S_SRC}/sim2lang
 
 EXPOSE 9090 8765
 WORKDIR /lang2sim

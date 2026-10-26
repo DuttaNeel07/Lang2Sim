@@ -263,7 +263,7 @@ case "$cmd" in
   shell|bash)
     # Interactive debugging: no sidecars unless asked for via env.
     setup_display; setup_gpu; write_runtime_env
-    exec bash -l
+    exec bash -l "$@"   # `bash -c "..."` still works
     ;;
 esac
 
