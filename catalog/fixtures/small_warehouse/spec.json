@@ -1,0 +1,149 @@
+{
+  "spec_version": "2.0.0",
+  "environment": {
+    "environment_type": "indoor_warehouse",
+    "room_dimensions": {
+      "x": 12.0,
+      "y": 10.0,
+      "z": 3.0
+    },
+    "wall_height": 2.5,
+    "ambient_light_luminance": 1.0,
+    "ground_terrain": "concrete",
+    "surface_friction": 0.8,
+    "sky_weather": {
+      "sky_enabled": true,
+      "clouds_speed": 10.0,
+      "fog_enabled": false,
+      "fog_density": 0.0,
+      "sun_elevation": 0.8
+    }
+  },
+  "objects": [
+    {
+      "id": "rack_1",
+      "model_name": "aws_warehouse_rack",
+      "dimensions": {
+        "x": 3.0,
+        "y": 0.8,
+        "z": 2.0
+      },
+      "pose": {
+        "x": -2.5,
+        "y": 2.5,
+        "yaw": 0.0
+      },
+      "is_static": true,
+      "semantic_parent_id": null
+    },
+    {
+      "id": "rack_2",
+      "model_name": "aws_warehouse_rack",
+      "dimensions": {
+        "x": 3.0,
+        "y": 0.8,
+        "z": 2.0
+      },
+      "pose": {
+        "x": 2.5,
+        "y": 2.5,
+        "yaw": 0.0
+      },
+      "is_static": true,
+      "semantic_parent_id": null
+    },
+    {
+      "id": "rack_3",
+      "model_name": "aws_warehouse_rack",
+      "dimensions": {
+        "x": 3.0,
+        "y": 0.8,
+        "z": 2.0
+      },
+      "pose": {
+        "x": -2.5,
+        "y": -0.5,
+        "yaw": 0.0
+      },
+      "is_static": true,
+      "semantic_parent_id": null
+    },
+    {
+      "id": "rack_4",
+      "model_name": "aws_warehouse_rack",
+      "dimensions": {
+        "x": 3.0,
+        "y": 0.8,
+        "z": 2.0
+      },
+      "pose": {
+        "x": 2.5,
+        "y": -0.5,
+        "yaw": 0.0
+      },
+      "is_static": true,
+      "semantic_parent_id": null
+    },
+    {
+      "id": "crate_1",
+      "model_name": "wooden_crate",
+      "dimensions": {
+        "x": 0.8,
+        "y": 0.8,
+        "z": 0.8
+      },
+      "pose": {
+        "x": 4.5,
+        "y": -3.5,
+        "yaw": 0.0
+      },
+      "is_static": true,
+      "semantic_parent_id": null
+    }
+  ],
+  "robot_model": "turtlebot3_waffle",
+  "sensor_noise": {
+    "camera": {
+      "enabled": false,
+      "motion_blur_kernel": 0,
+      "brightness_attenuation": 1.0,
+      "gaussian_noise_stddev": 0.0
+    },
+    "lidar": {
+      "enabled": false,
+      "dropout_probability": 0.0,
+      "range_noise_stddev": 0.0
+    }
+  },
+  "adversarial_triggers": [],
+  "mission": {
+    "initial_pose": {
+      "x": -4.5,
+      "y": -3.5,
+      "yaw": 0.0
+    },
+    "waypoints": [
+      {
+        "x": 0.0,
+        "y": 1.0,
+        "yaw": 0.0
+      },
+      {
+        "x": 4.5,
+        "y": 1.0,
+        "yaw": 0.0
+      },
+      {
+        "x": 0.0,
+        "y": -3.0,
+        "yaw": 0.0
+      }
+    ],
+    "goal_pose": {
+      "x": -4.0,
+      "y": 3.5,
+      "yaw": 1.5708
+    },
+    "timeout_seconds": 300.0
+  }
+}
