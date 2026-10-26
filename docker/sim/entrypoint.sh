@@ -105,7 +105,7 @@ if [[ -f "$L2S_HOME/ws/install/setup.bash" ]]; then
 fi
 set -u
 
-# Make the bind-mounted / copied sim2lang package importable.
+# Make the bind-mounted / copied lang2sim package importable.
 if [[ -d "${L2S_SRC:-}" ]]; then
   export PYTHONPATH="${L2S_SRC}${PYTHONPATH:+:$PYTHONPATH}"
 fi

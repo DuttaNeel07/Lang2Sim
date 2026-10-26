@@ -7,20 +7,22 @@ from textual.widget import Widget
 from textual.widgets import Static
 from textual.containers import Vertical
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class TelemetryData:
-    sim_state: str = "Idle"
+    # Filled from GET /v1/telemetry/live (lang2sim.telemetry.live.sidebar_fields).
+    sim_state: str = "No simulation"
     sim_time: str = "--:--"
     rtf: str = "--"
-    robot_x: float = 0.00
-    robot_y: float = 0.00
-    speed: float = 0.00
-    clearance: float = 0.00
+    robot_x: float = 0.0
+    robot_y: float = 0.0
+    speed: float = 0.0
+    clearance: Optional[float] = None
     bumper_force: float = 0.0
     collision_count: int = 0
-    tokens_used: int = 0
-    context_capacity_pct: int = 0
+    tokens_used: int = 1420
+    context_capacity_pct: int = 1
 
 class TelemetrySidebar(Widget):
     """Right-hand sidebar displaying live simulation, robot kinematics, bumper, and context stats."""
@@ -74,6 +76,8 @@ class TelemetrySidebar(Widget):
         return f"Speed: [#ced6e0]{self.data.speed:.2f}m/s[/]"
 
     def _format_clearance(self) -> str:
+        if self.data.clearance is None:
+            return "Clearance: [#57606f]--[/]"
         color = "#ff4757" if self.data.clearance < 0.25 else "#2ed573"
         return f"Clearance: [{color}]{self.data.clearance:.2f}m[/]"
 

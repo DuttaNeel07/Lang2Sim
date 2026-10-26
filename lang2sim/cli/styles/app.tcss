@@ -448,4 +448,16 @@ SessionsModal {
     width: 100%;
 }
 
+/* Demo command output (lang2sim/cli/demo_commands.py) */
+.demo-line {
+    padding: 0 1;
+    height: auto;
+    color: #e4e4e7;
+}
 
+.demo-table {
+    padding: 0 1;
+    margin-top: 1;
+    margin-bottom: 1;
+    height: auto;
+}

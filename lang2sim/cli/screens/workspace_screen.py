@@ -7,12 +7,13 @@ import asyncio
 import math
 import re
 import subprocess
-from typing import List, Dict, Optional, Tuple
+from typing import Any, List, Dict, Optional, Tuple
 from textual.screen import Screen
 from textual.widgets import Static, Markdown
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.binding import Binding
 from textual import work
+from rich.markup import escape
 from ..widgets.prompt_card import PromptCard
 from ..widgets.telemetry_sidebar import TelemetrySidebar
 from ...agent.nemotron_client import NemotronClient
@@ -23,7 +24,9 @@ SYSTEM_PROMPT = (
     "You are Sim2Lang Copilot, an expert AI robotics simulation assistant. "
     "You help roboticists design, configure, inspect, and reason about Gazebo Harmonic "
     "simulations, SDF scene layouts, Nav2 navigation stacks, and robot sensor telemetry. "
-    "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown."
+    "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown. "
+    "When a system message carries Lang2Sim simulation context, base answers about the robot, the run and the "
+    "NQI score on those measured numbers."
 )
 
 
@@ -89,6 +92,9 @@ class WorkspaceScreen(Screen):
         ]
         self.total_tokens_used: int = self.session.total_tokens
         self.is_streaming: bool = False
+        from ..demo_commands import DemoRunner
+        self.demo = DemoRunner(say=self._demo_say, show=self._demo_show, progress=self._demo_progress)
+        self._progress_line: Optional[Static] = None
 
     def compose(self):
         # Top title bar
@@ -101,7 +107,7 @@ class WorkspaceScreen(Screen):
                 with VerticalScroll(id="chat-scroll"):
                     yield Static("", id="scroll-anchor")
                 yield PromptCard(
-                    placeholder='lang2sim > Type follow-up (e.g. "drop light to 20%, spawn crate")',
+                    placeholder='lang2sim > Ask, or /mission · /stress · /benchmark · /report · /help',
                     card_id="sticky-prompt-input",
                     id="sticky-input-card",
                 )
@@ -120,8 +126,11 @@ class WorkspaceScreen(Screen):
                 classes="footer-right",
             )
 
+    TELEMETRY_POLL_S = 1.0
+
     def on_mount(self) -> None:
         """Mount existing session messages, focus input, and process initial prompt."""
+        self.set_interval(self.TELEMETRY_POLL_S, self.poll_telemetry)
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
 
         # Restore past messages if loading an existing session
@@ -210,6 +219,20 @@ class WorkspaceScreen(Screen):
         """Mount user message and route to dynamic sim actions or LLM worker."""
         cleaned_prompt = prompt.strip()
         if not cleaned_prompt:
+            return
+
+        # Demo commands (/mission, /stress, /benchmark, ...) and plain-language stress requests act on
+        # the running simulation directly; they never wait for (or depend on) the LLM.
+        from ..demo_commands import parse_command, parse_stress_intent
+        command = parse_command(cleaned_prompt) or parse_stress_intent(cleaned_prompt)
+        if command is not None:
+            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+            chat_scroll.mount(Static(f"[bold #ffffff]{escape(cleaned_prompt)}[/]", classes="user-prompt-card"))
+            chat_scroll.scroll_end(animate=False)
+            self.session.messages.append(ChatMessage(role="user", content=cleaned_prompt,
+                                                     tokens=max(1, len(cleaned_prompt) // 4)))
+            session_manager.save_session(self.session)
+            self.run_demo_command(command)
             return
 
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
@@ -652,6 +675,54 @@ class WorkspaceScreen(Screen):
         if getattr(self, "sim_session", None) is not None:
             await self.sim_session.stop()
 
+    # --- demo commands ------------------------------------------------------------
+    @work(exclusive=False, group="demo")
+    async def run_demo_command(self, command) -> None:
+        await self.demo.run(command)
+        self.poll_telemetry()
+
+    def _demo_say(self, markup: str) -> None:
+        self._mount_chat(Static(markup, classes="demo-line"))
+
+    def _demo_show(self, renderable) -> None:
+        self._mount_chat(Static(renderable, classes="demo-table"))
+
+    def _demo_progress(self, markup: Optional[str]) -> None:
+        """One status line updated in place (None: leave it and start a new one next time)."""
+        if markup is None:
+            self._progress_line = None
+            return
+        if self._progress_line is None or not self._progress_line.is_attached:
+            self._progress_line = Static(markup, classes="demo-line demo-progress")
+            self._mount_chat(self._progress_line)
+        else:
+            self._progress_line.update(markup)
+
+    def _mount_chat(self, widget) -> None:
+        try:
+            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+        except Exception:  # noqa: BLE001 - screen gone
+            return
+        chat_scroll.mount(widget)
+        chat_scroll.scroll_end(animate=False)
+
+    @work(thread=True, exclusive=True, group="telemetry")
+    def poll_telemetry(self) -> None:
+        """Fetch live telemetry off the UI thread (GET /v1/telemetry/live) and refresh the sidebar."""
+        from ...telemetry.live import fetch_live, sidebar_fields
+
+        fields = sidebar_fields(fetch_live(timeout=0.5))
+        try:
+            self.app.call_from_thread(self._apply_telemetry, fields)
+        except Exception:  # noqa: BLE001 - app shutting down
+            pass
+
+    def _apply_telemetry(self, fields: Dict[str, Any]) -> None:
+        try:
+            self.query_one(TelemetrySidebar).update_telemetry(**fields)
+        except Exception:  # noqa: BLE001 - screen not mounted any more
+            pass
+
     @work(exclusive=True)
     async def stream_response(self, response_widget: Markdown, prompt: str) -> None:
         """Stream conversational response directly from LLM with low latency."""
@@ -674,7 +745,15 @@ class WorkspaceScreen(Screen):
 
         chunks: List[str] = []
         try:
-            async for chunk in self.client.stream_chat(self.conversation_history):
+            # Ground the answer in the running simulation (live telemetry + latest NQI report).
+            import asyncio
+            from ...agent.grounding import fetch_context, with_context
+
+            try:
+                context = await asyncio.wait_for(asyncio.to_thread(fetch_context), timeout=3.0)
+            except Exception:  # noqa: BLE001 - no sim context is fine
+                context = None
+            async for chunk in self.client.stream_chat(with_context(self.conversation_history, context)):
                 chunks.append(chunk)
                 await response_widget.update("".join(chunks))
                 chat_scroll.scroll_end(animate=False)
