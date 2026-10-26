@@ -175,3 +175,90 @@ def describe(spec: SimSpec) -> str:
     return (f"{env.environment_type.replace('_', ' ')} {env.room_dimensions.x:g} x {env.room_dimensions.y:g} m, "
             f"{objs}{', ' + ', '.join(extras) if extras else ''}; mission: start ({m.initial_pose.x:g}, "
             f"{m.initial_pose.y:g}) -> {len(m.waypoints)} waypoints -> goal ({m.goal_pose.x:g}, {m.goal_pose.y:g})")
+
+
+# --- launch, drive and score (Part 3 runtime + Part 4 NQI) ---------------------------
+
+def make_session(display: Optional[str] = None, software: bool = False, camera: bool = True):
+    """SimSession for this machine (doctor-style detection, image from $L2S_IMAGE)."""
+    import os
+
+    from lang2sim.runtime import hardware_probe
+    from lang2sim.runtime import platform as host_platform
+    from lang2sim.runtime.display import choose_display
+    from lang2sim.runtime.session import SimSession
+
+    plat, hw = host_platform.detect(), hardware_probe.probe()
+    plan = choose_display(plat, hw, prefer=display, force_software=software)
+    session = SimSession(plan, image=os.environ.get("L2S_IMAGE") or None, host_env=plat.env,
+                         has_dxg=hw.has_dxg, extra_env={} if camera else {"L2S_CAMERA": "0"})
+    return session, plan
+
+
+def score_run(run: Path, samples: List[Tuple[float, float, float]], goal: Tuple[float, float]) -> Optional[dict]:
+    """Part 4 NQI over the recorded (sim_time, x, y) path; report saved to logs/nqi_report.json."""
+    try:
+        import numpy as np
+
+        from lang2sim.telemetry.nqi_scorer import OccupancyGrid, score_trajectory
+        from lang2sim.telemetry.trajectory import Trajectory
+
+        pts, last_t = [], None
+        for t, x, y in samples:
+            if last_t is None or t > last_t:
+                pts.append((t, x, y))
+                last_t = t
+        if len(pts) < 3:
+            return None
+        t, x, y = (np.array(c, dtype=float) for c in zip(*pts))
+        traj = Trajectory(t=t, x=x, y=y, goal=goal, label=run.name)
+        report = score_trajectory(traj, goal=goal, occupancy=OccupancyGrid.from_yaml(run / "map.yaml"))
+        (run / "logs").mkdir(exist_ok=True)
+        (run / "logs" / "nqi_report.json").write_text(json.dumps(report, indent=2))
+        return report
+    except Exception as e:  # noqa: BLE001 - scoring must never break the demo
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+async def launch_and_drive(session, run: Path, *, gui: bool = True, rviz: bool = True,
+                           on_event=None, on_telemetry=None, poll_s: float = 1.0):
+    """Start the run in the (started) session, wait for ready, drive the mission, score it.
+
+    on_event(str) gets human-readable progress; on_telemetry(SimStatus) gets live telemetry.
+    Returns (final NavStatus, NQI report dict or None).
+    """
+    import asyncio
+
+    say = on_event or (lambda s: None)
+    spec = SimSpec.model_validate_json((run / "spec.json").read_text())
+
+    def progress(st, elapsed):
+        todo = [k for k, v in st.readiness.items() if not v]
+        say(f"{elapsed:4.0f}s {st.status}" + (f" (waiting: {', '.join(todo)})" if todo else ""))
+
+    st = await session.open_run(run, gui=gui, rviz=rviz, on_progress=progress, poll_s=2.0)
+    say(f"READY: sim time {st.sim_time:.1f}s, RTF {st.rtf:.2f}")
+    poses = [*spec.mission.waypoints, spec.mission.goal_pose]
+    await session.api.nav_waypoints(poses, timeout_seconds=spec.mission.timeout_seconds)
+    say(f"mission sent: {len(poses)} poses")
+    samples: List[Tuple[float, float, float]] = []
+    last = None
+    while True:
+        nav = await session.api.nav_status()
+        try:
+            tel = await session.api.telemetry()
+            samples.append((tel.sim_time, tel.robot_pose.x, tel.robot_pose.y))
+            if on_telemetry:
+                on_telemetry(tel)
+        except Exception:  # noqa: BLE001
+            pass
+        key = (nav.status, nav.waypoint_index, round(nav.distance_remaining))
+        if key != last:
+            say(f"{nav.status} waypoint {nav.waypoint_index + 1}/{nav.waypoints_total}, "
+                f"{nav.distance_remaining:.1f} m to go")
+            last = key
+        if not nav.is_active:
+            break
+        await asyncio.sleep(poll_s)
+    report = score_run(run, samples, (spec.mission.goal_pose.x, spec.mission.goal_pose.y))
+    return nav, report

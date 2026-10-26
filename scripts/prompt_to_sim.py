@@ -12,14 +12,19 @@ Extra flags go to scripts/run_sim.py (--software, --no-camera, --no-rviz, ...).
 """
 
 import asyncio
-import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from lang2sim.pipeline import build_run, describe, prompt_to_spec  # noqa: E402
+from lang2sim.pipeline import (  # noqa: E402
+    build_run,
+    describe,
+    launch_and_drive,
+    make_session,
+    prompt_to_spec,
+)
 
 
 def main() -> int:
@@ -38,8 +43,34 @@ def main() -> int:
     print("[3/4] Part 1 world builder:")
     for s in steps:
         print(f"      {s}")
-    print("[4/4] Part 3 runtime: container -> pre-flight -> Gazebo + TurtleBot3 + Nav2 -> mission")
-    return subprocess.call([sys.executable, str(REPO / "scripts" / "run_sim.py"), str(run), "--mission", *rest])
+    display = rest[rest.index("--display") + 1] if "--display" in rest else None
+    session, plan = make_session(display=display, software="--software" in rest,
+                                 camera="--no-camera" not in rest)
+    print(f"[4/4] Part 3 runtime ({plan.describe()}): starting {session.opts.image}")
+    return asyncio.run(_drive(session, run, gui="--no-gui" not in rest, rviz="--no-rviz" not in rest))
+
+
+async def _drive(session, run, gui, rviz) -> int:
+    try:
+        await session.start()
+        print(f"      {session.view_hint}")
+        nav, report = await launch_and_drive(session, run, gui=gui, rviz=rviz,
+                                             on_event=lambda s: print(f"      {s}", flush=True))
+        print(f"\nMISSION {nav.status.upper()}" + (f": {nav.message}" if nav.message else ""))
+        if report and "nqi" in report:
+            print(f"Part 4 score: NQI {report['nqi']:.1f}/100  path {report['path_length_m']:.1f} m "
+                  f"(optimal {report['optimal_length_m']:.1f} m, efficiency {report['E_p']:.2f}), "
+                  f"min clearance {report['C_min_m']} m, smoothness {report['S_tau']:.2f}")
+            print(f"Report: {run / 'logs' / 'nqi_report.json'}")
+        elif report:
+            print(f"(scoring skipped: {report.get('error')})")
+        print("Simulation still running - Ctrl-C to stop.")
+        while True:
+            await asyncio.sleep(5)
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        await session.stop()
 
 
 if __name__ == "__main__":
