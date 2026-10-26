@@ -11,8 +11,13 @@ dict of nqi_scorer.score_trajectory, using what the run folder knows:
     patrol is not penalised against a straight start->goal line;
   * static obstacles from the run's map.yaml/map.pgm (zero-SLAM map);
   * dynamic obstacles = entities spawned during the recording (they are not in
-    map.pgm), each a circle of its footprint radius;
-  * C_force from the chassis bumper events counted in the container.
+    map.pgm), scored against their real box outline;
+  * C_force from the chassis bumper events counted in the container;
+  * C_min from the TurtleBot3 Waffle's chassis rectangle (architecture §7.3,
+    "robot chassis boundary"), not a circumscribed circle;
+  * mission success within the goal tolerance Nav2 itself used in this run
+    (its goal checker, from nav2_params.l2s.yaml), so the report never calls a
+    run "failed" that Nav2 completed, unless a tolerance is set explicitly.
 
 and writes benchmark_report.json into the run folder (architecture §4.2).
 """
@@ -34,8 +39,68 @@ from lang2sim.telemetry.nqi_scorer import (
 from lang2sim.telemetry.trajectory import Trajectory
 
 REPORT_NAME = "benchmark_report.json"
+NAV2_PARAMS_NAME = "nav2_params.l2s.yaml"
+
+# TurtleBot3 Waffle chassis in base_footprint, metres (turtlebot3_waffle/model.sdf):
+# base_collision box 0.265 x 0.265 centred at x = -0.064, wheels at y = ±0.144 with
+# 0.018 m width -> x in [-0.197, 0.069], y in [-0.153, 0.153].
+WAFFLE_FOOTPRINT = (-0.197, 0.069, -0.153, 0.153)
 
 XY = Tuple[float, float]
+
+
+def nav2_goal_tolerance(nav2_params: Path) -> Optional[float]:
+    """xy_goal_tolerance of the controller's goal checker in a Nav2 params file, or None."""
+    try:
+        text = Path(nav2_params).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        import yaml  # optional on the host
+
+        data = yaml.safe_load(text) or {}
+        ctrl = (data.get("controller_server") or {}).get("ros__parameters") or {}
+        names = ctrl.get("goal_checker_plugins") or ["goal_checker", "general_goal_checker"]
+        for name in names:
+            tol = (ctrl.get(name) or {}).get("xy_goal_tolerance")
+            if tol is not None:
+                return float(tol)
+        return None
+    except ImportError:
+        pass
+    # No PyYAML: first xy_goal_tolerance nested under a *goal_checker key.
+    owner_indent, in_checker = None, False
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        key = line.strip().split(":", 1)[0]
+        if in_checker and indent <= owner_indent:
+            in_checker = False
+        if not in_checker and key.endswith("goal_checker") and line.strip().endswith(":"):
+            in_checker, owner_indent = True, indent
+        elif in_checker and key == "xy_goal_tolerance":
+            try:
+                return float(line.split(":", 1)[1])
+            except ValueError:
+                return None
+    return None
+
+
+def scoring_params(run_dir: Optional[Path], goal_tolerance: Optional[float] = None,
+                   base: NQIParams = NQIParams()) -> Tuple[NQIParams, Dict[str, Any]]:
+    """NQI params for a recorded TurtleBot3 Waffle run, and where each choice came from."""
+    from dataclasses import replace
+
+    if goal_tolerance is not None:
+        eps, source = float(goal_tolerance), "explicit"
+    else:
+        nav2 = nav2_goal_tolerance(Path(run_dir) / NAV2_PARAMS_NAME) if run_dir is not None else None
+        eps, source = (nav2, "nav2_goal_checker") if nav2 is not None else (base.eps_pos, "default")
+    params = replace(base, eps_pos=eps, footprint=WAFFLE_FOOTPRINT)
+    return params, {"goal_tolerance_m": eps, "goal_tolerance_source": source,
+                    "robot_footprint": "turtlebot3_waffle chassis rectangle", "footprint_m": list(WAFFLE_FOOTPRINT)}
 
 
 def mission_targets(spec: Any) -> List[XY]:
@@ -107,8 +172,12 @@ def dynamic_obstacles(trajectory: Mapping[str, Any],
 
 def score_recorded_run(trajectory: Mapping[str, Any], *, run_dir: Optional[Path] = None, spec: Any = None,
                        spawned: Optional[Sequence[Mapping[str, Any]]] = None,
-                       nav_status: Optional[str] = None, params: NQIParams = NQIParams()) -> Dict[str, Any]:
-    """Score one recorded run. `trajectory` is Trajectory.to_dict() format (TelemetryRecordResult.trajectory)."""
+                       nav_status: Optional[str] = None, params: Optional[NQIParams] = None) -> Dict[str, Any]:
+    """Score one recorded run. `trajectory` is Trajectory.to_dict() format (TelemetryRecordResult.trajectory).
+
+    `params` None -> scoring_params(run_dir): Waffle chassis footprint + Nav2's goal tolerance."""
+    if params is None:
+        params, _ = scoring_params(run_dir)
     traj = Trajectory.from_dict(trajectory)
     occupancy = load_occupancy(run_dir) if run_dir is not None else None
     goal: Optional[XY] = traj.goal
@@ -145,9 +214,18 @@ def score_recorded_run(trajectory: Mapping[str, Any], *, run_dir: Optional[Path]
 
 
 def write_benchmark(run_dir: Path, nominal: Mapping[str, Any], adversarial: Optional[Mapping[str, Any]] = None,
-                    params: NQIParams = NQIParams(), extra: Optional[Mapping[str, Any]] = None) -> Tuple[Path, Dict[str, Any]]:
-    """Build the report from scored runs and write <run_dir>/benchmark_report.json."""
+                    params: Optional[NQIParams] = None, extra: Optional[Mapping[str, Any]] = None,
+                    scoring: Optional[Mapping[str, Any]] = None) -> Tuple[Path, Dict[str, Any]]:
+    """Build the report from scored runs and write <run_dir>/benchmark_report.json.
+
+    `scoring` says where the params came from (scoring_params' second value)."""
+    if params is None:
+        params, scoring = scoring_params(run_dir)
+    elif scoring is None:
+        scoring = {"goal_tolerance_m": params.eps_pos, "goal_tolerance_source": "explicit",
+                   "footprint_m": list(params.footprint) if params.footprint else None}
     report = build_report(nominal, adversarial, params)
+    report["scoring"] = scoring
     if extra:
         report.update(extra)
     path = write_report(report, Path(run_dir) / REPORT_NAME)

@@ -160,7 +160,6 @@ class SimSession:
         """Drive spec.json's mission with telemetry recording, fire adversarial triggers on the way,
         and score the run (NQI). Recording always stops, even if the mission errors."""
         from lang2sim.telemetry.benchmark import score_recorded_run
-        from lang2sim.telemetry.nqi_scorer import NQIParams
 
         run_dir = Path(run_dir or self.run_dir or ".")
         spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text())
@@ -202,7 +201,7 @@ class SimSession:
         finally:
             result = await self.api.record_stop()
         scored = score_recorded_run(result.trajectory, run_dir=run_dir, spec=spec, spawned=result.spawned_entities,
-                                    nav_status=st.status, params=params or NQIParams())
+                                    nav_status=st.status, params=params)
         return RecordedRun(nav=st, result=result, scored=scored, triggers_fired=fired_log)
 
     async def return_to_start(self, run_dir: Optional[Path] = None, *, timeout_s: float = 180.0) -> NavStatus:
@@ -215,18 +214,17 @@ class SimSession:
     async def run_benchmark(self, run_dir: Optional[Path] = None, *, light: Optional[float] = None,
                             on_progress: Optional[NavProgressFn] = None, on_trigger: Optional[TriggerFn] = None,
                             on_phase: Optional[Callable[[str], None]] = None, params: Any = None,
-                            poll_s: float = 0.5) -> Dict[str, Any]:
+                            poll_s: float = 0.5, goal_tolerance: Optional[float] = None) -> Dict[str, Any]:
         """Nominal run, back to start, adversarial run; writes <run>/benchmark_report.json.
 
         The adversarial run uses spec.json's adversarial_triggers, or (none given) the
         Archetype 4 default: a wooden crate dropped onto the nominal path ahead of the
         robot. `light` dims the sun (0..1) for the adversarial run and restores it after.
         """
-        from lang2sim.telemetry.benchmark import default_stress_trigger, mission_targets, write_benchmark
-        from lang2sim.telemetry.nqi_scorer import NQIParams
+        from lang2sim.telemetry.benchmark import default_stress_trigger, mission_targets, scoring_params, write_benchmark
 
-        params = params or NQIParams()
         run_dir = Path(run_dir or self.run_dir or ".")
+        params, scoring = (params, None) if params is not None else scoring_params(run_dir, goal_tolerance)
         spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text())
         phase = on_phase or (lambda _m: None)
 
@@ -250,7 +248,7 @@ class SimSession:
                     await self.api.world_light({"intensity": 1.0})
                 except Exception:  # noqa: BLE001
                     pass
-        path, report = write_benchmark(run_dir, nominal.scored, adversarial.scored, params, extra={
+        path, report = write_benchmark(run_dir, nominal.scored, adversarial.scored, params, scoring=scoring, extra={
             "run_dir": str(run_dir),
             "stress": {"triggers": adversarial.triggers_fired, "light": light,
                        "source": "spec.adversarial_triggers" if spec.adversarial_triggers else "default_crate"},
@@ -261,13 +259,15 @@ class SimSession:
 
     async def score_single_run(self, run_dir: Optional[Path] = None, **kw: Any) -> Dict[str, Any]:
         """Drive the mission once with recording and write a nominal-only benchmark_report.json."""
-        from lang2sim.telemetry.benchmark import write_benchmark
-        from lang2sim.telemetry.nqi_scorer import NQIParams
+        from lang2sim.telemetry.benchmark import scoring_params, write_benchmark
 
-        params = kw.pop("params", None) or NQIParams()
         run_dir = Path(run_dir or self.run_dir or ".")
+        params, scoring = kw.pop("params", None), None
+        if params is None:
+            params, scoring = scoring_params(run_dir, kw.pop("goal_tolerance", None))
+        kw.pop("goal_tolerance", None)
         run = await self.run_recorded_mission(run_dir, label="nominal", params=params, **kw)
-        path, report = write_benchmark(run_dir, run.scored, None, params, extra={
+        path, report = write_benchmark(run_dir, run.scored, None, params, scoring=scoring, extra={
             "run_dir": str(run_dir), "trajectories": {"nominal": run.result.path}})
         report["path"] = str(path)
         report["nav"] = run.nav.model_dump(mode="json")

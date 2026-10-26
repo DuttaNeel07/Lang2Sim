@@ -54,8 +54,9 @@ def parse(argv=None):
     ap.add_argument("--benchmark", action="store_true",
                     help="nominal + adversarial runs of the mission, scored into benchmark_report.json")
     ap.add_argument("--light", type=float, help="with --benchmark: sun intensity 0..1 during the stress run")
-    ap.add_argument("--goal-tolerance", type=float, default=0.15,
-                    help="NQI mission success radius in m (architecture: 0.15; Nav2 TB3 goal checker: 0.25)")
+    ap.add_argument("--goal-tolerance", type=float,
+                    help="NQI mission success radius in m (default: Nav2's goal checker tolerance for this run, "
+                         "0.25 for TB3; the architecture's Archetype 1 criterion is 0.15)")
     ap.add_argument("--no-score", action="store_true", help="with --mission: drive only, no telemetry/NQI")
     ap.add_argument("--timeout", type=float, default=300, help="seconds to wait for readiness")
     ap.add_argument("--exit-when-ready", action="store_true", help="stop as soon as the sim is ready (tests)")
@@ -72,11 +73,6 @@ def progress(st, elapsed):
 def nav_progress(st):
     print(f"  {st.status:<10} waypoint {st.waypoint_index + 1}/{st.waypoints_total}  "
           f"{st.distance_remaining:5.1f} m to go" + (f"  ({st.message})" if st.message else ""), flush=True)
-
-
-def _params(a):
-    from lang2sim.telemetry.nqi_scorer import NQIParams
-    return NQIParams(eps_pos=a.goal_tolerance)
 
 
 def _print_report(report) -> None:
@@ -102,7 +98,7 @@ async def scored_mission(session, run_dir, a):
             if not setup.get("enabled"):
                 print(f"[run_sim] telemetry: stock robot ({setup.get('reason')}); scoring from AMCL poses, "
                       "no collision sensing")
-            report = await session.score_single_run(run_dir, on_progress=nav_progress, params=_params(a))
+            report = await session.score_single_run(run_dir, on_progress=nav_progress, goal_tolerance=a.goal_tolerance)
             _print_report(report)
             from lang2sim.core.models import NavStatus
             return NavStatus.model_validate(report["nav"])
@@ -118,7 +114,7 @@ async def benchmark(session, run_dir, a):
 
     report = await session.run_benchmark(run_dir, light=a.light, on_progress=nav_progress, on_trigger=on_trigger,
                                          on_phase=lambda m: print(f"[run_sim] benchmark: {m}", flush=True),
-                                         params=_params(a))
+                                         goal_tolerance=a.goal_tolerance)
     _print_report(report)
     return report
 

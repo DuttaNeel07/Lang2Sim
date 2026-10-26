@@ -249,3 +249,87 @@ def test_box_footprint_clearance_is_measured_to_the_box_edge():
     assert exact == pytest.approx(0.2, abs=0.026)
     assert circle == pytest.approx(0.0757, abs=0.01)
     assert footprint_points({"x": 1.0, "y": 2.0, "r": 0.3}) == [(1.0, 2.0, 0.3)]
+
+
+# --- trustworthy scores: chassis footprint + Nav2 goal tolerance -------------------------------
+NAV2_YAML = """controller_server:
+  ros__parameters:
+    goal_checker_plugins:
+    - goal_checker
+    goal_checker:
+      plugin: nav2_controller::SimpleGoalChecker
+      xy_goal_tolerance: 0.25
+    FollowPath:
+      xy_goal_tolerance: 0.05
+"""
+
+
+def test_footprint_clearance_depends_on_heading():
+    from lang2sim.telemetry.nqi_scorer import footprint_clearance
+    from lang2sim.telemetry.trajectory import Trajectory
+
+    fp = (-0.197, 0.069, -0.153, 0.153)
+    crate = [(0.0, 0.5, 0.0)]                      # a point obstacle 0.5 m to the robot's left
+    side = Trajectory.from_samples([{"t": 0.0, "x": 0.0, "y": 0.0, "yaw": 0.0},
+                                    {"t": 1.0, "x": 0.0, "y": 0.0, "yaw": 0.0}])
+    facing = Trajectory.from_samples([{"t": 0.0, "x": 0.0, "y": 0.0, "yaw": math.pi / 2},
+                                      {"t": 1.0, "x": 0.0, "y": 0.0, "yaw": math.pi / 2}])
+    assert footprint_clearance(side, fp, crate) == pytest.approx(0.5 - 0.153)
+    assert footprint_clearance(facing, fp, crate) == pytest.approx(0.5 - 0.069)
+    assert footprint_clearance(side, fp, []) is None
+
+
+def test_nav2_goal_tolerance_with_and_without_pyyaml(tmp_path, monkeypatch):
+    import builtins
+    from lang2sim.telemetry.benchmark import nav2_goal_tolerance
+
+    f = tmp_path / "nav2_params.l2s.yaml"
+    f.write_text(NAV2_YAML)
+    assert nav2_goal_tolerance(f) == 0.25
+    real_import = builtins.__import__
+    monkeypatch.setattr(builtins, "__import__",
+                        lambda name, *a, **k: (_ for _ in ()).throw(ImportError()) if name == "yaml"
+                        else real_import(name, *a, **k))
+    assert nav2_goal_tolerance(f) == 0.25          # the controller's checker, not FollowPath's 0.05
+    assert nav2_goal_tolerance(tmp_path / "missing.yaml") is None
+
+
+def test_scoring_params_prefer_explicit_then_nav2_then_default(run_dir):
+    from lang2sim.telemetry.benchmark import WAFFLE_FOOTPRINT, scoring_params
+
+    p, src = scoring_params(run_dir)
+    assert p.eps_pos == 0.15 and src["goal_tolerance_source"] == "default" and p.footprint == WAFFLE_FOOTPRINT
+    (run_dir / "nav2_params.l2s.yaml").write_text(NAV2_YAML)
+    p, src = scoring_params(run_dir)
+    assert p.eps_pos == 0.25 and src["goal_tolerance_source"] == "nav2_goal_checker"
+    p, src = scoring_params(run_dir, 0.1)
+    assert p.eps_pos == 0.1 and src["goal_tolerance_source"] == "explicit"
+
+
+def test_nav2_completed_run_is_not_reported_failed(run_dir):
+    """Ends 0.2 m short: inside Nav2's 0.25 m, outside the architecture's 0.15 m."""
+    spec = spec_of(run_dir)
+    data = recorded(spec)
+    last = data["samples"][-1]
+    data["samples"].append({**last, "t": last["t"] + 0.1, "x": last["x"] + 0.2})
+    (run_dir / "nav2_params.l2s.yaml").write_text(NAV2_YAML)
+    assert score_recorded_run(data, run_dir=run_dir, spec=spec)["S_mission"] == 1
+    from lang2sim.telemetry.benchmark import scoring_params
+    strict, _ = scoring_params(run_dir, 0.15)
+    assert score_recorded_run(data, run_dir=run_dir, spec=spec, params=strict)["S_mission"] == 0
+
+
+def test_table_labels_localization_error_for_recorded_runs(run_dir):
+    from rich.console import Console
+    from lang2sim.telemetry.nqi_scorer import build_report, render_comparison_table
+
+    spec = spec_of(run_dir)
+    data = recorded(spec)
+    for s in data["samples"]:
+        s["slam_x"], s["slam_y"] = s["x"] + 0.05, s["y"]
+    run = score_recorded_run(data, run_dir=run_dir, spec=spec)
+    console = Console(record=True, width=140)
+    console.print(render_comparison_table(build_report(run, None)))
+    text = console.export_text()
+    assert "Localization Error (AMCL vs truth)" in text and "SLAM Drift" not in text
+    assert "Healthy (≤0.35 m)" in text
