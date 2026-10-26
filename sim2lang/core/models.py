@@ -3,6 +3,7 @@ Canonical Simulation Specification Schemas and Control API Data Contracts.
 File: sim2lang/core/models.py
 """
 
+import math
 from typing import List, Optional, Literal, Dict, Any
 from pydantic import BaseModel, Field
 
@@ -15,7 +16,7 @@ class Pose2D(BaseModel):
     """2D ground-plane coordinate pose with yaw orientation."""
     x: float = Field(..., description="X coordinate in meters relative to world origin")
     y: float = Field(..., description="Y coordinate in meters relative to world origin")
-    yaw: float = Field(0.0, ge=-3.14159, le=3.14159, description="Yaw orientation in radians")
+    yaw: float = Field(0.0, ge=-math.pi, le=math.pi, description="Yaw orientation in radians, [-pi, pi]")
 
     @classmethod
     def from_anchor(cls, anchor: Any) -> "Pose2D":
