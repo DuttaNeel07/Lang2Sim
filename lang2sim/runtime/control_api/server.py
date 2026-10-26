@@ -138,6 +138,7 @@ class SimProcess:
         self.world_report: Optional[world_check.WorldReport] = None
         self.launch_file: Optional[Path] = None
         self.telemetry_setup: Dict[str, Any] = {"enabled": False, "collision": None, "reason": "not started"}
+        self.world_name: str = ""
         self.log: Deque[str] = collections.deque(maxlen=LOG_RING_LINES)
         self.lines_total = 0                      # monotonic, unlike the ring's length
         self._log_file: Optional[Path] = None
@@ -157,6 +158,7 @@ class SimProcess:
             raise WorldRejected(report)
         has_display = bool(os.getenv("DISPLAY"))
         world_name = req.world_name or report.world_name or ""
+        self.world_name = world_name
         robot_sdf, bridge_cfg = self.instrument_robot(run_dir, world_name)
         cfg = launch_builder.LaunchConfig(
             run_dir=str(run_dir),
@@ -487,6 +489,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         new_healer(req)
         if state["bridge"]:
             state["bridge"].expect_ground_truth = bool(sim.telemetry_setup.get("enabled"))
+        point_world_bridge(sim.world_name)
         return current_status()
 
     @v1.post("/sim/stop", response_model=SimStatusResponse)
@@ -547,6 +550,19 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         if bridge is None or not hasattr(bridge, "live"):
             return TelemetryLive()
         return TelemetryLive(**bridge.live())
+
+    def point_world_bridge(world_name: str) -> None:
+        """Aim Part 4's /v1/world mutations (spawn, light, reset) at this run's Gazebo world;
+        otherwise they target /world/default and silently do nothing."""
+        try:
+            from lang2sim.perturbation.gazebo_bridge import get_bridge
+            from lang2sim.perturbation.routers.world import clear_spawn_log
+        except ImportError:
+            return
+        if world_name:
+            os.environ["LANG2SIM_WORLD_NAME"] = world_name
+            get_bridge().world_name = world_name
+        clear_spawn_log()
 
     def recording_bridge():
         bridge = state["bridge"]

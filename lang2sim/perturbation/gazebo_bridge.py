@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import math
 import os
 import shutil
 import time
@@ -248,6 +249,16 @@ class DryRunBridge(GazeboBridge):
 
 
 # --------------------------------------------------------------------------- Subprocess execution helper
+# `gz service` only sends a request when it knows the reply type, and exits 0 either way;
+# success is Gazebo's "data: true" reply.
+GZ_REPLY = "--reptype gz.msgs.Boolean --timeout 4000"
+GZ_CMD_TIMEOUT_S = 8.0
+
+
+def _gz_ok(rc: int, out: str) -> bool:
+    return rc == 0 and "data: true" in out
+
+
 async def _run_command(cmd_str: str, timeout_s: float = 3.0) -> tuple[int, str, str]:
     """Execute command asynchronously with timeout. Returns (returncode, stdout, stderr)."""
     try:
@@ -281,19 +292,21 @@ class HarmonicBridge(GazeboBridge):
         sdf_data = get_inline_sdf(model_name, name)
         # Using gz service /world/<name>/create
         req = (
-            f"sdf: '{sdf_data.replace(chr(10), ' ')}', "
+            # Escape the SDF's double quotes: the request goes inside a double-quoted shell argument.
+            f"sdf: '{sdf_data.replace(chr(10), ' ').replace(chr(34), chr(92) + chr(34))}', "
             f"name: '{name}', "
-            f"pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.35}}, orientation: {{z: {pose.yaw}}}}}"
+            f"pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.35}}, "
+            f"orientation: {{z: {math.sin(pose.yaw / 2):.6f}, w: {math.cos(pose.yaw / 2):.6f}}}}}"
         )
-        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/create --reqtype gz.msgs.EntityFactory --req \"{req}\"".strip()
+        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/create --reqtype gz.msgs.EntityFactory {GZ_REPLY} --req \"{req}\"".strip()
 
-        rc, out, err = await _run_command(cmd)
+        rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
         latency = (time.perf_counter() - t0) * 1000.0
-        ok = rc == 0 and "data: true" in out or "success" in out.lower()
-        if ok or rc == 0:
+        ok = _gz_ok(rc, out)
+        if ok:
             self.spawned_entities.append(name)
         return BridgeResult(
-            ok=ok or (rc == 0),
+            ok=ok,
             backend="harmonic",
             tool="spawn_dynamic_entity",
             command=cmd,
@@ -310,13 +323,15 @@ class HarmonicBridge(GazeboBridge):
             return BridgeResult(ok=False, backend="harmonic", tool="set_ambient_lighting", message="Luminance must be in [0, 1]")
         light = light_name or os.environ.get("LANG2SIM_SUN_LIGHT") or "sun"
         req = f"name: '{light}', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}"
-        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/light_config --reqtype gz.msgs.Light --req \"{req}\"".strip()
+        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/light_config --reqtype gz.msgs.Light {GZ_REPLY} --req \"{req}\"".strip()
 
-        rc, out, err = await _run_command(cmd)
+        rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
         latency = (time.perf_counter() - t0) * 1000.0
-        self.current_luminance = luminance
+        ok = _gz_ok(rc, out)
+        if ok:
+            self.current_luminance = luminance
         return BridgeResult(
-            ok=rc == 0,
+            ok=ok,
             backend="harmonic",
             tool="set_ambient_lighting",
             command=cmd,
@@ -330,12 +345,12 @@ class HarmonicBridge(GazeboBridge):
     async def reset(self, mode: str = "world") -> BridgeResult:
         t0 = time.perf_counter()
         req = "reset: {all: true}" if mode == "world" else "reset: {model_only: true}"
-        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/control --reqtype gz.msgs.WorldControl --req \"{req}\"".strip()
+        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/control --reqtype gz.msgs.WorldControl {GZ_REPLY} --req \"{req}\"".strip()
 
-        rc, out, err = await _run_command(cmd)
+        rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
         latency = (time.perf_counter() - t0) * 1000.0
         return BridgeResult(
-            ok=rc == 0,
+            ok=_gz_ok(rc, out),
             backend="harmonic",
             tool="reset_simulation",
             command=cmd,

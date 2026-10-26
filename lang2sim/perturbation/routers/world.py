@@ -18,20 +18,26 @@ from lang2sim.perturbation.gazebo_bridge import GazeboBridge, get_bridge
 
 router = APIRouter(prefix="/world", tags=["world_mutation"])
 
-# Footprint radius (m) of each spawnable model, half the diagonal of its box (sdf_snippets.py).
-# Spawned entities are not in the zero-SLAM map.pgm, so the telemetry engine needs their
-# position and size to compute the minimum obstacle clearance C_min of a stress run.
+# Ground footprint of each spawnable model (sdf_snippets.py): ("box", size_x, size_y) or
+# ("circle", radius). Spawned entities are not in the zero-SLAM map.pgm, so the telemetry
+# engine needs their position, shape and size to compute the minimum obstacle clearance C_min.
+SPAWN_FOOTPRINTS: Dict[str, tuple] = {
+    "wooden_crate": ("box", 0.6, 0.6),
+    "cargo_box": ("box", 1.0, 0.6),
+    "barrel": ("circle", 0.3),
+}
+# Bounding radius of each footprint (kept for consumers that only handle circles).
 SPAWN_FOOTPRINT_RADIUS: Dict[str, float] = {
-    "wooden_crate": math.hypot(0.3, 0.3),
-    "cargo_box": math.hypot(0.5, 0.3),
-    "barrel": 0.3,
+    k: (math.hypot(v[1] / 2, v[2] / 2) if v[0] == "box" else v[1]) for k, v in SPAWN_FOOTPRINTS.items()
 }
 _SPAWN_LOG: List[Dict[str, Any]] = []
 _SPAWN_LOCK = threading.Lock()
 
 
-def record_spawn(name: str, model: str, x: float, y: float) -> Dict[str, Any]:
-    entry = {"name": name, "model": model, "x": float(x), "y": float(y),
+def record_spawn(name: str, model: str, x: float, y: float, yaw: float = 0.0) -> Dict[str, Any]:
+    shape = SPAWN_FOOTPRINTS.get(model, SPAWN_FOOTPRINTS["wooden_crate"])
+    entry = {"name": name, "model": model, "x": float(x), "y": float(y), "yaw": float(yaw),
+             "shape": shape[0], "size": [float(v) for v in shape[1:]],
              "r": round(SPAWN_FOOTPRINT_RADIUS.get(model, SPAWN_FOOTPRINT_RADIUS["wooden_crate"]), 4),
              "wall_time": time.time()}
     with _SPAWN_LOCK:
@@ -92,7 +98,7 @@ async def spawn_entity(req: SpawnRequest) -> dict[str, Any]:
     name = (res.data or {}).get("entity_name") or (bridge.spawned_entities[-1] if bridge.spawned_entities
                                                      else req.model_name)
     out = res.to_dict()
-    out["footprint"] = record_spawn(name, req.model_name, req.x, req.y)
+    out["footprint"] = record_spawn(name, req.model_name, req.x, req.y, req.yaw)
     return out
 
 
