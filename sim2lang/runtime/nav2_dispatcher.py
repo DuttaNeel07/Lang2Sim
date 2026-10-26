@@ -81,6 +81,7 @@ class NavDispatcher:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._nav: Any = None
+        self._last: Optional[_Task] = None
 
     # --- API (any thread) ---------------------------------------------------
     def status(self) -> NavStatus:
@@ -97,6 +98,20 @@ class NavDispatcher:
         if not waypoints:
             raise ValueError("at least one waypoint is required")
         return self._submit(_Task("waypoints", list(waypoints), timeout_s))
+
+    def remaining(self) -> List[Pose2D]:
+        """Poses of the current/last task from the leg in progress onwards (for re-planning)."""
+        with self._lock:
+            task, idx = self._last, self._status.waypoint_index
+        return list(task.poses[idx:]) if task else []
+
+    def resume_with(self, first: Pose2D, timeout_s: Optional[float] = None) -> NavStatus:
+        """Replace the current leg's target with `first`, keep the rest of the mission."""
+        rest = self.remaining()[1:]
+        timeout = timeout_s if timeout_s is not None else (self._last.timeout_s if self._last else 120.0)
+        if rest:
+            return self.follow([first, *rest], timeout)
+        return self.go_to(first, timeout)
 
     def cancel(self) -> NavStatus:
         self._drain()
@@ -151,6 +166,7 @@ class NavDispatcher:
                 self._nav.setInitialPose(self._make_pose(self._nav, task.poses[0]))
                 continue
             self._cancel.clear()
+            self._last = task
             self._run(task)
 
     def _run(self, task: _Task) -> None:

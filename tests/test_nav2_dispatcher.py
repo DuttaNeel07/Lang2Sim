@@ -150,3 +150,18 @@ def test_initial_pose_is_forwarded():
     assert nav.initial_poses == [Pose2D(x=-2, y=-0.5, yaw=0.3)]
     assert d.status().status == "idle"
     d.shutdown()
+
+
+def test_resume_with_keeps_the_rest_of_the_mission():
+    nav = FakeNav(steps=10_000)
+    d = make(nav)
+    wps = [Pose2D(x=1, y=0), Pose2D(x=2, y=0), Pose2D(x=3, y=0)]
+    d.follow(wps)
+    wait_for(d, lambda s: s.distance_remaining > 0)
+    assert d.remaining() == wps
+    d.resume_with(Pose2D(x=1.2, y=0.3))
+    st = wait_for(d, lambda s: s.target_pose == Pose2D(x=1.2, y=0.3) and s.distance_remaining > 0)
+    assert st.waypoints_total == 3 and d.remaining()[1:] == wps[1:]
+    d.cancel()
+    wait_for(d, lambda s: not s.is_active)
+    d.shutdown()

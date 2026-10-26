@@ -12,6 +12,7 @@ Started by docker/sim/entrypoint.sh (`serve`):
     POST /v1/sim/stop      SimStopRequest
     GET  /v1/sim/logs      tail of the sim process output (for the self-healer)
     GET  /v1/sim/health    healthy / degraded / crashed + the reasons (health_monitor)
+    GET  /v1/heal/log      self-healing actions this run (also <run>/logs/heal_log.jsonl)
 
     POST /v1/nav/initial_pose  NavInitialPoseRequest   (409 until the sim is ready)
     POST /v1/nav/goal          NavGoalRequest          -> NavStatus (preempts a running task)
@@ -37,7 +38,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Callable, Deque, Dict, List, Optional
 
 from fastapi import (
     APIRouter,
@@ -64,6 +65,7 @@ from sim2lang.runtime import launch_builder, world_check
 from sim2lang.runtime.control_api import API_PREFIX
 from sim2lang.runtime.health_monitor import HealthMonitor
 from sim2lang.runtime.ros_bridge import readiness
+from sim2lang.runtime.self_healing import NodeControl, Observation, SelfHealer, classify
 
 RUNTIME_ENV_FILE = Path(os.getenv("L2S_RUNTIME_ENV_FILE", "/tmp/l2s_runtime.env"))
 LOG_RING_LINES = 2000
@@ -114,6 +116,7 @@ class SimProcess:
         self.world_report: Optional[world_check.WorldReport] = None
         self.launch_file: Optional[Path] = None
         self.log: Deque[str] = collections.deque(maxlen=LOG_RING_LINES)
+        self.lines_total = 0                      # monotonic, unlike the ring's length
         self._log_file: Optional[Path] = None
 
     # --- preparation ---------------------------------------------------------
@@ -198,6 +201,7 @@ class SimProcess:
         try:
             for line in proc.stdout:
                 self.log.append(line.rstrip("\n"))
+                self.lines_total += 1
                 if fh:
                     fh.write(line)
         finally:
@@ -223,27 +227,54 @@ class SimProcess:
     def tail(self, n: int) -> List[str]:
         return list(self.log)[-n:]
 
+    def lines_since(self, seen: int) -> tuple:
+        """(new lines, new total) given how many lines were already seen."""
+        total = self.lines_total
+        fresh = min(max(0, total - seen), len(self.log))
+        return (list(self.log)[-fresh:] if fresh else []), total
+
 
 def _pose(x: float, y: float, yaw: float) -> Pose2D:
     # Clamp after rounding: round(3.14159..., 4) == 3.1416 > pi would fail validation.
     return Pose2D(x=round(x, 3), y=round(y, 3), yaw=max(-math.pi, min(math.pi, round(yaw, 4))))
 
 
-def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any = None) -> FastAPI:
-    """`use_ros=False` (tests) skips the rclpy bridge; it is also skipped where ROS is absent.
+HEAL_PERIOD_S = 2.0
 
-    `nav` injects a NavDispatcher (tests); by default one is created on the first nav call.
+
+def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any = None,
+               node_control: Optional[Callable[[Path], Any]] = None) -> FastAPI:
+    """`use_ros=False` (tests) skips the rclpy bridge and the healer thread; both are also
+    skipped where ROS is absent.
+
+    `nav` injects a NavDispatcher and `node_control` a NodeControl factory (tests).
+    Self-healing is on unless L2S_SELF_HEAL=0.
     """
     sim = sim or SimProcess()
-    state: Dict[str, Any] = {"bridge": None, "nav": nav}
+    state: Dict[str, Any] = {"bridge": None, "nav": nav, "healer": None, "nodes": None,
+                             "seen": 0, "localized": False}
     monitor = HealthMonitor()
+    make_nodes = node_control or (lambda run_dir: NodeControl(run_dir))
+    heal_enabled = os.getenv("L2S_SELF_HEAL", "1") != "0"
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
+        stop = threading.Event()
         if use_ros:
             from sim2lang.runtime.ros_bridge import RosBridge
             state["bridge"] = RosBridge.try_create()
+            if state["bridge"] and heal_enabled:
+                def loop() -> None:
+                    while not stop.wait(HEAL_PERIOD_S):
+                        try:
+                            heal_tick()
+                        except Exception:  # noqa: BLE001 - the healer must never kill the API
+                            pass
+                threading.Thread(target=loop, name="l2s-heal", daemon=True).start()
         yield
+        stop.set()
+        if state["nodes"]:
+            state["nodes"].stop_all()
         if state["nav"]:
             state["nav"].shutdown()
         sim.stop()  # don't leave gz/ros2 running when uvicorn exits
@@ -306,6 +337,37 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             raise HTTPException(409, f"simulation is {st.status}, not ready"
                                      + (f" (waiting for: {', '.join(failed)})" if failed else ""))
 
+    def heal_tick() -> List[dict]:
+        """One supervisor pass: observe, classify, recover. Called every HEAL_PERIOD_S."""
+        healer = state["healer"]
+        if healer is None or not sim.alive:
+            return []
+        bridge = state["bridge"]
+        snap = bridge.snapshot() if bridge else None
+        if snap is not None and snap.map_pose is not None:
+            state["localized"] = True
+        lines, state["seen"] = sim.lines_since(state["seen"])
+        obs = Observation(lines=lines, snap=snap, alive=state["nodes"].alive(),
+                          nav=state["nav"].status() if state["nav"] else None,
+                          sim_running=True, was_localized=state["localized"] or sim.was_ready)
+        return healer.handle(classify(obs))
+
+    def new_healer(req: SimStartRequest) -> None:
+        if state["nodes"]:
+            state["nodes"].stop_all()
+        nodes = make_nodes(Path(req.run_dir))
+
+        def current_goal():
+            st = state["nav"].status() if state["nav"] else None
+            return st.target_pose if st and (st.is_active or st.status == "failed") else None
+
+        state.update(nodes=nodes, seen=0, localized=False, healer=SelfHealer(
+            Path(req.run_dir), restart_node=nodes.restart, current_goal=current_goal,
+            resend_goal=lambda p: bool(dispatcher().resume_with(p)),
+            map_yaml=Path(req.map_yaml_path)))
+
+    app.state.heal_tick = heal_tick
+
     @v1.get("/health")
     def health() -> dict:
         return {"status": "ok", "version": sim2lang.__version__,
@@ -346,6 +408,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         except WorldRejected as e:
             raise HTTPException(422, {"message": "world rejected by pre-flight check",
                                       "issues": [vars(i) for i in e.report.issues]})
+        new_healer(req)
         return current_status()
 
     @v1.post("/sim/stop", response_model=SimStatusResponse)
@@ -359,6 +422,11 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         r = monitor.evaluate(current_status().status, bridge.snapshot() if bridge else None)
         return {"health": r.health, "issues": r.issues, "rtf": r.rtf, "sim_time": r.sim_time,
                 "readiness": r.readiness}
+
+    @v1.get("/heal/log")
+    def heal_log(tail: int = Query(100, ge=1, le=1000)) -> dict:
+        healer = state["healer"]
+        return {"enabled": heal_enabled, "events": healer.events[-tail:] if healer else []}
 
     @v1.get("/sim/logs")
     def sim_logs(tail: int = Query(200, ge=1, le=LOG_RING_LINES)) -> dict:
