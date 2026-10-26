@@ -420,3 +420,62 @@ class TestReportPathIntegration:
         assert path.name == "benchmark_report.json"
         assert "run_042" in str(path)
 
+
+class TestSLAMTelemetryAndBenchmark:
+    """Test suite for live SLAM ATE drift tracking, divergence alert, and benchmark scoring."""
+
+    def test_ate_drift_tracking_and_divergence_alert(self):
+        collector = TelemetryCollector(api_base_url="http://127.0.0.1:9999")
+        try:
+            collector.start_run("slam_divergence_eval")
+            # Step 1: Nominal tracking (ATE ~ 0.05m < 0.35m threshold)
+            collector.record_kinematics(t=1.0, x=1.0, y=2.0, yaw=0.0, v=0.5, w=0.0)
+            ate1 = collector.record_slam_pose(t=1.0, x=1.03, y=2.04, yaw=0.0)
+            assert round(ate1, 3) == 0.05
+            snap1 = collector.snapshot()
+            assert snap1["ate"] == 0.05
+            assert snap1["ate_diverged"] is False
+
+            # Step 2: Perturbation causes SLAM drift divergence (ATE = 0.40m > 0.35m)
+            collector.record_kinematics(t=2.0, x=2.0, y=2.0, yaw=0.0, v=0.5, w=0.0)
+            ate2 = collector.record_slam_pose(t=2.0, x=2.40, y=2.0, yaw=0.0)
+            assert round(ate2, 2) == 0.40
+            snap2 = collector.snapshot()
+            assert snap2["ate"] == 0.4
+            assert snap2["max_ate"] == 0.4
+            assert snap2["ate_diverged"] is True
+
+            # Step 3: Trajectory captures SLAM statistics
+            traj = collector.stop_run()
+            assert traj.ate is not None
+            assert len(traj.ate) >= 2
+            assert round(float(traj.ate_max), 2) >= 0.40
+            assert traj.ate_mean is not None and traj.ate_mean > 0.0
+            assert traj.ate_rmse is not None and traj.ate_rmse > 0.0
+        finally:
+            collector.close()
+
+    def test_nqi_scorer_slam_metrics_and_table(self):
+        # Create synthetic trajectory with SLAM drift
+        samples = [
+            {"t": 0.0, "x": 0.0, "y": 0.0, "yaw": 0.0, "v": 0.5, "w": 0.0, "slam_x": 0.01, "slam_y": 0.0},
+            {"t": 1.0, "x": 1.0, "y": 0.0, "yaw": 0.0, "v": 0.5, "w": 0.0, "slam_x": 1.10, "slam_y": 0.0},
+            {"t": 2.0, "x": 2.0, "y": 0.0, "yaw": 0.0, "v": 0.5, "w": 0.0, "slam_x": 2.45, "slam_y": 0.0},
+        ]
+        traj = Trajectory.from_samples(samples, goal=(2.0, 0.0), label="drift_run")
+        scored = score_trajectory(traj)
+
+        assert scored["slam_metrics"] is not None
+        assert scored["slam_metrics"]["diverged"] is True  # 0.45m > 0.35m
+        assert scored["slam_diverged"] is True
+        assert scored["ate_max_m"] >= 0.45
+        assert scored["ate_mean_m"] > 0.0
+
+        # Build report and render table
+        report = build_report(nominal=scored, adversarial=scored)
+        table = render_comparison_table(report)
+        assert table is not None
+        table_titles = [col.header for col in table.columns]
+        assert "Evaluation Metric" in table_titles
+
+

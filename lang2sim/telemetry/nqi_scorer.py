@@ -356,6 +356,19 @@ def score_trajectory(
     s_mission = mission_success(traj.end, goal, c_force, params.eps_pos)
     nqi_raw, terms = compute_nqi(e_p, s_tau, c_min, c_force, params)
 
+    slam_metrics = None
+    if traj.ate is not None:
+        mean_ate = float(traj.ate_mean) if traj.ate_mean is not None else 0.0
+        max_ate = float(traj.ate_max) if traj.ate_max is not None else 0.0
+        rmse_ate = float(traj.ate_rmse) if traj.ate_rmse is not None else 0.0
+        diverged = bool(max_ate > 0.35)
+        slam_metrics = {
+            "mean_ate": round(mean_ate, 4),
+            "max_ate": round(max_ate, 4),
+            "rmse_ate": round(rmse_ate, 4),
+            "diverged": diverged,
+        }
+
     return {
         "label": traj.label,
         "samples": traj.n,
@@ -374,6 +387,11 @@ def score_trajectory(
         "terms": {k: round(v, 3) for k, v in terms.items()},
         "nqi_raw": round(nqi_raw, 3),
         "nqi": round(float(np.clip(nqi_raw, 0.0, 100.0)), 3),
+        "ate_mean_m": None if slam_metrics is None else slam_metrics["mean_ate"],
+        "ate_max_m": None if slam_metrics is None else slam_metrics["max_ate"],
+        "ate_rmse_m": None if slam_metrics is None else slam_metrics["rmse_ate"],
+        "slam_diverged": None if slam_metrics is None else slam_metrics["diverged"],
+        "slam_metrics": slam_metrics,
     }
 
 
@@ -396,6 +414,7 @@ _DELTA_KEYS = {
     "S_tau_pct": "S_tau",
     "C_min_pct": "C_min_m",
     "nqi_pct": "nqi",
+    "ate_mean_pct": "ate_mean_m",
 }
 
 
@@ -510,6 +529,24 @@ def render_comparison_table(report: Mapping[str, Any]):
     row("Navigation Quality Index (NQI)", f"[bold]{_fmt(nom.get('nqi'), ' / 100', 1)}[/]",
         f"[bold]{_fmt(a.get('nqi'), ' / 100', 1)}[/]" if adv is not None else "",
         _delta_str(deltas.get("nqi_pct"), True))
+
+    if nom.get("ate_mean_m") is not None or (adv and adv.get("ate_mean_m") is not None):
+        row(
+            "SLAM Drift (ATE Mean)",
+            _fmt(nom.get("ate_mean_m"), " m"),
+            _fmt(a.get("ate_mean_m"), " m"),
+            _delta_str(deltas.get("ate_mean_pct"), False),
+        )
+        def _health_str(div: Any) -> str:
+            if div is None:
+                return "n/a"
+            return "[red]Diverged (>0.35m)[/]" if div else "[green]Healthy (<0.1m)[/]"
+        row(
+            "SLAM Tracking Health",
+            _health_str(nom.get("slam_diverged")),
+            _health_str(a.get("slam_diverged")),
+            "",
+        )
     return table
 
 

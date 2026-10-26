@@ -59,6 +59,9 @@ class Trajectory:
     collisions: int = 0
     label: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
+    slam_x: Optional[np.ndarray] = None
+    slam_y: Optional[np.ndarray] = None
+    ate: Optional[np.ndarray] = None
 
     # ------------------------------------------------------------------ init
     def __post_init__(self) -> None:
@@ -71,12 +74,15 @@ class Trajectory:
         self.yaw = _as_array(self.yaw, n)
         self.v = _as_array(self.v, n)
         self.w = _as_array(self.w, n)
+        self.slam_x = _as_array(self.slam_x, n)
+        self.slam_y = _as_array(self.slam_y, n)
+        self.ate = _as_array(self.ate, n)
 
         # Sort by time and drop duplicate timestamps (odom can repeat stamps).
         order = np.argsort(self.t, kind="stable")
         keep = np.concatenate(([True], np.diff(self.t[order]) > 1e-9))
         idx = order[keep]
-        for name in _FIELDS:
+        for name in _FIELDS + ("slam_x", "slam_y", "ate"):
             arr = getattr(self, name)
             if arr is not None:
                 setattr(self, name, arr[idx])
@@ -110,8 +116,22 @@ class Trajectory:
             self.v = np.where(proj < 0, -speed, speed)
         if self.w is None:
             self.w = np.gradient(np.unwrap(self.yaw), self.t)
+        if self.ate is None and self.slam_x is not None and self.slam_y is not None:
+            self.ate = np.hypot(self.x - self.slam_x, self.y - self.slam_y)
 
     # ------------------------------------------------------------ properties
+    @property
+    def ate_mean(self) -> float:
+        return float(np.mean(self.ate)) if self.ate is not None and len(self.ate) > 0 else 0.0
+
+    @property
+    def ate_max(self) -> float:
+        return float(np.max(self.ate)) if self.ate is not None and len(self.ate) > 0 else 0.0
+
+    @property
+    def ate_rmse(self) -> float:
+        return float(np.sqrt(np.mean(self.ate ** 2))) if self.ate is not None and len(self.ate) > 0 else 0.0
+
     @property
     def n(self) -> int:
         return int(self.t.shape[0])
@@ -167,7 +187,7 @@ class Trajectory:
         if len(samples) < 2:
             raise ValueError("need at least 2 samples")
         cols: dict[str, Optional[list[float]]] = {}
-        for name in _FIELDS:
+        for name in _FIELDS + ("slam_x", "slam_y", "ate"):
             if all(name in s and s[name] is not None for s in samples):
                 cols[name] = [float(s[name]) for s in samples]
             else:
@@ -181,17 +201,29 @@ class Trajectory:
     from_odom_samples = from_samples
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        samples = []
+        for i in range(self.n):
+            s = {name: float(getattr(self, name)[i]) for name in _FIELDS}
+            if self.slam_x is not None:
+                s["slam_x"] = float(self.slam_x[i])
+            if self.slam_y is not None:
+                s["slam_y"] = float(self.slam_y[i])
+            if self.ate is not None:
+                s["ate"] = float(self.ate[i])
+            samples.append(s)
+        res = {
             "label": self.label,
             "goal": list(self.goal) if self.goal is not None else None,
             "l_optimal": self.l_optimal,
             "collisions": int(self.collisions),
             "meta": self.meta,
-            "samples": [
-                {name: float(getattr(self, name)[i]) for name in _FIELDS}
-                for i in range(self.n)
-            ],
+            "samples": samples,
         }
+        if self.ate is not None:
+            res["ate_mean"] = round(self.ate_mean, 4)
+            res["ate_max"] = round(self.ate_max, 4)
+            res["ate_rmse"] = round(self.ate_rmse, 4)
+        return res
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Trajectory":

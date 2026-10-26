@@ -106,11 +106,14 @@ class TelemetrySample:
     w: float
     collision_count: int = 0
     last_force_n: float = 0.0
+    slam_x: Optional[float] = None
+    slam_y: Optional[float] = None
+    ate: Optional[float] = None
 
 
 # --------------------------------------------------------------------------- Telemetry Collector
 class TelemetryCollector:
-    """Thread-safe telemetry observer and trajectory recorder."""
+    """Thread-safe telemetry observer and trajectory recorder with live SLAM ATE drift tracking."""
 
     def __init__(
         self,
@@ -138,6 +141,13 @@ class TelemetryCollector:
             or os.environ.get("LANG2SIM_CONTROL_API")
             or "http://127.0.0.1:9090"
         )
+        # SLAM drift tracking metrics
+        self.latest_slam_pose: Optional[tuple[float, float, float]] = None
+        self.current_ate: float = 0.0
+        self.max_ate: float = 0.0
+        self.ate_history: list[float] = []
+        self.ate_divergence_threshold: float = 0.35
+
         self._init_ros()
         if not self._ros_ok:
             self._start_api_poll()
@@ -190,18 +200,83 @@ class TelemetryCollector:
         except Exception:
             self._ros_ok = False
 
-    def record_kinematics(self, t: float, x: float, y: float, yaw: float, v: float, w: float) -> None:
+    def record_kinematics(
+        self,
+        t: float,
+        x: float,
+        y: float,
+        yaw: float,
+        v: float,
+        w: float,
+        slam_x: Optional[float] = None,
+        slam_y: Optional[float] = None,
+    ) -> None:
+        calc_ate = None
+        if slam_x is not None and slam_y is not None:
+            calc_ate = math.hypot(x - slam_x, y - slam_y)
+            self.current_ate = calc_ate
+            if calc_ate > self.max_ate:
+                self.max_ate = calc_ate
+            self.ate_history.append(calc_ate)
+
         sample = TelemetrySample(
-            t=t, x=x, y=y, yaw=yaw, v=v, w=w,
+            t=t,
+            x=x,
+            y=y,
+            yaw=yaw,
+            v=v,
+            w=w,
             collision_count=self.bumper.collision_count,
             last_force_n=self.bumper.last_force_n,
+            slam_x=slam_x,
+            slam_y=slam_y,
+            ate=calc_ate,
         )
         with self.lock:
             self.ring_buffer.append(sample)
             if self.active_run_samples is not None:
-                self.active_run_samples.append({
-                    "t": t, "x": x, "y": y, "yaw": yaw, "v": v, "w": w,
-                })
+                sample_dict: dict[str, float] = {
+                    "t": t,
+                    "x": x,
+                    "y": y,
+                    "yaw": yaw,
+                    "v": v,
+                    "w": w,
+                }
+                if slam_x is not None:
+                    sample_dict["slam_x"] = slam_x
+                if slam_y is not None:
+                    sample_dict["slam_y"] = slam_y
+                if calc_ate is not None:
+                    sample_dict["ate"] = calc_ate
+                self.active_run_samples.append(sample_dict)
+
+    def record_slam_pose(self, t: float, x: float, y: float, yaw: float) -> float:
+        """Record SLAM estimated pose and update real-time ATE drift tracking.
+        
+        ATE = ||p_gt - p_slam||_2
+        Returns the instantaneous ATE drift in meters.
+        """
+        with self.lock:
+            self.latest_slam_pose = (x, y, yaw)
+            ate = 0.0
+            if self.ring_buffer:
+                # Find the GT sample closest in timestamp t
+                best_gt = min(self.ring_buffer, key=lambda s: abs(s.t - t))
+                ate = math.hypot(best_gt.x - x, best_gt.y - y)
+                self.current_ate = ate
+                if ate > self.max_ate:
+                    self.max_ate = ate
+                self.ate_history.append(ate)
+                best_gt.slam_x = x
+                best_gt.slam_y = y
+                best_gt.ate = ate
+            if self.active_run_samples and len(self.active_run_samples) > 0:
+                best_active = min(self.active_run_samples, key=lambda s: abs(s["t"] - t))
+                best_active["slam_x"] = x
+                best_active["slam_y"] = y
+                best_active["ate"] = ate
+            return ate
 
     def start_run(self, label: str = "run", goal: Optional[tuple[float, float]] = None) -> None:
         """Begin recording an evaluation run for NQI scoring."""
@@ -210,6 +285,9 @@ class TelemetryCollector:
             self.goal = goal
             self.active_run_samples = []
             self.bumper.reset()
+            self.current_ate = 0.0
+            self.max_ate = 0.0
+            self.ate_history.clear()
 
     def stop_run(self) -> Trajectory:
         """Stop recording and return captured Trajectory."""
@@ -217,7 +295,20 @@ class TelemetryCollector:
             if self.active_run_samples and len(self.active_run_samples) >= 2:
                 samples = list(self.active_run_samples)
             elif len(self.ring_buffer) >= 2:
-                samples = [{"t": s.t, "x": s.x, "y": s.y, "yaw": s.yaw, "v": s.v, "w": s.w} for s in self.ring_buffer]
+                samples = [
+                    {
+                        "t": s.t,
+                        "x": s.x,
+                        "y": s.y,
+                        "yaw": s.yaw,
+                        "v": s.v,
+                        "w": s.w,
+                        **({"slam_x": s.slam_x} if s.slam_x is not None else {}),
+                        **({"slam_y": s.slam_y} if s.slam_y is not None else {}),
+                        **({"ate": s.ate} if s.ate is not None else {}),
+                    }
+                    for s in self.ring_buffer
+                ]
             else:
                 t_now = time.time()
                 samples = [
@@ -284,6 +375,7 @@ class TelemetryCollector:
             else:
                 x, y, yaw, v, w = 0.0, 0.0, 0.0, 0.0, 0.0
             backend = "ros2" if self._ros_ok else ("control_api" if self._api_ok else "mock")
+            mean_ate = (sum(self.ate_history) / len(self.ate_history)) if self.ate_history else 0.0
             return {
                 "active": self._ros_ok or self._api_ok,
                 "backend": backend,
@@ -298,6 +390,10 @@ class TelemetryCollector:
                 "last_force_n": round(self.bumper.last_force_n, 1),
                 "last_contact_entity": self.bumper.last_contact_entity,
                 "samples_buffered": len(self.ring_buffer),
+                "ate": round(self.current_ate, 3),
+                "max_ate": round(self.max_ate, 3),
+                "mean_ate": round(mean_ate, 3),
+                "ate_diverged": bool(self.current_ate > self.ate_divergence_threshold),
             }
 
     get_snapshot = snapshot
