@@ -277,3 +277,58 @@ class HealEvent(BaseModel):
     error_signature: str
     action_taken: str
     success: bool
+
+
+# ---------------------------------------------------------------------------
+# 10. Telemetry Contracts (Telemetry Engine, architecture §4.1 / §7)
+#
+# Recorded inside the sim container (where rclpy and sim time live) and pulled
+# to the host for NQI scoring. Every pose is in the world frame, which equals
+# the Nav2 map frame (zero-SLAM maps are sliced from the world itself).
+# ---------------------------------------------------------------------------
+
+PoseSource = Literal["ground_truth", "map", "odom", "none"]
+
+
+class TelemetryLive(BaseModel):
+    """Instantaneous robot telemetry: GET /v1/telemetry/live and the WS 'live' key."""
+    sim_time: float = Field(0.0, description="Simulation seconds (/clock)")
+    real_time_factor: float = 0.0
+    pose: Optional[Pose2D] = Field(None, description="Best available world-frame pose")
+    pose_source: PoseSource = Field("none", description="ground_truth > map (AMCL) > odom + spawn offset")
+    linear_speed: float = Field(0.0, description="m/s, from /odom twist")
+    angular_speed: float = Field(0.0, description="rad/s, from /odom twist")
+    localization_error_m: Optional[float] = Field(
+        None, description="|AMCL map pose - ground truth|; needs both sources")
+    min_scan_range_m: Optional[float] = Field(None, description="Closest valid lidar return (obstacle proximity)")
+    obstacle_clearance_m: Optional[float] = Field(
+        None, description="min_scan_range minus the lidar-to-chassis offset; approximate chassis clearance")
+    distance_to_goal_m: Optional[float] = Field(None, description="Straight-line distance to the recording goal")
+    collision_count: int = Field(0, description="Contact events on the chassis bumper this recording (C_force)")
+    last_contact_force_n: float = 0.0
+    last_contact_entity: str = ""
+    contact_force_source: Literal["wrench", "geometric", "none"] = Field(
+        "none", description="'geometric' when Gazebo reports contacts without force data")
+    recording: bool = False
+    recording_label: Optional[str] = None
+    samples_recorded: int = 0
+
+
+class TelemetryRecordRequest(BaseModel):
+    """POST /v1/telemetry/record/start."""
+    label: str = Field("run", pattern=r"^[A-Za-z0-9_.-]{1,64}$", description="Run label, e.g. 'nominal'")
+    goal: Optional[Pose2D] = Field(None, description="Mission goal, stored with the trajectory")
+    rate_hz: float = Field(20.0, ge=1.0, le=100.0, description="Sample rate in sim time")
+
+
+class TelemetryRecordResult(BaseModel):
+    """POST /v1/telemetry/record/stop: the recorded run, inline and on disk."""
+    label: str
+    samples: int
+    duration_s: float = Field(..., description="Sim seconds covered")
+    collisions: int
+    pose_source: PoseSource
+    path: Optional[str] = Field(None, description="Container path of logs/trajectory_<label>.json")
+    trajectory: Dict[str, Any] = Field(..., description="Trajectory.to_dict() format (lang2sim.telemetry)")
+    spawned_entities: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Entities spawned during the recording: name, model, x, y, r")
