@@ -19,7 +19,9 @@ SYSTEM_PROMPT = (
     "You are Sim2Lang Copilot, an expert AI robotics simulation assistant. "
     "You help roboticists design, configure, inspect, and reason about Gazebo Harmonic "
     "simulations, SDF scene layouts, Nav2 navigation stacks, and robot sensor telemetry. "
-    "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown."
+    "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown. "
+    "When a system message carries Lang2Sim simulation context, base answers about the robot, the run and the "
+    "NQI score on those measured numbers."
 )
 
 
@@ -297,7 +299,15 @@ class WorkspaceScreen(Screen):
 
         chunks: List[str] = []
         try:
-            async for chunk in self.client.stream_chat(self.conversation_history):
+            # Ground the answer in the running simulation (live telemetry + latest NQI report).
+            import asyncio
+            from ...agent.grounding import fetch_context, with_context
+
+            try:
+                context = await asyncio.wait_for(asyncio.to_thread(fetch_context), timeout=3.0)
+            except Exception:  # noqa: BLE001 - no sim context is fine
+                context = None
+            async for chunk in self.client.stream_chat(with_context(self.conversation_history, context)):
                 chunks.append(chunk)
                 await response_widget.update("".join(chunks))
                 chat_scroll.scroll_end(animate=False)
