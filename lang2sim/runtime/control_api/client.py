@@ -30,6 +30,9 @@ from lang2sim.core.models import (
     SimStatus,
     SimStatusResponse,
     SimStopRequest,
+    TelemetryLive,
+    TelemetryRecordRequest,
+    TelemetryRecordResult,
 )
 from lang2sim.runtime.control_api import API_PREFIX
 
@@ -145,6 +148,22 @@ class ControlClient:
 
     async def telemetry(self) -> SimStatus:
         return SimStatus.model_validate(await self._request("GET", "/telemetry"))
+
+    # --- telemetry engine ------------------------------------------------
+    async def telemetry_live(self) -> TelemetryLive:
+        return TelemetryLive.model_validate(await self._request("GET", "/telemetry/live"))
+
+    async def telemetry_setup(self) -> Dict[str, Any]:
+        return await self._request("GET", "/telemetry/setup")
+
+    async def record_start(self, label: str = "run", goal: Optional[Pose2D] = None,
+                           rate_hz: float = 20.0) -> TelemetryLive:
+        req = TelemetryRecordRequest(label=label, goal=goal, rate_hz=rate_hz)
+        return TelemetryLive.model_validate(
+            await self._request("POST", "/telemetry/record/start", json=req.model_dump(mode="json")))
+
+    async def record_stop(self) -> TelemetryRecordResult:
+        return TelemetryRecordResult.model_validate(await self._request("POST", "/telemetry/record/stop"))
 
     async def nav_feedback(self, hz: float = 5.0) -> AsyncIterator[Dict[str, Any]]:
         """Stream {"nav": NavStatus, "telemetry": SimStatus, "sim": {...}} dicts from WS /v1/nav/feedback.

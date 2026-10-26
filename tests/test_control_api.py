@@ -105,7 +105,7 @@ def test_status_uses_readiness_when_ros_is_present(tmp_path):
         def __init__(self):
             self.ready = False
 
-        def reset(self):
+        def reset(self, spawn=None):
             pass
 
         def snapshot(self):

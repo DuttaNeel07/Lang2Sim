@@ -19,8 +19,13 @@ Started by docker/sim/entrypoint.sh (`serve`):
     POST /v1/nav/waypoints     NavWaypointsRequest     -> NavStatus
     POST /v1/nav/cancel                                -> NavStatus
     GET  /v1/nav/status                                -> NavStatus
-    WS   /v1/nav/feedback?hz=5  {"nav": NavStatus, "telemetry": SimStatus, "sim": {...}}
+    WS   /v1/nav/feedback?hz=5  {"nav": NavStatus, "telemetry": SimStatus, "live": TelemetryLive, "sim": {...}}
     GET  /v1/telemetry         SimStatus: map pose, velocity, RTF, render mode, health
+
+    GET  /v1/telemetry/live          TelemetryLive: world pose + source, speed, clearance, collisions
+    GET  /v1/telemetry/setup         was this run's robot instrumented (bumper + ground truth)
+    POST /v1/telemetry/record/start  TelemetryRecordRequest -> TelemetryLive
+    POST /v1/telemetry/record/stop   -> TelemetryRecordResult (also <run>/logs/trajectory_<label>.json)
 
 Part 4 mounts routers/world.py under /v1/world.
 """
@@ -30,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
+import json
 import math
 import os
 import platform
@@ -60,6 +66,9 @@ from lang2sim.core.models import (
     SimStatus,
     SimStatusResponse,
     SimStopRequest,
+    TelemetryLive,
+    TelemetryRecordRequest,
+    TelemetryRecordResult,
 )
 from lang2sim.runtime import launch_builder, robot_instrument, world_check
 from lang2sim.runtime.control_api import API_PREFIX
@@ -263,6 +272,8 @@ class SimProcess:
         with self._lock:
             proc = self.proc
             self.stopped = True
+            if proc is None or proc.poll() is not None:   # never started, or already exited
+                return
             if hasattr(os, "killpg"):
                 sig_kill = getattr(signal, "SIGKILL", signal.SIGTERM)
                 sig = sig_kill if force else signal.SIGINT
@@ -315,7 +326,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     """
     sim = sim or SimProcess()
     state: Dict[str, Any] = {"bridge": None, "nav": nav, "healer": None, "nodes": None,
-                             "seen": 0, "localized": False}
+                             "seen": 0, "localized": False, "record": None}
     monitor = HealthMonitor()
     make_nodes = node_control or (lambda run_dir: NodeControl(run_dir))
     heal_enabled = os.getenv("L2S_SELF_HEAL", "1") != "0"
@@ -459,8 +470,10 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
 
     @v1.post("/sim/start", response_model=SimStatusResponse, status_code=202)
     def sim_start(req: SimStartRequest) -> SimStatusResponse:
+        spawn = (req.initial_pose.x, req.initial_pose.y, req.initial_pose.yaw)
         if state["bridge"]:
-            state["bridge"].reset()
+            state["bridge"].reset(spawn=spawn)
+        state["record"] = None
         monitor.reset()
         try:
             sim.start(req)
@@ -472,6 +485,8 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             raise HTTPException(422, {"message": "world rejected by pre-flight check",
                                       "issues": [vars(i) for i in e.report.issues]})
         new_healer(req)
+        if state["bridge"]:
+            state["bridge"].expect_ground_truth = bool(sim.telemetry_setup.get("enabled"))
         return current_status()
 
     @v1.post("/sim/stop", response_model=SimStatusResponse)
@@ -526,6 +541,68 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def telemetry() -> SimStatus:
         return telemetry_now()
 
+    # --- telemetry engine: live metrics + recorded runs for NQI scoring ---------
+    def live_now() -> TelemetryLive:
+        bridge = state["bridge"]
+        if bridge is None or not hasattr(bridge, "live"):
+            return TelemetryLive()
+        return TelemetryLive(**bridge.live())
+
+    def recording_bridge():
+        bridge = state["bridge"]
+        if bridge is None or not hasattr(bridge, "record_start"):
+            raise HTTPException(503, "telemetry needs the ROS bridge (not available in this container)")
+        return bridge
+
+    @v1.get("/telemetry/live", response_model=TelemetryLive)
+    def telemetry_live() -> TelemetryLive:
+        return live_now()
+
+    @v1.get("/telemetry/setup")
+    def telemetry_setup() -> dict:
+        """Whether this run's robot carries the bumper + ground-truth publisher, and why not."""
+        return dict(sim.telemetry_setup)
+
+    @v1.post("/telemetry/record/start", response_model=TelemetryLive, status_code=202)
+    def telemetry_record_start(req: TelemetryRecordRequest) -> TelemetryLive:
+        if not sim.alive:
+            raise HTTPException(409, "no simulation running")
+        bridge = recording_bridge()
+        goal = (req.goal.x, req.goal.y, req.goal.yaw) if req.goal else None
+        bridge.record_start(req.label, goal=goal, rate_hz=req.rate_hz)
+        state["record"] = {"label": req.label, "wall0": time.time()}
+        return live_now()
+
+    @v1.post("/telemetry/record/stop", response_model=TelemetryRecordResult)
+    def telemetry_record_stop() -> TelemetryRecordResult:
+        bridge = recording_bridge()
+        data = bridge.record_stop()
+        if data is None:
+            raise HTTPException(409, "not recording")
+        rec = state.get("record") or {"wall0": time.time()}
+        state["record"] = None
+        try:
+            from lang2sim.perturbation.routers.world import spawned_since
+            spawned = spawned_since(rec["wall0"])
+        except ImportError:
+            spawned = []
+        data["meta"]["spawned_entities"] = spawned
+        samples = data["samples"]
+        path = None
+        if sim.request is not None:
+            out = Path(sim.request.run_dir) / "logs" / f"trajectory_{data['label']}.json"
+            try:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(json.dumps(data, indent=1), encoding="utf-8")
+                path = str(out)
+            except OSError:
+                path = None
+        return TelemetryRecordResult(
+            label=data["label"], samples=len(samples),
+            duration_s=round(samples[-1]["t"] - samples[0]["t"], 3) if len(samples) >= 2 else 0.0,
+            collisions=data["collisions"], pose_source=data["meta"]["pose_source"], path=path,
+            trajectory=data, spawned_entities=spawned)
+
     @v1.websocket("/nav/feedback")
     async def nav_feedback(ws: WebSocket, hz: float = 5.0) -> None:
         await ws.accept()
@@ -536,6 +613,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
                 await ws.send_json({
                     "nav": nav_status().model_dump(mode="json"),
                     "telemetry": telemetry_now().model_dump(mode="json"),
+                    "live": live_now().model_dump(mode="json"),
                     "sim": {"status": st.status, "ready": st.ready, "rtf": st.rtf},
                 })
                 await asyncio.sleep(period)

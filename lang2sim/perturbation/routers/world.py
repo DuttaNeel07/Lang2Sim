@@ -6,7 +6,10 @@ or accessible via ControlClient on host.
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+import math
+import threading
+import time
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -14,6 +17,37 @@ from lang2sim.perturbation._compat import Pose2D
 from lang2sim.perturbation.gazebo_bridge import GazeboBridge, get_bridge
 
 router = APIRouter(prefix="/world", tags=["world_mutation"])
+
+# Footprint radius (m) of each spawnable model, half the diagonal of its box (sdf_snippets.py).
+# Spawned entities are not in the zero-SLAM map.pgm, so the telemetry engine needs their
+# position and size to compute the minimum obstacle clearance C_min of a stress run.
+SPAWN_FOOTPRINT_RADIUS: Dict[str, float] = {
+    "wooden_crate": math.hypot(0.3, 0.3),
+    "cargo_box": math.hypot(0.5, 0.3),
+    "barrel": 0.3,
+}
+_SPAWN_LOG: List[Dict[str, Any]] = []
+_SPAWN_LOCK = threading.Lock()
+
+
+def record_spawn(name: str, model: str, x: float, y: float) -> Dict[str, Any]:
+    entry = {"name": name, "model": model, "x": float(x), "y": float(y),
+             "r": round(SPAWN_FOOTPRINT_RADIUS.get(model, SPAWN_FOOTPRINT_RADIUS["wooden_crate"]), 4),
+             "wall_time": time.time()}
+    with _SPAWN_LOCK:
+        _SPAWN_LOG.append(entry)
+    return entry
+
+
+def spawned_since(wall_time: float) -> List[Dict[str, Any]]:
+    """Entities spawned at or after `wall_time` (e.g. during a telemetry recording)."""
+    with _SPAWN_LOCK:
+        return [dict(e) for e in _SPAWN_LOG if e["wall_time"] >= wall_time]
+
+
+def clear_spawn_log() -> None:
+    with _SPAWN_LOCK:
+        _SPAWN_LOG.clear()
 
 
 class SpawnRequest(BaseModel):
@@ -55,7 +89,11 @@ async def spawn_entity(req: SpawnRequest) -> dict[str, Any]:
     )
     if not res.ok:
         raise HTTPException(status_code=500, detail=res.to_dict())
-    return res.to_dict()
+    name = (res.data or {}).get("entity_name") or (bridge.spawned_entities[-1] if bridge.spawned_entities
+                                                     else req.model_name)
+    out = res.to_dict()
+    out["footprint"] = record_spawn(name, req.model_name, req.x, req.y)
+    return out
 
 
 @router.post("/light")
