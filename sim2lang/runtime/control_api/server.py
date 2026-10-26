@@ -12,14 +12,23 @@ Started by docker/sim/entrypoint.sh (`serve`):
     POST /v1/sim/stop      SimStopRequest
     GET  /v1/sim/logs      tail of the sim process output (for the self-healer)
 
-Navigation (/v1/nav/*) and telemetry are added by later modules; Part 4 mounts
-routers/world.py under /v1/world.
+    POST /v1/nav/initial_pose  NavInitialPoseRequest   (409 until the sim is ready)
+    POST /v1/nav/goal          NavGoalRequest          -> NavStatus (preempts a running task)
+    POST /v1/nav/waypoints     NavWaypointsRequest     -> NavStatus
+    POST /v1/nav/cancel                                -> NavStatus
+    GET  /v1/nav/status                                -> NavStatus
+    WS   /v1/nav/feedback?hz=5  {"nav": NavStatus, "telemetry": SimStatus, "sim": {...}}
+    GET  /v1/telemetry         SimStatus: map pose, velocity, RTF, render mode, health
+
+Part 4 mounts routers/world.py under /v1/world.
 """
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import contextlib
+import math
 import os
 import platform
 import signal
@@ -29,10 +38,27 @@ import time
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    FastAPI,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+)
 
 import sim2lang
-from sim2lang.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
+from sim2lang.core.models import (
+    NavGoalRequest,
+    NavInitialPoseRequest,
+    NavStatus,
+    NavWaypointsRequest,
+    Pose2D,
+    SimStartRequest,
+    SimStatus,
+    SimStatusResponse,
+    SimStopRequest,
+)
 from sim2lang.runtime import launch_builder, world_check
 from sim2lang.runtime.control_api import API_PREFIX
 from sim2lang.runtime.ros_bridge import readiness
@@ -196,10 +222,18 @@ class SimProcess:
         return list(self.log)[-n:]
 
 
-def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True) -> FastAPI:
-    """`use_ros=False` (tests) skips the rclpy bridge; it is also skipped where ROS is absent."""
+def _pose(x: float, y: float, yaw: float) -> Pose2D:
+    # Clamp after rounding: round(3.14159..., 4) == 3.1416 > pi would fail validation.
+    return Pose2D(x=round(x, 3), y=round(y, 3), yaw=max(-math.pi, min(math.pi, round(yaw, 4))))
+
+
+def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any = None) -> FastAPI:
+    """`use_ros=False` (tests) skips the rclpy bridge; it is also skipped where ROS is absent.
+
+    `nav` injects a NavDispatcher (tests); by default one is created on the first nav call.
+    """
     sim = sim or SimProcess()
-    state: Dict[str, Any] = {"bridge": None}
+    state: Dict[str, Any] = {"bridge": None, "nav": nav}
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -207,8 +241,10 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True) -> FastAP
             from sim2lang.runtime.ros_bridge import RosBridge
             state["bridge"] = RosBridge.try_create()
         yield
+        if state["nav"]:
+            state["nav"].shutdown()
         sim.stop()  # don't leave gz/ros2 running when uvicorn exits
-        if state["bridge"]:
+        if state["bridge"] and hasattr(state["bridge"], "stop"):
             state["bridge"].stop()
 
     app = FastAPI(title="Lang2Sim control API", version=sim2lang.__version__, lifespan=lifespan)
@@ -231,6 +267,42 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True) -> FastAP
             world_report=[f"[{i.level}] {i.code}: {i.message}" for i in sim.world_report.issues]
             if sim.world_report else [],
         )
+
+    def telemetry_now() -> SimStatus:
+        bridge = state["bridge"]
+        snap = bridge.snapshot() if bridge else None
+        st = current_status()
+        env = read_runtime_env()
+        if env.get("L2S_EFFECTIVE_DISPLAY_MODE") == "headless":
+            render = "headless"
+        else:
+            render = {"nvidia": "gpu", "dri": "dri"}.get(env.get("L2S_EFFECTIVE_GPU", ""), "software")
+        pose = (snap.map_pose or snap.odom_pose) if snap else None
+        vel = snap.velocity if snap else None
+        health = {"running": "healthy", "launching": "degraded", "degraded": "degraded",
+                  "error": "crashed"}.get(st.status, "healthy")
+        return SimStatus(
+            is_running=st.status in ("launching", "running", "degraded"),
+            sim_time=st.sim_time,
+            real_time_factor=st.rtf,
+            robot_pose=_pose(*pose) if pose else Pose2D(x=0.0, y=0.0, yaw=0.0),
+            robot_velocity=_pose(*vel) if vel else None,
+            render_mode=render,
+            health_status=health,
+        )
+
+    def dispatcher():
+        if state["nav"] is None:
+            from sim2lang.runtime.nav2_dispatcher import NavDispatcher
+            state["nav"] = NavDispatcher()
+        return state["nav"]
+
+    def require_ready() -> None:
+        st = current_status()
+        if not st.ready:
+            failed = [k for k, v in st.readiness.items() if not v]
+            raise HTTPException(409, f"simulation is {st.status}, not ready"
+                                     + (f" (waiting for: {', '.join(failed)})" if failed else ""))
 
     @v1.get("/health")
     def health() -> dict:
@@ -281,6 +353,53 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True) -> FastAP
     @v1.get("/sim/logs")
     def sim_logs(tail: int = Query(200, ge=1, le=LOG_RING_LINES)) -> dict:
         return {"status": sim.status(None), "lines": sim.tail(tail)}
+
+    # --- navigation ----------------------------------------------------------
+    @v1.post("/nav/initial_pose", response_model=NavStatus, status_code=202)
+    def nav_initial_pose(req: NavInitialPoseRequest) -> NavStatus:
+        require_ready()
+        dispatcher().set_initial_pose(req.pose)
+        return dispatcher().status()
+
+    @v1.post("/nav/goal", response_model=NavStatus, status_code=202)
+    def nav_goal(req: NavGoalRequest) -> NavStatus:
+        require_ready()
+        return dispatcher().go_to(req.goal_pose, req.timeout_seconds)
+
+    @v1.post("/nav/waypoints", response_model=NavStatus, status_code=202)
+    def nav_waypoints(req: NavWaypointsRequest) -> NavStatus:
+        require_ready()
+        if not req.waypoints:
+            raise HTTPException(422, "waypoints must not be empty")
+        return dispatcher().follow(req.waypoints, req.timeout_seconds)
+
+    @v1.post("/nav/cancel", response_model=NavStatus)
+    def nav_cancel() -> NavStatus:
+        return state["nav"].cancel() if state["nav"] else NavStatus()
+
+    @v1.get("/nav/status", response_model=NavStatus)
+    def nav_status() -> NavStatus:
+        return state["nav"].status() if state["nav"] else NavStatus()
+
+    @v1.get("/telemetry", response_model=SimStatus)
+    def telemetry() -> SimStatus:
+        return telemetry_now()
+
+    @v1.websocket("/nav/feedback")
+    async def nav_feedback(ws: WebSocket, hz: float = 5.0) -> None:
+        await ws.accept()
+        period = 1.0 / max(0.5, min(hz, 20.0))
+        try:
+            while True:
+                st = current_status()
+                await ws.send_json({
+                    "nav": nav_status().model_dump(mode="json"),
+                    "telemetry": telemetry_now().model_dump(mode="json"),
+                    "sim": {"status": st.status, "ready": st.ready, "rtf": st.rtf},
+                })
+                await asyncio.sleep(period)
+        except (WebSocketDisconnect, RuntimeError):
+            pass
 
     app.include_router(v1)
     return app
