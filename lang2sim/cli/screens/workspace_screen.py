@@ -95,8 +95,11 @@ class WorkspaceScreen(Screen):
                 classes="footer-right",
             )
 
+    TELEMETRY_POLL_S = 1.0
+
     def on_mount(self) -> None:
         """Mount existing session messages, focus input, and process initial prompt."""
+        self.set_interval(self.TELEMETRY_POLL_S, self.poll_telemetry)
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
 
         # Restore past messages if loading an existing session
@@ -215,6 +218,23 @@ class WorkspaceScreen(Screen):
 
         # 4. Stream response asynchronously with low latency
         self.stream_response(response_widget, cleaned_prompt)
+
+    @work(thread=True, exclusive=True, group="telemetry")
+    def poll_telemetry(self) -> None:
+        """Fetch live telemetry off the UI thread (GET /v1/telemetry/live) and refresh the sidebar."""
+        from ...telemetry.live import fetch_live, sidebar_fields
+
+        fields = sidebar_fields(fetch_live(timeout=0.5))
+        try:
+            self.app.call_from_thread(self._apply_telemetry, fields)
+        except Exception:  # noqa: BLE001 - app shutting down
+            pass
+
+    def _apply_telemetry(self, fields: Dict[str, Any]) -> None:
+        try:
+            self.query_one(TelemetrySidebar).update_telemetry(**fields)
+        except Exception:  # noqa: BLE001 - screen not mounted any more
+            pass
 
     @work(exclusive=True)
     async def stream_response(self, response_widget: Markdown, prompt: str) -> None:

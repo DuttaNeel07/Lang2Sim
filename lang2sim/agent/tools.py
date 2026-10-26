@@ -116,15 +116,14 @@ def read_robot_camera(topic: str = "/camera/image_raw") -> Dict[str, Any]:
     }
 
 def query_robot_telemetry() -> Dict[str, Any]:
-    """Reads instantaneous kinematics, distance to goal, and contact forces."""
-    return {
-        "x": 3.85,
-        "y": 2.10,
-        "speed": 0.35,
-        "distance_to_goal": 2.14,
-        "bumper_force_newtons": 0.0,
-        "collision_count": 0,
-    }
+    """Reads instantaneous kinematics, distance to goal, and contact forces.
+
+    Live data from the control API (GET /v1/telemetry/live); {"status": "unavailable"}
+    when no simulation is running.
+    """
+    from lang2sim.telemetry.live import agent_view, fetch_live
+
+    return agent_view(fetch_live())
 
 def auto_repair_tf(parent_frame: str, child_frame: str) -> Dict[str, Any]:
     """Injects ephemeral static transform publisher if frames disconnect."""
