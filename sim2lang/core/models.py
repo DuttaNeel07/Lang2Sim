@@ -78,3 +78,27 @@ class SimSpec(BaseModel):
     sensor_noise: SensorNoiseSpec = Field(default_factory=SensorNoiseSpec)
     adversarial_triggers: List[DynamicObstacleTrigger] = Field(default_factory=list)
     mission: MissionSpec
+
+class SimulationIR(BaseModel):
+    spec: SimSpec
+    world_sdf_path: Optional[str] = None
+    map_yaml_path: Optional[str] = None
+    map_pgm_path: Optional[str] = None
+    resolved_anchors: dict[str, List[float]] = Field(default_factory=dict)
+
+class NavStatus(BaseModel):
+    is_active: bool = False
+    current_task: Optional[str] = None
+    distance_remaining: float = 0.0
+    target_pose: Optional[Pose2D] = None
+    status: Literal["idle", "navigating", "succeeded", "failed", "canceled"] = "idle"
+
+class SimStatus(BaseModel):
+    is_running: bool = False
+    sim_time: float = 0.0
+    real_time_factor: float = 1.0
+    robot_pose: Pose2D = Field(default_factory=lambda: Pose2D(x=0.0, y=0.0, yaw=0.0))
+    robot_velocity: Optional[Pose2D] = None
+    render_mode: Literal["gpu", "dri", "software", "headless"] = "software"
+    health_status: Literal["healthy", "degraded", "crashed"] = "healthy"
+

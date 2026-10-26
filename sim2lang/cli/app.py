@@ -13,7 +13,7 @@ CSS_PATH = Path(__file__).parent / "styles" / "app.tcss"
 class Lang2SimApp(App):
     """Lang2Sim Terminal Copilot Application."""
 
-    TITLE = "Sim2Lang — lang2sim"
+    TITLE = "lang2sim — lang2sim"
     CSS_PATH = CSS_PATH
 
     BINDINGS = [

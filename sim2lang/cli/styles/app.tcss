@@ -13,7 +13,7 @@ Screen {
 }
 
 #landing-inner {
-    width: 78;
+    width: 76;
     height: auto;
     align: center middle;
 }
@@ -24,13 +24,13 @@ Screen {
 }
 
 #landing-card {
-    width: 74;
+    width: 100%;
     height: auto;
     max-height: 5;
-    background: #161616;
+    background: #18181b;
     border-left: thick #00d2ff;
-    padding: 0 1;
-    margin-bottom: 1;
+    padding: 1 2;
+    margin-bottom: 0;
 }
 
 Input {
@@ -53,16 +53,22 @@ Input:focus {
     color: #747d8c;
 }
 
-#landing-shortcuts {
-    text-align: center;
-    color: #57606f;
+#shortcuts-container {
+    width: 100%;
+    align: right middle;
+    height: 1;
     margin-top: 1;
+}
+
+#landing-shortcuts {
+    text-align: right;
+    color: #6b7280;
 }
 
 #landing-tip {
     text-align: center;
     color: #747d8c;
-    margin-top: 1;
+    margin-top: 2;
 }
 
 /* Workspace Screen (80/20 Split) */
@@ -148,7 +154,7 @@ Input:focus {
     max-height: 5;
     background: #161616;
     border-left: thick #00d2ff;
-    padding: 0 1;
+    padding: 1 2;
     margin: 1 2;
 }
 
