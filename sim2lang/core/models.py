@@ -241,6 +241,11 @@ class SimStatusResponse(BaseModel):
     sim_time: float = Field(0.0, description="Current simulation time in seconds")
     active_nodes: List[str] = Field(default_factory=list)
     active_topics: List[str] = Field(default_factory=list)
+    ready: bool = Field(False, description="All readiness checks pass: robot can be given goals")
+    readiness: Dict[str, bool] = Field(
+        default_factory=dict, description="gazebo_clock, odometry, laser_scan, nav2_active, localized"
+    )
+    world_report: List[str] = Field(default_factory=list, description="World pre-flight findings for this run")
 
 
 class NavInitialPoseRequest(BaseModel):
