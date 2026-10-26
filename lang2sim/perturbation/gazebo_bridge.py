@@ -63,16 +63,11 @@ class GazeboBridge(abc.ABC):
     """Abstract Base Class for simulator dynamic mutation dispatchers."""
 
     def __init__(self, world_name: Optional[str] = None, exec_prefix: Optional[str] = None) -> None:
-        self.world_name = (
-            world_name
-            or os.environ.get("LANG2SIM_WORLD_NAME")
-            or os.environ.get("SIM2LANG_WORLD_NAME")
-            or "default"
-        )
+        self.world_name = world_name or os.environ.get("LANG2SIM_WORLD_NAME") or "default"
         self.exec_prefix = (
             exec_prefix
             if exec_prefix is not None
-            else (os.environ.get("LANG2SIM_EXEC_PREFIX") or os.environ.get("SIM2LANG_EXEC_PREFIX") or "")
+            else (os.environ.get("LANG2SIM_EXEC_PREFIX") or "")
         ).strip()
         self.spawn_counter = 0
         self.spawned_entities: list[str] = []
@@ -496,8 +491,8 @@ def get_bridge(backend: Optional[str] = None) -> GazeboBridge:
     if _GLOBAL_BRIDGE is not None and backend is None:
         return _GLOBAL_BRIDGE
 
-    req = (backend or os.environ.get("LANG2SIM_SIM_BACKEND") or os.environ.get("SIM2LANG_SIM_BACKEND") or "auto").lower()
-    exec_prefix = os.environ.get("LANG2SIM_EXEC_PREFIX") or os.environ.get("SIM2LANG_EXEC_PREFIX")
+    req = (backend or os.environ.get("LANG2SIM_SIM_BACKEND") or "auto").lower()
+    exec_prefix = os.environ.get("LANG2SIM_EXEC_PREFIX")
 
     if req == "harmonic":
         bridge = HarmonicBridge(exec_prefix=exec_prefix)

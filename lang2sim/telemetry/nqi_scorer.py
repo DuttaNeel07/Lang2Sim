@@ -1,6 +1,6 @@
 """Composite Navigation Quality Index (NQI) evaluator.
 
-Implements the scoring model of the Sim2Lang architecture (Section 7 / Issue #4 §3.5):
+Implements the scoring model of the Lang2Sim architecture (Section 7 / Issue #4 §3.5):
 
 1. Path traversal efficiency   ``E_p = L_optimal / L_actual``                (clipped to [0, 1])
 2. Trajectory smoothness       ``S_tau = ∫ (‖ȧ(t)‖² + ω̇(t)²) dt``           (jerk + angular accel.)
@@ -427,7 +427,10 @@ def build_report(
 
 
 def default_report_path() -> Path:
-    base = os.environ.get("SIM2LANG_PROJECT_DIR") or str(Path.home() / ".lang2sim" / "projects" / "active_project")
+    run_dir = os.environ.get("LANG2SIM_RUN_DIR")
+    if run_dir:
+        return Path(run_dir).expanduser() / "benchmark_report.json"
+    base = os.environ.get("LANG2SIM_PROJECT_DIR") or str(Path.home() / ".lang2sim" / "projects" / "active_project")
     return Path(base).expanduser() / "benchmark_report.json"
 
 
@@ -554,14 +557,14 @@ def _load_obstacles(path: Optional[str]) -> Optional[list[Any]]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m sim2lang.telemetry.nqi_scorer", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="python -m lang2sim.telemetry.nqi_scorer", description=__doc__.splitlines()[0])
     ap.add_argument("--nominal", help="nominal run trajectory (.json from ros_subscribers --record, or .csv)")
     ap.add_argument("--adversarial", help="adversarial run trajectory (.json or .csv)")
     ap.add_argument("--goal", nargs=2, type=float, metavar=("X", "Y"), help="mission goal (overrides file)")
     ap.add_argument("--obstacles", help="JSON file: [[x, y, r], ...] or {\"obstacles\": [...]} ")
     ap.add_argument("--map", help="Nav2 map.yaml (enables A* optimal length and map clearance)")
     ap.add_argument("--l-optimal", type=float, help="override optimal path length (m)")
-    ap.add_argument("--out", help="report path (default: $SIM2LANG_PROJECT_DIR/benchmark_report.json)")
+    ap.add_argument("--out", help="report path (default: $LANG2SIM_PROJECT_DIR/benchmark_report.json)")
     ap.add_argument("--demo", action="store_true", help="score synthetic nominal vs adversarial runs")
     ap.add_argument("--demo-collisions", type=int, default=0, help="collisions injected in demo adversarial run")
     ap.add_argument("--save-demo-trajectories", metavar="DIR", help="also write demo trajectories as JSON")

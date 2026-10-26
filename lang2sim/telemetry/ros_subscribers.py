@@ -3,7 +3,7 @@
 Asynchronously monitors:
   - /odom (nav_msgs/Odometry): Linear velocity v(t), angular velocity w(t), pose (x, y, yaw).
   - /tf (tf2_msgs/TFMessage): Coordinate transforms (map -> odom -> base_link).
-  - /sim2lang/contact_states: Chassis bumper contacts from Gazebo plugins.
+  - /lang2sim/contact_states: Chassis bumper contacts from Gazebo plugins.
 
 Includes:
   - CollisionCounter: Rising-edge filter counting collisions when ||F||_2 > 5.0 N with 0.5s cooldown.
@@ -158,9 +158,7 @@ class TelemetryCollector:
                             total_force[2] += f.force.z
                         self.bumper.process_contact(total_force, state.collision2_name)
 
-                # Primary topic /lang2sim/contact_states with legacy /sim2lang/contact_states alias
                 node.create_subscription(ContactsState, "/lang2sim/contact_states", _contact_cb, 20)
-                node.create_subscription(ContactsState, "/sim2lang/contact_states", _contact_cb, 20)
             except ImportError:
                 pass
 
@@ -291,7 +289,7 @@ async def query_robot_telemetry() -> dict[str, Any]:
 # --------------------------------------------------------------------------- CLI
 def main() -> int:
     parser = argparse.ArgumentParser(description="Lang2Sim Telemetry Subscriber & Collision Monitor")
-    parser.add_argument("--live", action="store_true", help="Monitor live /odom and /sim2lang/contact_states")
+    parser.add_argument("--live", action="store_true", help="Monitor live /odom and /lang2sim/contact_states")
     parser.add_argument("--print-hz", type=float, default=2.0, help="Print rate in Hz")
     parser.add_argument("--record", help="Record live run to JSON file on exit")
     parser.add_argument("--goal", nargs=2, type=float, metavar=("X", "Y"), help="Mission goal for recorded run")
