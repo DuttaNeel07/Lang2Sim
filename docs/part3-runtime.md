@@ -19,7 +19,10 @@ python scripts/run_sim.py --fixture small_warehouse --mission
 `run_sim.py` checks the machine, picks how you will see the simulation, pulls
 and starts the sim image, opens the run, waits until every readiness check
 passes (Gazebo clock, odometry, laser scan, Nav2 active, robot localized) and,
-with `--mission`, drives the run's waypoints and goal. Ctrl-C stops everything.
+with `--mission`, drives the run's waypoints and goal, records telemetry and
+writes `benchmark_report.json` (NQI). `--benchmark` runs the mission nominal and
+under stress and prints the comparison table ([telemetry.md](telemetry.md)).
+Ctrl-C stops everything.
 
 To open your own run folder instead of a fixture:
 
@@ -62,6 +65,9 @@ container, for development).
 | `spec.json` | Part 1/2 | The `SimSpec`, including the mission |
 | `manifest.json` | Part 1/2 | `RunManifest`: file names, world name, robot, initial pose |
 | `sim_launch.py`, `world.l2s.sdf`, `nav2_params.l2s.yaml`, `logs/` | Part 3 | Generated per run; do not edit |
+| `robot.l2s.sdf`, `bridge.l2s.yaml`, `logs/telemetry_setup.txt` | Part 3 | Robot with chassis bumper + ground-truth pose, and its bridge topics |
+| `logs/trajectory_<label>.json` | Part 3 | Recorded run (sim time, world frame), `Trajectory.to_dict()` format |
+| `benchmark_report.json` | Telemetry | NQI scores of the recorded runs (nominal, adversarial) |
 
 Before every launch the world goes through a pre-flight check
 (`sim2lang/runtime/world_check.py`). It rejects worlds Gazebo or Nav2 cannot use
@@ -86,9 +92,13 @@ Use `sim2lang.runtime.control_api.client.ControlClient` (async) or
 | GET | `/sim/logs?tail=N` | Last N lines of the launch output |
 | POST | `/nav/initial_pose`, `/nav/goal`, `/nav/waypoints`, `/nav/cancel` | Navigation (409 until the sim is ready) |
 | GET | `/nav/status` | `NavStatus`: task, waypoint, distance remaining, ETA, recoveries |
-| WS | `/nav/feedback?hz=5` | Stream of `{"nav", "telemetry", "sim"}` |
+| WS | `/nav/feedback?hz=5` | Stream of `{"nav", "telemetry", "live", "sim"}` |
 | GET | `/telemetry` | `SimStatus`: map pose, velocity, RTF, render mode, health |
 | GET | `/heal/log` | Self-healing actions this run |
+| GET | `/telemetry/live` | `TelemetryLive`: world pose + source, speed, lidar clearance, distance to goal, collisions |
+| GET | `/telemetry/setup` | Was this run's robot instrumented (bumper + ground truth), and why not |
+| POST | `/telemetry/record/start`, `/telemetry/record/stop` | Record a run; stop returns `TelemetryRecordResult` and writes `logs/trajectory_<label>.json` |
+| POST/GET | `/world/spawn`, `/world/light`, `/world/reset`, `/world/entities` | Live mutations (Part 4); spawns are logged with their footprint |
 
 ## Self-healing
 
