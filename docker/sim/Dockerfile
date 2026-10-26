@@ -124,7 +124,7 @@ RUN for m in "Ground Plane" "Sun"; do \
 
 COPY --chmod=0755 docker/sim/entrypoint.sh docker/sim/smoke_test.sh ${L2S_HOME}/bin/
 
-# Paths and ports below are the contract with sim2lang/core/config.py (Step 2).
+# Paths and ports below are the contract with lang2sim/core/config.py (Step 2).
 ENV L2S_USER=${USERNAME} \
     L2S_SRC=/opt/lang2sim/src \
     L2S_PROJECTS_DIR=/lang2sim/projects \

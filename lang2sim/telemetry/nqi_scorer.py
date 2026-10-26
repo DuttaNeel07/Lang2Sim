@@ -5,6 +5,8 @@ Implements the scoring model of the Lang2Sim architecture (Section 7 / Issue #4 
 1. Path traversal efficiency   ``E_p = L_optimal / L_actual``                (clipped to [0, 1])
 2. Trajectory smoothness       ``S_tau = ∫ (‖ȧ(t)‖² + ω̇(t)²) dt``           (jerk + angular accel.)
 3. Minimum obstacle clearance  ``C_min = min_t min_o ‖p(t) − p_o‖ − r_o − r_robot``
+                               (or, with ``NQIParams.footprint``, the distance from the robot's
+                               chassis rectangle at pose (x, y, yaw) to each obstacle boundary)
 4. Mission success             ``S_mission = 1[‖p(T) − p_goal‖ ≤ ε] · 1[C_force == 0]``
 5. Composite score             ``NQI = 100·[w1·E_p + w2/(1+α·S_tau) + w3·min(1, C_min/C_safe)] − P·C_force``
 
@@ -68,6 +70,10 @@ class NQIParams:
     p_collision: float = 50.0  # penalty per force-qualified collision
     r_robot: float = 0.22  # m, TurtleBot3 Waffle circumscribed radius (approx.)
     eps_pos: float = 0.15  # m, goal position tolerance
+    # Chassis rectangle (x_min, x_max, y_min, y_max) in the robot base frame, metres. When set,
+    # C_min is measured from this oriented rectangle ("robot chassis boundary", architecture §7.3)
+    # instead of a circle of r_robot, which over-reports near-misses along the robot's sides.
+    footprint: Optional[tuple] = None
     resample_dt: float = 0.05  # s, uniform grid used for differentiation
     smooth_window: int = 5  # samples, moving-average window before differentiating
 
@@ -268,16 +274,82 @@ def _grid_clearance(points: np.ndarray, grid: OccupancyGrid, search_m: float = 3
     return best
 
 
+def _grid_points(grid: OccupancyGrid) -> np.ndarray:
+    """Occupied cell centres as (N, 3) obstacles of radius half a cell."""
+    occ_rows, occ_cols = np.nonzero(grid.occupied)
+    h = grid.occupied.shape[0]
+    xs = grid.origin[0] + (occ_cols + 0.5) * grid.resolution
+    ys = grid.origin[1] + (h - 1 - occ_rows + 0.5) * grid.resolution
+    return np.column_stack([xs, ys, np.full(xs.shape, grid.resolution / 2)])
+
+
+def clearance_series(
+    traj: Trajectory,
+    footprint: Sequence[float],
+    obstacles: Optional[Iterable[Any]] = None,
+    occupancy: Optional[OccupancyGrid] = None,
+    search_m: float = 2.0,
+) -> np.ndarray:
+    """Per-sample distance between the robot's chassis rectangle and the nearest obstacle boundary.
+
+    ``footprint`` is (x_min, x_max, y_min, y_max) in the robot frame; each obstacle point is
+    rotated into the robot frame at every sample, so heading matters (a robot sliding past
+    a crate side-on is closer than one approaching it head-on). Overlap gives 0 minus the
+    obstacle radius, i.e. a negative value; ``inf`` where nothing is within ``search_m``.
+    """
+    x0, x1, y0, y1 = (float(v) for v in footprint)
+    cx, cy, hx, hy = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2
+    obs = _normalize_obstacles(obstacles)
+    if occupancy is not None:
+        grid_pts = _grid_points(occupancy)
+        obs = np.vstack([obs, grid_pts]) if obs.size else grid_pts
+    out = np.full(traj.n, np.inf)
+    if obs.size == 0:
+        return out
+    yaw = traj.yaw if traj.yaw is not None else np.zeros(traj.n)
+    for i, (px, py, th) in enumerate(zip(traj.x, traj.y, yaw)):
+        near = (np.abs(obs[:, 0] - px) <= search_m) & (np.abs(obs[:, 1] - py) <= search_m)
+        if not near.any():
+            continue
+        o = obs[near]
+        c, s = math.cos(th), math.sin(th)
+        dx, dy = o[:, 0] - px, o[:, 1] - py
+        lx, ly = c * dx + s * dy, -s * dx + c * dy           # obstacle in the robot frame
+        ex = np.maximum(np.abs(lx - cx) - hx, 0.0)
+        ey = np.maximum(np.abs(ly - cy) - hy, 0.0)
+        out[i] = float(np.min(np.hypot(ex, ey) - o[:, 2]))
+    return out
+
+
+def footprint_clearance(
+    traj: Trajectory,
+    footprint: Sequence[float],
+    obstacles: Optional[Iterable[Any]] = None,
+    occupancy: Optional[OccupancyGrid] = None,
+    search_m: float = 2.0,
+) -> Optional[float]:
+    """Minimum of clearance_series: chassis rectangle to nearest obstacle over the run.
+    ``None`` when there is no obstacle information (or none within reach)."""
+    series = clearance_series(traj, footprint, obstacles, occupancy, search_m)
+    if series.size == 0 or not np.isfinite(series).any():
+        return None
+    return float(series[np.isfinite(series)].min())
+
+
 def min_clearance(
     traj: Trajectory,
     obstacles: Optional[Iterable[Any]] = None,
     occupancy: Optional[OccupancyGrid] = None,
     r_robot: float = NQIParams.r_robot,
+    footprint: Optional[Sequence[float]] = None,
 ) -> Optional[float]:
     """Minimum distance between the robot boundary and any obstacle boundary.
 
+    The robot is a circle of ``r_robot`` unless ``footprint`` (chassis rectangle) is given.
     Returns ``None`` when no obstacle information is available.
     """
+    if footprint is not None:
+        return footprint_clearance(traj, footprint, obstacles, occupancy)
     pts = traj.positions
     best = math.inf
     obs = _normalize_obstacles(obstacles)
@@ -352,7 +424,7 @@ def score_trajectory(
 
     e_p = path_efficiency(l_opt, l_actual)
     s_tau = trajectory_smoothness(traj, params)
-    c_min = min_clearance(traj, obstacles, occupancy, params.r_robot)
+    c_min = min_clearance(traj, obstacles, occupancy, params.r_robot, params.footprint)
     s_mission = mission_success(traj.end, goal, c_force, params.eps_pos)
     nqi_raw, terms = compute_nqi(e_p, s_tau, c_min, c_force, params)
 
@@ -512,7 +584,12 @@ def render_comparison_table(report: Mapping[str, Any]):
     mission_delta = ""
     if adv is not None:
         mission_delta = "Baseline maintained" if a.get("S_mission") == nom.get("S_mission") else "[red]Changed[/]"
-    row("Mission Completion Status", _mission_str(nom.get("S_mission")), _mission_str(a.get("S_mission")), mission_delta)
+    def mission(run: Mapping[str, Any]) -> str:
+        if run.get("nav_status") == "interrupted":
+            return "[yellow]Interrupted (partial)[/]"
+        return _mission_str(run.get("S_mission"))
+
+    row("Mission Completion Status", mission(nom), mission(a) if adv is not None else "", mission_delta)
     row("Mission Duration (T)", _fmt(nom.get("duration_s"), " s", 1), _fmt(a.get("duration_s"), " s", 1),
         _delta_str(deltas.get("duration_pct"), False))
     row("Traversed Path Length (L)", _fmt(nom.get("path_length_m"), " m"), _fmt(a.get("path_length_m"), " m"),
@@ -531,8 +608,11 @@ def render_comparison_table(report: Mapping[str, Any]):
         _delta_str(deltas.get("nqi_pct"), True))
 
     if nom.get("ate_mean_m") is not None or (adv and adv.get("ate_mean_m") is not None):
+        # Recorded runs (telemetry/benchmark.py) carry AMCL-vs-ground-truth error in these columns;
+        # synthetic/SLAM runs carry SLAM drift. Label the row for what it actually measures.
+        localization = "localization_error_mean_m" in nom or (adv is not None and "localization_error_mean_m" in adv)
         row(
-            "SLAM Drift (ATE Mean)",
+            "Localization Error (AMCL vs truth)" if localization else "SLAM Drift (ATE Mean)",
             _fmt(nom.get("ate_mean_m"), " m"),
             _fmt(a.get("ate_mean_m"), " m"),
             _delta_str(deltas.get("ate_mean_pct"), False),
@@ -540,9 +620,9 @@ def render_comparison_table(report: Mapping[str, Any]):
         def _health_str(div: Any) -> str:
             if div is None:
                 return "n/a"
-            return "[red]Diverged (>0.35m)[/]" if div else "[green]Healthy (<0.1m)[/]"
+            return "[red]Diverged (>0.35 m)[/]" if div else "[green]Healthy (≤0.35 m)[/]"
         row(
-            "SLAM Tracking Health",
+            "Localization Health" if localization else "SLAM Tracking Health",
             _health_str(nom.get("slam_diverged")),
             _health_str(a.get("slam_diverged")),
             "",

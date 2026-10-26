@@ -36,8 +36,8 @@ class FakeBridge:
     def __init__(self, ready=True):
         self.ready = ready
 
-    def reset(self):
-        pass
+    def reset(self, spawn=None):
+        self.spawn = spawn
 
     def snapshot(self):
         now = time.time()
@@ -163,7 +163,7 @@ def test_feedback_websocket_streams_nav_and_telemetry(setup):
         with tc.websocket_connect("/v1/nav/feedback?hz=20") as ws:
             msgs = [ws.receive_json() for _ in range(3)]
     m = msgs[-1]
-    assert set(m) == {"nav", "telemetry", "sim"}
+    assert set(m) == {"nav", "telemetry", "live", "sim"}
     assert m["nav"]["target_pose"]["x"] == 3 and m["nav"]["status"] == "navigating"
     assert m["telemetry"]["robot_pose"]["x"] == -2.0 and m["sim"]["ready"] is True
 

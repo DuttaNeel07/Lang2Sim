@@ -34,6 +34,8 @@ REQUIRED_SYSTEMS: Tuple[Tuple[str, str, str, str], ...] = (
     ("scene-broadcaster", "gz-sim-scene-broadcaster-system", "gz::sim::systems::SceneBroadcaster", ""),
     ("sensors", "gz-sim-sensors-system", "gz::sim::systems::Sensors", "<render_engine>ogre2</render_engine>"),
     ("imu", "gz-sim-imu-system", "gz::sim::systems::Imu", ""),
+    # The chassis bumper (robot_instrument.py) only publishes when the world runs Contact.
+    ("contact", "gz-sim-contact-system", "gz::sim::systems::Contact", ""),
 )
 ROBOT_HINTS = ("turtlebot", "waffle", "burger")
 NORMALIZED_NAME = "world.l2s.sdf"
