@@ -283,19 +283,19 @@ def _grid_points(grid: OccupancyGrid) -> np.ndarray:
     return np.column_stack([xs, ys, np.full(xs.shape, grid.resolution / 2)])
 
 
-def footprint_clearance(
+def clearance_series(
     traj: Trajectory,
     footprint: Sequence[float],
     obstacles: Optional[Iterable[Any]] = None,
     occupancy: Optional[OccupancyGrid] = None,
     search_m: float = 2.0,
-) -> Optional[float]:
-    """Minimum distance between the robot's chassis rectangle and any obstacle boundary.
+) -> np.ndarray:
+    """Per-sample distance between the robot's chassis rectangle and the nearest obstacle boundary.
 
     ``footprint`` is (x_min, x_max, y_min, y_max) in the robot frame; each obstacle point is
     rotated into the robot frame at every sample, so heading matters (a robot sliding past
     a crate side-on is closer than one approaching it head-on). Overlap gives 0 minus the
-    obstacle radius, i.e. a negative value. ``None`` when there is no obstacle information.
+    obstacle radius, i.e. a negative value; ``inf`` where nothing is within ``search_m``.
     """
     x0, x1, y0, y1 = (float(v) for v in footprint)
     cx, cy, hx, hy = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2
@@ -303,11 +303,11 @@ def footprint_clearance(
     if occupancy is not None:
         grid_pts = _grid_points(occupancy)
         obs = np.vstack([obs, grid_pts]) if obs.size else grid_pts
+    out = np.full(traj.n, np.inf)
     if obs.size == 0:
-        return None
+        return out
     yaw = traj.yaw if traj.yaw is not None else np.zeros(traj.n)
-    best = math.inf
-    for px, py, th in zip(traj.x, traj.y, yaw):
+    for i, (px, py, th) in enumerate(zip(traj.x, traj.y, yaw)):
         near = (np.abs(obs[:, 0] - px) <= search_m) & (np.abs(obs[:, 1] - py) <= search_m)
         if not near.any():
             continue
@@ -317,9 +317,23 @@ def footprint_clearance(
         lx, ly = c * dx + s * dy, -s * dx + c * dy           # obstacle in the robot frame
         ex = np.maximum(np.abs(lx - cx) - hx, 0.0)
         ey = np.maximum(np.abs(ly - cy) - hy, 0.0)
-        d = float(np.min(np.hypot(ex, ey) - o[:, 2]))
-        best = min(best, d)
-    return None if math.isinf(best) else best
+        out[i] = float(np.min(np.hypot(ex, ey) - o[:, 2]))
+    return out
+
+
+def footprint_clearance(
+    traj: Trajectory,
+    footprint: Sequence[float],
+    obstacles: Optional[Iterable[Any]] = None,
+    occupancy: Optional[OccupancyGrid] = None,
+    search_m: float = 2.0,
+) -> Optional[float]:
+    """Minimum of clearance_series: chassis rectangle to nearest obstacle over the run.
+    ``None`` when there is no obstacle information (or none within reach)."""
+    series = clearance_series(traj, footprint, obstacles, occupancy, search_m)
+    if series.size == 0 or not np.isfinite(series).any():
+        return None
+    return float(series[np.isfinite(series)].min())
 
 
 def min_clearance(

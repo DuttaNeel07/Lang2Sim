@@ -1,0 +1,184 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-10-26T22:28:48+00:00",
+  "params": {
+    "w1": 0.35,
+    "w2": 0.25,
+    "w3": 0.4,
+    "alpha": 0.05,
+    "c_safe": 0.5,
+    "p_collision": 50.0,
+    "r_robot": 0.22,
+    "eps_pos": 0.25,
+    "footprint": [
+      -0.197,
+      0.069,
+      -0.153,
+      0.153
+    ],
+    "resample_dt": 0.05,
+    "smooth_window": 5
+  },
+  "runs": {
+    "nominal": {
+      "label": "nominal",
+      "samples": 892,
+      "duration_s": 60.588,
+      "path_length_m": 13.4075,
+      "optimal_length_m": 13.0707,
+      "optimal_length_method": "mission_astar",
+      "goal": [
+        -2.5,
+        1.5
+      ],
+      "final_position": [
+        -2.3632,
+        1.5652
+      ],
+      "E_p": 0.9749,
+      "S_tau": 47.0435,
+      "C_min_m": 0.9346,
+      "clearance_source": "map",
+      "C_force": 0,
+      "S_mission": 1,
+      "terms": {
+        "efficiency": 34.121,
+        "smoothness": 7.458,
+        "clearance": 40.0,
+        "collision_penalty": -0.0
+      },
+      "nqi_raw": 81.579,
+      "nqi": 81.579,
+      "ate_mean_m": 0.0993,
+      "ate_max_m": 0.179,
+      "ate_rmse_m": 0.1094,
+      "slam_diverged": false,
+      "slam_metrics": {
+        "mean_ate": 0.0993,
+        "max_ate": 0.179,
+        "rmse_ate": 0.1094,
+        "diverged": false
+      },
+      "nav_status": "succeeded",
+      "final_goal_error_m": 0.1516,
+      "goal_tolerance_m": 0.25,
+      "pose_source": "ground_truth",
+      "time_base": "sim",
+      "contact_force_source": "none",
+      "contact_events": [],
+      "dynamic_obstacles": [],
+      "min_scan_range_m": 1.1802,
+      "localization_error_mean_m": 0.0993,
+      "localization_error_max_m": 0.179,
+      "partial": false
+    },
+    "adversarial": {
+      "label": "adversarial",
+      "samples": 2210,
+      "duration_s": 150.212,
+      "path_length_m": 14.6931,
+      "optimal_length_m": 13.05,
+      "optimal_length_method": "mission_astar",
+      "goal": [
+        -2.5,
+        1.5
+      ],
+      "final_position": [
+        -2.5205,
+        1.5798
+      ],
+      "E_p": 0.8882,
+      "S_tau": 101.962,
+      "C_min_m": 0.0583,
+      "clearance_source": "obstacles+map",
+      "C_force": 0,
+      "S_mission": 1,
+      "terms": {
+        "efficiency": 31.086,
+        "smoothness": 4.1,
+        "clearance": 4.66,
+        "collision_penalty": -0.0
+      },
+      "nqi_raw": 39.846,
+      "nqi": 39.846,
+      "ate_mean_m": 0.0631,
+      "ate_max_m": 0.1522,
+      "ate_rmse_m": 0.0763,
+      "slam_diverged": false,
+      "slam_metrics": {
+        "mean_ate": 0.0631,
+        "max_ate": 0.1522,
+        "rmse_ate": 0.0763,
+        "diverged": false
+      },
+      "nav_status": "succeeded",
+      "final_goal_error_m": 0.0824,
+      "goal_tolerance_m": 0.25,
+      "pose_source": "ground_truth",
+      "time_base": "sim",
+      "contact_force_source": "none",
+      "contact_events": [],
+      "dynamic_obstacles": [
+        {
+          "name": "wooden_crate_1",
+          "model": "wooden_crate",
+          "x": 2.686,
+          "y": 0.05,
+          "yaw": 1.5716,
+          "shape": "box",
+          "size": [
+            0.6,
+            0.6
+          ],
+          "r": 0.4243
+        }
+      ],
+      "min_scan_range_m": 0.1994,
+      "localization_error_mean_m": 0.0631,
+      "localization_error_max_m": 0.1522,
+      "partial": false
+    }
+  },
+  "deltas": {
+    "duration_pct": 147.92,
+    "path_length_pct": 9.59,
+    "E_p_pct": -8.89,
+    "S_tau_pct": 116.74,
+    "C_min_pct": -93.76,
+    "nqi_pct": -51.16,
+    "ate_mean_pct": -36.46,
+    "C_force_delta": 0
+  },
+  "scoring": {
+    "goal_tolerance_m": 0.25,
+    "goal_tolerance_source": "nav2_goal_checker",
+    "robot_footprint": "turtlebot3_waffle chassis rectangle",
+    "footprint_m": [
+      -0.197,
+      0.069,
+      -0.153,
+      0.153
+    ]
+  },
+  "stress": {
+    "triggers": [
+      {
+        "trigger_type": "time",
+        "trigger_value": 21.21,
+        "model_name": "wooden_crate",
+        "spawn_pose": {
+          "x": 2.686,
+          "y": 0.05,
+          "yaw": 1.5716
+        },
+        "fired_at_s": 21.42,
+        "error": null
+      }
+    ],
+    "light": 0.1,
+    "source": "default_crate"
+  },
+  "run_dir": "catalog/demo_runs/empty_room_benchmark",
+  "rescored": true,
+  "partial_runs": []
+}
