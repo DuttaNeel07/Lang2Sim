@@ -205,3 +205,18 @@ def test_rack_across_the_path_keeps_off_the_robot_and_walls():
     if spot is not None:                                                          # free space permitting
         x, y, yaw = spot
         assert math.hypot(x + 4.5, y + 3.5) >= 0.6 + 0.6                          # rack edge >= 0.6 m away
+
+
+def test_obstacle_goes_on_the_recorded_lane_when_straight_ahead_is_blocked():
+    from lang2sim.cli.demo_commands import pick_spot_fan, pick_spot_on_path
+
+    m = read_map(FIXTURES / "empty_room")
+    # Recorded nominal lane along y = -1.5 from x = -2.5 to 2.5, then up to (2.5, 1.5).
+    lane = [(-2.5 + 0.05 * i, -1.5) for i in range(101)] + [(2.5, -1.5 + 0.05 * i) for i in range(1, 61)]
+    spot = pick_spot_on_path({"x": -1.0, "y": -1.5, "yaw": 0.0}, lane, [(2.5, -1.5), (2.5, 1.5)], m)
+    assert spot is not None and spot[1] == pytest.approx(-1.5) and 0.4 < spot[0] < 1.3     # on the lane, ahead
+    # Robot far off the recorded lane (already detoured): no lane placement.
+    assert pick_spot_on_path({"x": 0.0, "y": 1.0, "yaw": 0.0}, lane, [], m) is None
+    # Fan search turns away from a wall dead ahead.
+    fan = pick_spot_fan({"x": 2.0, "y": 0.0, "yaw": 0.6}, None, [], m)
+    assert fan is not None

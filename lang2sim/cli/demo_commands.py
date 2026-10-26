@@ -232,6 +232,61 @@ def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, fl
     return None
 
 
+def pick_spot_on_path(pose: Dict[str, float], path: Sequence[Tuple[float, float]],
+                      avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
+                      model: str = "wooden_crate", across: bool = False,
+                      ahead: Tuple[float, float] = (1.2, 3.2)) -> Optional[Tuple[float, float, float]]:
+    """(x, y, yaw) on a recorded path (the robot's real lane), `ahead` metres of path beyond the
+    robot, or None. Same rules as pick_crate_spot: free map cells, clear of waypoints."""
+    if len(path) < 2:
+        return None
+    x, y = pose["x"], pose["y"]
+    i0 = min(range(len(path)), key=lambda i: (path[i][0] - x) ** 2 + (path[i][1] - y) ** 2)
+    if math.hypot(path[i0][0] - x, path[i0][1] - y) > 1.0:
+        return None                        # robot is not on this path (e.g. it already detoured)
+    half = CRATE_HALF.get(model, CRATE_HALF["wooden_crate"])
+    keep = KEEP_CLEAR_OF_TARGETS_M + max(half) - 0.3
+    acc, candidates = 0.0, []
+    for i in range(i0, len(path) - 1):
+        (ax, ay), (bx, by) = path[i], path[i + 1]
+        acc += math.hypot(bx - ax, by - ay)
+        if acc > ahead[1]:
+            break
+        if acc >= ahead[0]:
+            candidates.append((acc, bx, by, math.atan2(by - ay, bx - ax)))
+    # middle of the window first (enough time for the robot to see it and re-plan)
+    mid = sum(ahead) / 2
+    for _, cx, cy, tangent in sorted(candidates, key=lambda c: abs(c[0] - mid)):
+        yaw = tangent + (math.pi / 2 if across else 0.0)
+        if math.hypot(cx - x, cy - y) < 0.8 + max(half):
+            continue
+        if any(math.hypot(cx - a, cy - b) < keep for a, b in avoid):
+            continue
+        if _free(map_info, cx, cy, half, yaw):
+            return round(cx, 3), round(cy, 3), round(math.atan2(math.sin(yaw), math.cos(yaw)), 4)
+    return None
+
+
+def pick_spot_fan(pose: Dict[str, float], heading_to: Optional[Tuple[float, float]],
+                  avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
+                  model: str = "wooden_crate", ahead: float = 1.5,
+                  across: bool = False) -> Optional[Tuple[float, float, float]]:
+    """pick_crate_spot, widened to ±35° around the heading when straight ahead is blocked
+    (the straight line to a waypoint often cuts a shelf corner the robot drives around)."""
+    spot = pick_crate_spot(pose, heading_to, avoid, map_info, model, ahead, across)
+    if spot is not None:
+        return spot
+    x, y = pose["x"], pose["y"]
+    base = math.atan2(heading_to[1] - y, heading_to[0] - x) if heading_to is not None and \
+        math.hypot(heading_to[0] - x, heading_to[1] - y) > 0.3 else pose.get("yaw", 0.0)
+    for deg in (10, -10, 20, -20, 35, -35):
+        turned = dict(pose, yaw=base + math.radians(deg))
+        spot = pick_crate_spot(turned, None, avoid, map_info, model, ahead, across)
+        if spot is not None:
+            return spot
+    return None
+
+
 # --------------------------------------------------------------------------- other intents
 _STOP_SIM = re.compile(r"^(/stop|stop|stop (the )?sim(ulation)?|kill (the )?sim(ulation)?|exit simulation|shut ?down( the sim(ulation)?)?)\.?$")
 _HALT = re.compile(r"\b(stop (the )?robot|halt|freeze|stop moving|cancel (the )?nav(igation)?|pause (the )?robot)\b")
@@ -449,10 +504,25 @@ class DemoRunner:
                         self.say("[#f39c12]That spot overlaps a wall or another object on the map; spawning anyway.[/]")
                     where = "at the requested position"
                 else:
-                    spot = pick_crate_spot(live.pose.model_dump(), target, avoid, map_info, model, ahead, across)
+                    path = await self._recorded_path(s)
+                    pose = live.pose.model_dump()
+
+                    def place(acr: bool):
+                        on_path = pick_spot_on_path(pose, path, avoid, map_info, model, acr) if path else None
+                        return on_path or pick_spot_fan(pose, target, avoid, map_info, model, ahead, acr)
+
+                    spot = place(across)
+                    if spot is None and across:
+                        # A rack laid across a narrow aisle overlaps the shelving or walls: try along the path.
+                        spot = place(False)
+                        if spot is not None:
+                            across = False
+                            self.say(f"[#f39c12]A {model.replace('_', ' ')} doesn't fit across the aisle here; "
+                                     "placing it along the robot's path instead.[/]")
                     if spot is None:
-                        raise RuntimeError("no free spot ahead of the robot that keeps waypoints reachable; "
-                                           "try again once it is mid-leg")
+                        raise RuntimeError(f"no free spot ahead of the robot for a {model.replace('_', ' ')} that keeps "
+                                           "waypoints reachable; try again in a few seconds, or a smaller obstacle "
+                                           "(\"drop a crate in front of the robot\")")
                     d = math.hypot(spot[0] - live.pose.x, spot[1] - live.pose.y)
                     where = f"{d:.1f} m ahead of the robot" + ("" if nav.is_active else
                                                                 " [#8b98a8](robot not navigating: placed along its heading)[/]")
@@ -470,6 +540,11 @@ class DemoRunner:
         s = self._session()
         try:
             st = await s.api.nav_cancel()
+            for _ in range(15):                      # Nav2 confirms the cancel asynchronously
+                if not st.is_active:
+                    break
+                await asyncio.sleep(0.2)
+                st = await s.api.nav_status()
             live = await s.api.telemetry_live()
         finally:
             await s.stop()
@@ -539,6 +614,10 @@ class DemoRunner:
                 self.say("[bold]Nominal run[/] recording: driving the mission from spec.json…")
             run = await s.run_recorded_mission(run_dir, label=label, on_progress=self._nav_progress)
             self.progress(None)
+            if label == "adversarial" and not any(e.get("during_run", True) for e in run.result.spawned_entities):
+                self.say("[#f39c12]No obstacle was dropped during this stress run, so the comparison is "
+                         "lap-to-lap variation, not stress. Drop one with /stress (or say it) mid-leg next time, "
+                         "or use /benchmark.[/]")
             self.say(f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
                      f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions")
             import json
@@ -610,6 +689,17 @@ class DemoRunner:
                  "The sidebar, dashboard and /report now use it.")
 
     # --- helpers -------------------------------------------------------------
+    async def _recorded_path(self, s) -> List[Tuple[float, float]]:
+        """The nominal run's path in this run folder (the robot's real lane), or []."""
+        import json
+
+        try:
+            run_dir = await self._host_run_dir(s)
+            data = json.loads((run_dir / "logs" / "trajectory_nominal.json").read_text())
+        except Exception:  # noqa: BLE001 - no nominal run yet: fall back to the heading
+            return []
+        return [(p["x"], p["y"]) for p in data.get("samples") or []]
+
     async def _back_to_start(self, s, run_dir: Path) -> None:
         from lang2sim.core.models import SimSpec
 
