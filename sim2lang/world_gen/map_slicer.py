@@ -99,7 +99,10 @@ class ZeroSlamMapSlicer:
         header = f"P5\n{cols} {rows}\n255\n".encode("ascii")
         with open(pgm_path, "wb") as f:
             f.write(header)
-            f.write(grid)
+            # PGM rows run top to bottom and Nav2's map_server puts the first row at
+            # the map's max y; grid row 0 is min y (origin), so write rows in reverse.
+            for r in range(rows - 1, -1, -1):
+                f.write(grid[r * cols:(r + 1) * cols])
 
         # 4. Write Nav2 map.yaml metadata
         yaml_content = f"""image: {map_name}.pgm
