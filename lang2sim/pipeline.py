@@ -201,55 +201,21 @@ def make_session(display: Optional[str] = None, software: bool = False, camera: 
     return session, plan
 
 
-def score_run(run: Path, samples: List[Tuple[float, float, float]], goal: Tuple[float, float],
-              via: Optional[List[Tuple[float, float]]] = None) -> Optional[dict]:
-    """Part 4 NQI over the recorded (sim_time, x, y) path; report saved to logs/nqi_report.json.
-
-    With ``via`` (the waypoints actually visited) the optimal length is the A* tour
-    start -> via... -> goal, so a waypoint mission is not compared to a straight dash.
-    """
-    try:
-        import numpy as np
-
-        from lang2sim.telemetry.nqi_scorer import OccupancyGrid, optimal_length, score_trajectory
-        from lang2sim.telemetry.trajectory import Trajectory
-
-        pts, last_t = [], None
-        for t, x, y in samples:
-            if last_t is None or t > last_t:
-                pts.append((t, x, y))
-                last_t = t
-        if len(pts) < 3:
-            return None
-        (run / "logs").mkdir(exist_ok=True)
-        (run / "logs" / "trajectory.json").write_text(json.dumps({"goal": goal, "t_x_y": pts}))
-        t, x, y = (np.array(c, dtype=float) for c in zip(*pts))
-        traj = Trajectory(t=t, x=x, y=y, goal=goal, label=run.name)
-        grid = OccupancyGrid.from_yaml(run / "map.yaml")
-        l_opt = None
-        if via:
-            stops = [(pts[0][1], pts[0][2]), *via, goal]
-            l_opt = sum(optimal_length(a, b, grid)[0] for a, b in zip(stops, stops[1:]))
-        report = score_trajectory(traj, goal=goal, occupancy=grid, l_optimal=l_opt)
-        report["optimal_length_method"] = "astar tour via waypoints" if via else report["optimal_length_method"]
-        (run / "logs").mkdir(exist_ok=True)
-        (run / "logs" / "nqi_report.json").write_text(json.dumps(report, indent=2))
-        return report
-    except Exception as e:  # noqa: BLE001 - scoring must never break the demo
-        return {"error": f"{type(e).__name__}: {e}"}
-
-
 async def launch_and_drive(session, run: Path, *, gui: bool = True, rviz: bool = True,
-                           on_event=None, on_telemetry=None, poll_s: float = 0.5):
+                           on_event=None, on_telemetry=None, poll_s: float = 0.5, label: str = "nominal"):
     """Start the run in the (started) session, wait for ready, drive the mission, score it.
 
+    The mission is recorded by the telemetry engine inside the sim container (sim-time
+    stamps, Gazebo ground-truth poses, chassis bumper) and scored into
+    <run>/benchmark_report.json, which the dashboard, /report and the grounded chat use.
     on_event(str) gets human-readable progress; on_telemetry(SimStatus) gets live telemetry.
-    Returns (final NavStatus, NQI report dict or None).
+    Returns (final NavStatus, scored run dict or None).
     """
     import asyncio
 
+    from lang2sim.runtime.control_api.client import ControlAPIError
+
     say = on_event or (lambda s: None)
-    spec = SimSpec.model_validate_json((run / "spec.json").read_text())
 
     def progress(st, elapsed):
         todo = [k for k, v in st.readiness.items() if not v]
@@ -257,28 +223,42 @@ async def launch_and_drive(session, run: Path, *, gui: bool = True, rviz: bool =
 
     st = await session.open_run(run, gui=gui, rviz=rviz, on_progress=progress, poll_s=2.0)
     say(f"READY: sim time {st.sim_time:.1f}s, RTF {st.rtf:.2f}")
-    poses = [*spec.mission.waypoints, spec.mission.goal_pose]
-    await session.api.nav_waypoints(poses, timeout_seconds=spec.mission.timeout_seconds)
-    say(f"mission sent: {len(poses)} poses")
-    samples: List[Tuple[float, float, float]] = []
-    last = None
-    while True:
-        nav = await session.api.nav_status()
+    spec = SimSpec.model_validate_json((run / "spec.json").read_text())
+    say(f"mission sent: {len(spec.mission.waypoints) + 1} poses, recording telemetry")
+
+    def nav_progress(nav):
+        say(f"{nav.status} waypoint {nav.waypoint_index + 1}/{nav.waypoints_total}, "
+            f"{nav.distance_remaining:.1f} m to go")
+
+    async def feed_telemetry():
+        while True:
+            try:
+                on_telemetry(await session.api.telemetry())
+            except Exception:  # noqa: BLE001 - telemetry display is best effort
+                pass
+            await asyncio.sleep(poll_s)
+
+    feeder = asyncio.ensure_future(feed_telemetry()) if on_telemetry else None
+    try:
         try:
-            tel = await session.api.telemetry()
-            samples.append((tel.sim_time, tel.robot_pose.x, tel.robot_pose.y))
-            if on_telemetry:
-                on_telemetry(tel)
-        except Exception:  # noqa: BLE001
-            pass
-        key = (nav.status, nav.waypoint_index, round(nav.distance_remaining))
-        if key != last:
-            say(f"{nav.status} waypoint {nav.waypoint_index + 1}/{nav.waypoints_total}, "
-                f"{nav.distance_remaining:.1f} m to go")
-            last = key
-        if not nav.is_active:
-            break
-        await asyncio.sleep(poll_s)
-    via = [(w.x, w.y) for w in spec.mission.waypoints] if nav.status == "succeeded" else None
-    report = score_run(run, samples, (spec.mission.goal_pose.x, spec.mission.goal_pose.y), via=via)
-    return nav, report
+            recorded = await session.run_recorded_mission(run, label=label, on_progress=nav_progress, poll_s=poll_s)
+        except ControlAPIError as e:
+            if e.status_code not in (404, 503):
+                raise
+            say("telemetry engine not available in this sim image: driving without scoring")
+            return await session.run_mission(run, on_progress=nav_progress, poll_s=poll_s), None
+    finally:
+        if feeder:
+            feeder.cancel()
+    from lang2sim.telemetry.benchmark import score_run_folder
+
+    traj_file = run / "logs" / f"trajectory_{label}.json"
+    if not traj_file.is_file():          # the container could not write into the run folder
+        traj_file.parent.mkdir(parents=True, exist_ok=True)
+        traj_file.write_text(json.dumps(recorded.result.trajectory), encoding="utf-8")
+    _, report = score_run_folder(run)
+    runs = report.get("runs") or {}
+    scored = next((r for r in runs.values() if r.get("label") == label), runs.get("nominal"))
+    if scored is not None:
+        scored = {**scored, "report_path": str(run / "benchmark_report.json")}
+    return recorded.nav, scored

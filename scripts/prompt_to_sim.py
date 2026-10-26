@@ -62,12 +62,13 @@ async def _drive(session, run, gui, rviz) -> int:
                                              on_event=lambda s: print(f"      {s}", flush=True))
         print(f"\nMISSION {nav.status.upper()}" + (f": {nav.message}" if nav.message else ""))
         if report and "nqi" in report:
-            print(f"Part 4 score: NQI {report['nqi']:.1f}/100  path {report['path_length_m']:.1f} m "
-                  f"(optimal {report['optimal_length_m']:.1f} m, efficiency {report['E_p']:.2f}), "
-                  f"min clearance {report['C_min_m']} m, jerk cost {report['S_tau']:.1f} (lower = smoother)")
-            print(f"Report: {run / 'logs' / 'nqi_report.json'}")
-        elif report:
-            print(f"(scoring skipped: {report.get('error')})")
+            import json
+
+            from lang2sim.telemetry.nqi_scorer import render_to_console
+            render_to_console(json.loads((run / "benchmark_report.json").read_text()))
+            print(f"Report: {report['report_path']}")
+        print(f"Dashboard: http://localhost:{session.opts.api_port}/dashboard   "
+              "TUI: lang2sim, then /mission stress, /stress, /report")
         print("Simulation still running - Ctrl-C to stop.")
         while True:
             await asyncio.sleep(5)
