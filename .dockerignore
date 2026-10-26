@@ -1,0 +1,14 @@
+# Lang2Sim build context is the repo root, but the sim image only needs a few
+# paths. Allow-list them so docs, .git, venvs and project outputs never get sent
+# to the Docker daemon.
+*
+
+!docker/sim/
+
+# Step 2+: uncomment once the package exists and the Dockerfile COPYs it.
+# !pyproject.toml
+# !sim2lang/
+
+**/__pycache__
+**/*.pyc
+**/.DS_Store
