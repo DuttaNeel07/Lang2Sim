@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from sim2lang.core.models import Pose2D
-from sim2lang.runtime.nav2_dispatcher import NavDispatcher
+from lang2sim.core.models import Pose2D
+from lang2sim.runtime.nav2_dispatcher import NavDispatcher
 
 
 class FakeNav:

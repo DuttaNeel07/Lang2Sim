@@ -4,14 +4,14 @@ File: tests/test_agent_tui.py
 """
 
 import pytest
-from sim2lang.cli.app import Lang2SimApp
-from sim2lang.cli.screens.landing_screen import LandingScreen
-from sim2lang.cli.screens.workspace_screen import WorkspaceScreen
-from sim2lang.cli.widgets.thought_box import ThoughtBox
-from sim2lang.cli.widgets.action_pill import ActionPill
-from sim2lang.cli.widgets.prompt_card import PromptCard
-from sim2lang.cli.widgets.telemetry_sidebar import TelemetrySidebar
-from sim2lang.agent.tools import TOOL_REGISTRY, execute_tool
+from lang2sim.cli.app import Lang2SimApp
+from lang2sim.cli.screens.landing_screen import LandingScreen
+from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
+from lang2sim.cli.widgets.thought_box import ThoughtBox
+from lang2sim.cli.widgets.action_pill import ActionPill
+from lang2sim.cli.widgets.prompt_card import PromptCard
+from lang2sim.cli.widgets.telemetry_sidebar import TelemetrySidebar
+from lang2sim.agent.tools import TOOL_REGISTRY, execute_tool
 
 @pytest.mark.asyncio
 async def test_landing_screen_renders_and_has_focus():
@@ -128,7 +128,7 @@ def test_tool_registry_has_all_14_tools():
 @pytest.mark.asyncio
 async def test_command_palette_modal_open_and_filter():
     """Verify CommandPaletteModal opens on ctrl+p, filters dynamically, and dismisses on esc."""
-    from sim2lang.cli.screens.command_palette_modal import CommandPaletteModal
+    from lang2sim.cli.screens.command_palette_modal import CommandPaletteModal
     from textual.widgets import Input
 
     app = Lang2SimApp()
@@ -163,7 +163,7 @@ async def test_command_palette_modal_open_and_filter():
 @pytest.mark.asyncio
 async def test_nemotron_client_config():
     """Verify NemotronClient loads config, detects key types, and initializes properly."""
-    from sim2lang.agent.nemotron_client import NemotronClient
+    from lang2sim.agent.nemotron_client import NemotronClient
 
     # Test with custom key
     client = NemotronClient(api_key="nvapi-test-key")
@@ -216,7 +216,7 @@ async def test_workspace_screen_conversation_flow():
 @pytest.mark.asyncio
 async def test_session_manager_persistence_and_grouping(tmp_path):
     """Verify session manager creates, saves, lists, pins, and groups sessions."""
-    from sim2lang.core.session_manager import SessionManager, ChatMessage
+    from lang2sim.core.session_manager import SessionManager, ChatMessage
 
     mgr = SessionManager(sessions_dir=tmp_path)
     s1 = mgr.create_session(title="Review ROS 2 SLAM pipeline architecture")
@@ -248,8 +248,8 @@ async def test_session_manager_persistence_and_grouping(tmp_path):
 @pytest.mark.asyncio
 async def test_sessions_modal_flow():
     """Verify SessionsModal opens on ctrl+s, filters dynamically, and switches sessions."""
-    from sim2lang.cli.screens.sessions_modal import SessionsModal
-    from sim2lang.core.session_manager import session_manager
+    from lang2sim.cli.screens.sessions_modal import SessionsModal
+    from lang2sim.core.session_manager import session_manager
     from textual.widgets import Input
 
     import uuid
@@ -298,8 +298,8 @@ async def test_sessions_modal_flow():
 @pytest.mark.asyncio
 async def test_command_palette_switch_session_enter_opens_sessions_modal():
     """Verify selecting 'Switch session' in Command Palette and pressing Enter transitions to SessionsModal."""
-    from sim2lang.cli.screens.command_palette_modal import CommandPaletteModal
-    from sim2lang.cli.screens.sessions_modal import SessionsModal
+    from lang2sim.cli.screens.command_palette_modal import CommandPaletteModal
+    from lang2sim.cli.screens.sessions_modal import SessionsModal
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:

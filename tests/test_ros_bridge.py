@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from sim2lang.runtime.ros_bridge import (
+from lang2sim.runtime.ros_bridge import (
     NAV2_NODES,
     RosBridge,
     RosSnapshot,

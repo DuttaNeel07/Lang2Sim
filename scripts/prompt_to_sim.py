@@ -19,7 +19,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from sim2lang.pipeline import build_run, describe, prompt_to_spec  # noqa: E402
+from lang2sim.pipeline import build_run, describe, prompt_to_spec  # noqa: E402
 
 
 def main() -> int:

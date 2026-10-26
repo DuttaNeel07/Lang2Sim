@@ -19,8 +19,8 @@ sys.path.insert(0, str(REPO))
 
 import importlib  # noqa: E402
 
-from sim2lang.compiler import compile_world_sdf, generate_simulation_ir  # noqa: E402
-from sim2lang.core.models import (  # noqa: E402
+from lang2sim.compiler import compile_world_sdf, generate_simulation_ir  # noqa: E402
+from lang2sim.core.models import (  # noqa: E402
     EnvironmentSpec,
     MissionSpec,
     ObjectSpec,
@@ -29,10 +29,10 @@ from sim2lang.core.models import (  # noqa: E402
     SimSpec,
     Vector3D,
 )
-from sim2lang.runtime.run_folder import write_manifest  # noqa: E402
-from sim2lang.world_gen import slice_map_from_layout  # noqa: E402
+from lang2sim.runtime.run_folder import write_manifest  # noqa: E402
+from lang2sim.world_gen import slice_map_from_layout  # noqa: E402
 
-cfg = importlib.import_module("sim2lang.core.config")
+cfg = importlib.import_module("lang2sim.core.config")
 
 
 def box(i, model, x, y, dx, dy, dz):

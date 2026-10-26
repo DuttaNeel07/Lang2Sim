@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-from sim2lang.runtime.display import DisplayPlan
-from sim2lang.runtime.docker_runner import DockerRunner, RunOptions
-from sim2lang.runtime.platform import detect_docker
-from sim2lang.runtime.session import FIXTURES_DIR, SimSession
+from lang2sim.runtime.display import DisplayPlan
+from lang2sim.runtime.docker_runner import DockerRunner, RunOptions
+from lang2sim.runtime.platform import detect_docker
+from lang2sim.runtime.session import FIXTURES_DIR, SimSession
 
 pytestmark = pytest.mark.skipif(os.getenv("L2S_INTEGRATION") != "1",
                                 reason="set L2S_INTEGRATION=1 to run Docker integration tests")
