@@ -47,7 +47,11 @@ def main() -> int:
     session, plan = make_session(display=display, software="--software" in rest,
                                  camera="--no-camera" not in rest)
     print(f"[4/4] Part 3 runtime ({plan.describe()}): starting {session.opts.image}")
-    return asyncio.run(_drive(session, run, gui="--no-gui" not in rest, rviz="--no-rviz" not in rest))
+    try:
+        return asyncio.run(_drive(session, run, gui="--no-gui" not in rest, rviz="--no-rviz" not in rest))
+    except KeyboardInterrupt:  # session.stop() already ran in _drive's finally
+        print("\nstopped.")
+        return 0
 
 
 async def _drive(session, run, gui, rviz) -> int:
@@ -60,14 +64,14 @@ async def _drive(session, run, gui, rviz) -> int:
         if report and "nqi" in report:
             print(f"Part 4 score: NQI {report['nqi']:.1f}/100  path {report['path_length_m']:.1f} m "
                   f"(optimal {report['optimal_length_m']:.1f} m, efficiency {report['E_p']:.2f}), "
-                  f"min clearance {report['C_min_m']} m, smoothness {report['S_tau']:.2f}")
+                  f"min clearance {report['C_min_m']} m, jerk cost {report['S_tau']:.1f} (lower = smoother)")
             print(f"Report: {run / 'logs' / 'nqi_report.json'}")
         elif report:
             print(f"(scoring skipped: {report.get('error')})")
         print("Simulation still running - Ctrl-C to stop.")
         while True:
             await asyncio.sleep(5)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         return 0
     finally:
         await session.stop()

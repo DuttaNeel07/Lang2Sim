@@ -290,7 +290,7 @@ class WorkspaceScreen(Screen):
                 await add(f"**Navigation Quality Index (Part 4): {report['nqi']:.1f} / 100**, path "
                           f"{report['path_length_m']:.1f} m vs optimal {report['optimal_length_m']:.1f} m "
                           f"(efficiency {report['E_p']:.2f}), min clearance {report['C_min_m']} m, "
-                          f"smoothness {report['S_tau']:.2f}")
+                          f"jerk cost {report['S_tau']:.1f} (lower = smoother)")
             await add(f"\nSimulation is still running. Type `/stop` to end it. Logs: `{run / 'logs'}`")
         except Exception as e:  # noqa: BLE001 - show the failure in the chat, keep the app alive
             status[0] = ""

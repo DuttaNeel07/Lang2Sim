@@ -37,7 +37,7 @@ cfg = importlib.import_module("lang2sim.core.config")
 # --- known-good layouts (all verified to navigate end to end) ---------------------
 
 RACK_SLOTS = [(-2.5, 2.5), (2.5, 2.5), (-2.5, -0.5), (2.5, -0.5)]
-CRATE_SLOTS = [(4.5, -3.5), (-4.5, 0.9), (4.5, 4.2)]
+CRATE_SLOTS = [(4.5, -3.5), (5.2, -1.8), (4.5, 4.2)]  # kept off the mission corridors
 WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "a": 1, "an": 1, "single": 1}
 
 SPEC_SYSTEM_PROMPT = """You convert a robotics test scenario into JSON for a Gazebo simulation.
@@ -195,12 +195,17 @@ def make_session(display: Optional[str] = None, software: bool = False, camera: 
     return session, plan
 
 
-def score_run(run: Path, samples: List[Tuple[float, float, float]], goal: Tuple[float, float]) -> Optional[dict]:
-    """Part 4 NQI over the recorded (sim_time, x, y) path; report saved to logs/nqi_report.json."""
+def score_run(run: Path, samples: List[Tuple[float, float, float]], goal: Tuple[float, float],
+              via: Optional[List[Tuple[float, float]]] = None) -> Optional[dict]:
+    """Part 4 NQI over the recorded (sim_time, x, y) path; report saved to logs/nqi_report.json.
+
+    With ``via`` (the waypoints actually visited) the optimal length is the A* tour
+    start -> via... -> goal, so a waypoint mission is not compared to a straight dash.
+    """
     try:
         import numpy as np
 
-        from lang2sim.telemetry.nqi_scorer import OccupancyGrid, score_trajectory
+        from lang2sim.telemetry.nqi_scorer import OccupancyGrid, optimal_length, score_trajectory
         from lang2sim.telemetry.trajectory import Trajectory
 
         pts, last_t = [], None
@@ -210,9 +215,17 @@ def score_run(run: Path, samples: List[Tuple[float, float, float]], goal: Tuple[
                 last_t = t
         if len(pts) < 3:
             return None
+        (run / "logs").mkdir(exist_ok=True)
+        (run / "logs" / "trajectory.json").write_text(json.dumps({"goal": goal, "t_x_y": pts}))
         t, x, y = (np.array(c, dtype=float) for c in zip(*pts))
         traj = Trajectory(t=t, x=x, y=y, goal=goal, label=run.name)
-        report = score_trajectory(traj, goal=goal, occupancy=OccupancyGrid.from_yaml(run / "map.yaml"))
+        grid = OccupancyGrid.from_yaml(run / "map.yaml")
+        l_opt = None
+        if via:
+            stops = [(pts[0][1], pts[0][2]), *via, goal]
+            l_opt = sum(optimal_length(a, b, grid)[0] for a, b in zip(stops, stops[1:]))
+        report = score_trajectory(traj, goal=goal, occupancy=grid, l_optimal=l_opt)
+        report["optimal_length_method"] = "astar tour via waypoints" if via else report["optimal_length_method"]
         (run / "logs").mkdir(exist_ok=True)
         (run / "logs" / "nqi_report.json").write_text(json.dumps(report, indent=2))
         return report
@@ -221,7 +234,7 @@ def score_run(run: Path, samples: List[Tuple[float, float, float]], goal: Tuple[
 
 
 async def launch_and_drive(session, run: Path, *, gui: bool = True, rviz: bool = True,
-                           on_event=None, on_telemetry=None, poll_s: float = 1.0):
+                           on_event=None, on_telemetry=None, poll_s: float = 0.5):
     """Start the run in the (started) session, wait for ready, drive the mission, score it.
 
     on_event(str) gets human-readable progress; on_telemetry(SimStatus) gets live telemetry.
@@ -260,5 +273,6 @@ async def launch_and_drive(session, run: Path, *, gui: bool = True, rviz: bool =
         if not nav.is_active:
             break
         await asyncio.sleep(poll_s)
-    report = score_run(run, samples, (spec.mission.goal_pose.x, spec.mission.goal_pose.y))
+    via = [(w.x, w.y) for w in spec.mission.waypoints] if nav.status == "succeeded" else None
+    report = score_run(run, samples, (spec.mission.goal_pose.x, spec.mission.goal_pose.y), via=via)
     return nav, report
