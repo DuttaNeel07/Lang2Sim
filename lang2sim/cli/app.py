@@ -61,7 +61,13 @@ class Lang2SimApp(App):
         elif result in ("switch_model", "switch_model_agent"):
             self.notify("Model: NVIDIA Nemotron 3 Ultra 550B active", title="Model")
         elif result in ("run_doctor", "sim_doctor"):
-            self.notify("All systems nominal: GPU, Display, and Docker ready", title="Doctor")
+            from ..runtime import doctor
+            checks = doctor.run_checks()
+            bad = [c for c in checks if c.status != "ok"]
+            summary = "\n".join(f"{'✓' if c.status == 'ok' else '!' if c.status == 'warn' else '✗'} {c.name}: {c.detail[:70]}"
+                                for c in checks)
+            self.notify(summary, title="Doctor: " + ("ready" if not bad else f"{len(bad)} issue(s)"),
+                        severity="error" if doctor.exit_code(checks) else "information", timeout=12)
         elif result == "toggle_headless":
             self.notify("Headless mode toggled", title="Runtime")
         elif result == "connect_stream":

@@ -3,7 +3,8 @@ Screen 2: 80/20 Workspace Screen
 File: lang2sim/cli/screens/workspace_screen.py
 """
 
-from typing import List, Dict, Any, Optional
+import asyncio
+from typing import List, Dict, Optional
 from textual.screen import Screen
 from textual.widgets import Static, Markdown
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -12,7 +13,7 @@ from textual import work
 from ..widgets.prompt_card import PromptCard
 from ..widgets.telemetry_sidebar import TelemetrySidebar
 from ...agent.nemotron_client import NemotronClient
-from ...core.session_manager import session_manager, ChatSession, ChatMessage
+from ...core.session_manager import session_manager, ChatMessage
 
 SYSTEM_PROMPT = (
     "You are Sim2Lang Copilot, an expert AI robotics simulation assistant. "
@@ -20,6 +21,9 @@ SYSTEM_PROMPT = (
     "simulations, SDF scene layouts, Nav2 navigation stacks, and robot sensor telemetry. "
     "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown."
 )
+
+
+SIM_KEYWORDS = ("simulat", "warehouse", "empty room", "gazebo world")
 
 
 class WorkspaceScreen(Screen):
@@ -39,6 +43,7 @@ class WorkspaceScreen(Screen):
         super().__init__(**kwargs)
         self.initial_prompt = initial_prompt
         self.client = NemotronClient()
+        self.sim_session = None
         self.workspace_name = workspace_name
 
         # Session initialization
@@ -213,8 +218,101 @@ class WorkspaceScreen(Screen):
         chat_scroll.mount(response_widget)
         chat_scroll.scroll_end(animate=False)
 
-        # 4. Stream response asynchronously with low latency
+        # 4. Simulation requests run the real pipeline (pitch build); everything else is chat
+        lowered = cleaned_prompt.lower()
+        if lowered.startswith("/stop"):
+            self.stop_simulation(response_widget)
+            return
+        if lowered.startswith("/sim") or any(k in lowered for k in SIM_KEYWORDS):
+            self.run_simulation(response_widget, cleaned_prompt.removeprefix("/sim").strip() or cleaned_prompt)
+            return
+
+        # Stream response asynchronously with low latency
         self.stream_response(response_widget, cleaned_prompt)
+
+    # ------------------------------------------------------------------ pitch wiring
+    @work(exclusive=True, group="sim")
+    async def run_simulation(self, widget: Markdown, prompt: str) -> None:
+        """Prompt -> SimSpec (LLM or parser) -> Part 1 world + map -> Part 3 sim -> mission -> Part 4 NQI."""
+        from ...pipeline import build_run, describe, launch_and_drive, make_session, prompt_to_spec
+
+        self.is_streaming = True
+        chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+        sidebar = self.query_one(TelemetrySidebar)
+        sticky_card = self.query_one("#sticky-input-card", PromptCard)
+        lines: List[str] = ["**● Building your simulation**", ""]
+        status: List[str] = [""]
+
+        async def render() -> None:
+            await widget.update("\n".join(lines + ([f"`{status[0]}`"] if status[0] else [])))
+            chat_scroll.scroll_end(animate=False)
+
+        async def add(line: str) -> None:
+            lines.append(line)
+            await render()
+
+        def on_event(text: str) -> None:
+            status[0] = text
+            if text.startswith(("READY", "mission sent")) or ", 0." in text:
+                lines.append(f"- {text}")
+            asyncio.ensure_future(render())
+
+        def on_telemetry(tel) -> None:
+            secs = int(tel.sim_time)
+            sidebar.update_telemetry(
+                sim_state=("Active" if tel.is_running else "Stopped") + f" ({tel.health_status})",
+                sim_time=f"{secs // 60:02d}:{secs % 60:02d}.{int((tel.sim_time % 1) * 10)}",
+                rtf=f"{tel.real_time_factor:.2f}x",
+                robot_x=tel.robot_pose.x, robot_y=tel.robot_pose.y,
+                speed=abs(tel.robot_velocity.x) if tel.robot_velocity else 0.0,
+            )
+
+        try:
+            spec, source = await prompt_to_spec(prompt, client=self.client)
+            await add(f"- **1. Spec** ({source}): {describe(spec)}")
+            run, steps = await asyncio.to_thread(build_run, spec)
+            await add(f"- **2. World builder (Part 1):** {steps[0]}")
+            await add(f"- **3. Files:** {steps[1]}")
+            if self.sim_session is not None:
+                await self.sim_session.stop()
+                self.sim_session = None
+            session, plan = make_session()
+            self.sim_session = session
+            await add(f"- **4. Runtime (Part 3):** {plan.describe()}, starting `{session.opts.image}`")
+            sidebar.update_telemetry(sim_state="Launching")
+            await session.start()
+            await add(f"- {session.view_hint}")
+            nav, report = await launch_and_drive(session, run, on_event=on_event, on_telemetry=on_telemetry)
+            status[0] = ""
+            await add("")
+            await add(f"**Mission {nav.status.upper()}**" + (f": {nav.message}" if nav.message else "") + "\n")
+            if report and "nqi" in report:
+                await add(f"**Navigation Quality Index (Part 4): {report['nqi']:.1f} / 100**, path "
+                          f"{report['path_length_m']:.1f} m vs optimal {report['optimal_length_m']:.1f} m "
+                          f"(efficiency {report['E_p']:.2f}), min clearance {report['C_min_m']} m, "
+                          f"smoothness {report['S_tau']:.2f}")
+            await add(f"\nSimulation is still running. Type `/stop` to end it. Logs: `{run / 'logs'}`")
+        except Exception as e:  # noqa: BLE001 - show the failure in the chat, keep the app alive
+            status[0] = ""
+            await add(f"\n**⚠ Simulation error:** `{type(e).__name__}: {e}`")
+        finally:
+            self.is_streaming = False
+            sticky_card.focus_input()
+
+    @work(exclusive=True, group="sim")
+    async def stop_simulation(self, widget: Markdown) -> None:
+        if self.sim_session is None:
+            await widget.update("No simulation is running.")
+            return
+        await widget.update("● Stopping simulation...")
+        await self.sim_session.stop()
+        self.sim_session = None
+        self.query_one(TelemetrySidebar).update_telemetry(sim_state="Stopped")
+        await widget.update("Simulation stopped.")
+
+    async def on_unmount(self) -> None:
+        if getattr(self, "sim_session", None) is not None:
+            await self.sim_session.stop()
 
     @work(exclusive=True)
     async def stream_response(self, response_widget: Markdown, prompt: str) -> None:
