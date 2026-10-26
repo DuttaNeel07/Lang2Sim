@@ -1,12 +1,12 @@
 """
 Simulation Intermediate Representation (SIR) Generator.
-File: sim2lang/compiler/sir_generator.py
+File: lang2sim/compiler/sir_generator.py
 """
 
 from typing import Optional
-from sim2lang.core.models import SimSpec, SimulationIR
-from sim2lang.world_gen.shapely_solver import ShapelySpatialSolver
-from sim2lang.compiler.sir_validator import SIRValidator
+from lang2sim.core.models import SimSpec, SimulationIR
+from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
+from lang2sim.compiler.sir_validator import SIRValidator
 
 
 class SIRGenerator:

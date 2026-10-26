@@ -303,3 +303,22 @@ def test_runner_exec_runs_as_sim_user():
     fake = FakeDocker()
     DockerRunner(run=fake).exec(["ros2", "topic", "list"])
     assert fake.calls[-1][:4] == ["exec", "-u", "lang2sim", "lang2sim-sim"]
+
+
+def test_parse_docker_info_resources():
+    info = parse_docker_info(json.dumps({"ServerVersion": "27", "OperatingSystem": "Docker Desktop",
+                                         "Architecture": "aarch64", "MemTotal": 4 * 1024 ** 3, "NCPU": 2}))
+    assert info.mem_total_mb == 4096 and info.cpus == 2
+
+
+def test_doctor_warns_on_small_docker_vm_and_native_windows():
+    small = DockerInfo(cli_path="/x", server_reachable=True, server_version="27", operating_system="Docker Desktop",
+                       arch="arm64", mem_total_mb=4096, cpus=2)
+    res = doctor.run_checks(HostPlatform(os="macos", arch="arm64", docker=small), NONE, runner=StubRunner())
+    mem = next(c for c in res if c.name == "docker memory")
+    assert mem.status == "warn" and "Resources" in mem.fix
+    assert next(c for c in res if c.name == "docker cpus").status == "warn"
+    win = HostPlatform(os="windows", arch="amd64", docker=docker_ok(desktop=True))
+    res = doctor.run_checks(win, NONE, runner=StubRunner())
+    assert next(c for c in res if c.name == "windows").status == "warn"
+    assert next(c for c in res if c.name == "display").detail.startswith("Gazebo/RViz in your browser")

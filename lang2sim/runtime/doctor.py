@@ -1,9 +1,9 @@
 """
 `lang2sim doctor`: can this machine run the simulation, and how will it look?
-File: sim2lang/runtime/doctor.py
+File: lang2sim/runtime/doctor.py
 
 Part 2 wires the CLI subcommand to `run_checks()` / `format_report()`.
-Standalone:  python -m sim2lang.runtime.doctor [--json] [--display vnc] [--api]
+Standalone:  python -m lang2sim.runtime.doctor [--json] [--display vnc] [--api]
 """
 
 from __future__ import annotations
@@ -31,6 +31,8 @@ Status = Literal["ok", "warn", "fail"]
 
 MIN_DISK_GB = 10
 MIN_RAM_MB = 8 * 1024
+MIN_DOCKER_MEM_MB = 6 * 1024
+MIN_DOCKER_CPUS = 4
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,21 @@ def run_checks(plat: Optional[host_platform.HostPlatform] = None,
         if plat.arch != "unknown" and d.arch != "unknown" and plat.arch != d.arch:
             r.append(CheckResult("docker arch", "warn",
                                  f"host is {plat.arch} but daemon is {d.arch}; image runs emulated (slow)"))
+
+        # Docker Desktop's VM often gets less than the machine has; Gazebo + Nav2 need room.
+        if d.mem_total_mb and d.mem_total_mb < MIN_DOCKER_MEM_MB:
+            r.append(CheckResult("docker memory", "warn",
+                                 f"Docker can use {d.mem_total_mb / 1024:.1f} GB; Gazebo + Nav2 want 6 GB+",
+                                 "Docker Desktop > Settings > Resources > Memory: 8 GB"
+                                 if d.is_desktop else "free memory or add swap"))
+        if d.cpus and d.cpus < MIN_DOCKER_CPUS:
+            r.append(CheckResult("docker cpus", "warn",
+                                 f"Docker can use {d.cpus} CPUs; the sim will run below real time",
+                                 "Docker Desktop > Settings > Resources > CPUs: 4+" if d.is_desktop else None))
+    if plat.os == "windows":
+        r.append(CheckResult("windows", "warn",
+                             "running outside WSL2: no native windows, the sim opens in a browser (noVNC)",
+                             "for Gazebo/RViz windows, run lang2sim from an Ubuntu terminal inside WSL2"))
 
     # Display plan
     plan: Optional[DisplayPlan] = None

@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import sys
-from importlib.abc import MetaPathFinder
+from importlib.abc import Loader, MetaPathFinder
 from typing import Any
 
 __version__ = "2.0.0"
+
+
+class _Sim2LangLoader(Loader):
+    """Loader that returns the already imported lang2sim module object."""
+
+    def __init__(self, target_mod: Any) -> None:
+        self.target_mod = target_mod
+
+    def create_module(self, spec: Any) -> Any:
+        return self.target_mod
+
+    def exec_module(self, module: Any) -> None:
+        pass
 
 
 class _Sim2LangRedirectFinder(MetaPathFinder):
@@ -19,7 +33,8 @@ class _Sim2LangRedirectFinder(MetaPathFinder):
             try:
                 target_mod = importlib.import_module(target_name)
                 sys.modules[fullname] = target_mod
-                return getattr(target_mod, "__spec__", None)
+                spec = importlib.util.spec_from_loader(fullname, _Sim2LangLoader(target_mod))
+                return spec
             except ModuleNotFoundError:
                 return None
         return None

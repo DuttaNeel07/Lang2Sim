@@ -1,6 +1,6 @@
 """
 Async control API client. Runs on the HOST (TUI / agent tools / doctor).
-File: sim2lang/runtime/control_api/client.py
+File: lang2sim/runtime/control_api/client.py
 
     async with ControlClient() as api:
         await api.wait_until_ready(timeout=60)
@@ -16,11 +16,21 @@ from __future__ import annotations
 import asyncio
 import importlib
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
 
 import httpx
 
-from lang2sim.core.models import SimStartRequest, SimStatusResponse, SimStopRequest
+from lang2sim.core.models import (
+    NavGoalRequest,
+    NavInitialPoseRequest,
+    NavStatus,
+    NavWaypointsRequest,
+    Pose2D,
+    SimStartRequest,
+    SimStatus,
+    SimStatusResponse,
+    SimStopRequest,
+)
 from lang2sim.runtime.control_api import API_PREFIX
 
 # NB: `from lang2sim.core import config` yields the Config *instance* (core/__init__
@@ -112,6 +122,56 @@ class ControlClient:
 
     async def world_entities(self) -> Dict[str, Any]:
         return await self._request("GET", "/world/entities")
+
+    # --- navigation and telemetry -----------------------------------------------
+    async def nav_initial_pose(self, pose: Pose2D) -> NavStatus:
+        data = await self._request("POST", "/nav/initial_pose",
+                                   json=NavInitialPoseRequest(pose=pose).model_dump(mode="json"))
+        return NavStatus.model_validate(data)
+
+    async def nav_goal(self, goal: Pose2D, timeout_seconds: float = 120.0) -> NavStatus:
+        body = NavGoalRequest(goal_pose=goal, timeout_seconds=timeout_seconds).model_dump(mode="json")
+        return NavStatus.model_validate(await self._request("POST", "/nav/goal", json=body))
+
+    async def nav_waypoints(self, waypoints: Sequence[Pose2D], timeout_seconds: float = 180.0) -> NavStatus:
+        body = NavWaypointsRequest(waypoints=list(waypoints), timeout_seconds=timeout_seconds).model_dump(mode="json")
+        return NavStatus.model_validate(await self._request("POST", "/nav/waypoints", json=body))
+
+    async def nav_cancel(self) -> NavStatus:
+        return NavStatus.model_validate(await self._request("POST", "/nav/cancel"))
+
+    async def nav_status(self) -> NavStatus:
+        return NavStatus.model_validate(await self._request("GET", "/nav/status"))
+
+    async def telemetry(self) -> SimStatus:
+        return SimStatus.model_validate(await self._request("GET", "/telemetry"))
+
+    async def nav_feedback(self, hz: float = 5.0) -> AsyncIterator[Dict[str, Any]]:
+        """Stream {"nav": NavStatus, "telemetry": SimStatus, "sim": {...}} dicts from WS /v1/nav/feedback.
+
+            async for msg in api.nav_feedback():
+                print(msg["nav"]["distance_remaining"])
+        """
+        import json
+
+        import websockets
+
+        url = self.base_url.replace("http", "ws", 1) + API_PREFIX + f"/nav/feedback?hz={hz}"
+        try:
+            async with websockets.connect(url) as ws:
+                async for raw in ws:
+                    yield json.loads(raw)
+        except OSError as e:
+            raise ControlAPIUnavailable(f"feedback stream not reachable at {url}: {e}") from e
+
+    async def wait_nav_done(self, poll_s: float = 1.0, timeout: float = 1800.0) -> NavStatus:
+        """Poll /nav/status until the current task is no longer active."""
+        deadline = time.monotonic() + timeout
+        while True:
+            st = await self.nav_status()
+            if not st.is_active or time.monotonic() > deadline:
+                return st
+            await asyncio.sleep(poll_s)
 
     # --- helpers ---------------------------------------------------------
     async def wait_until_ready(self, timeout: float = 60.0, interval: float = 0.5) -> Dict[str, Any]:

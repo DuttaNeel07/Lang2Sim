@@ -6,7 +6,7 @@ try:
     from lang2sim.core.models import Pose2D
 except ImportError:
     try:
-        from sim2lang.core.models import Pose2D
+        from lang2sim.core.models import Pose2D
     except ImportError:
         from pydantic import BaseModel, Field
 

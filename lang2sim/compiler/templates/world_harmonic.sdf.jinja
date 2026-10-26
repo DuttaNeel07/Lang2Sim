@@ -104,7 +104,7 @@
     <!-- South Wall -->
     <model name="wall_south">
       <static>true</static>
-      <pose>0 {{- half_y }} {{ half_h }} 0 0 0</pose>
+      <pose>0 {{ -half_y }} {{ half_h }} 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry><box><size>{{ room.x + wall_t }} {{ wall_t }} {{ wall_h }}</size></box></geometry>
@@ -134,7 +134,7 @@
     <!-- West Wall -->
     <model name="wall_west">
       <static>true</static>
-      <pose>{{- half_x }} 0 {{ half_h }} 0 0 0</pose>
+      <pose>{{ -half_x }} 0 {{ half_h }} 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry><box><size>{{ wall_t }} {{ room.y + wall_t }} {{ wall_h }}</size></box></geometry>

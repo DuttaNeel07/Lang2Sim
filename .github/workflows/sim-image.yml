@@ -1,7 +1,8 @@
 name: sim-image
 
 # Builds the Lang2Sim simulation runtime image (docker/sim/Dockerfile).
-#   PRs:      build sim-vnc for amd64 and run the smoke test (no push).
+#   PRs:      build sim-vnc for amd64, run the smoke test and the Docker
+#             integration tests (fixture runs reach ready, self-healing), no push.
 #   Pushes:   smoke test, then native amd64 + arm64 builds of both targets,
 #             pushed by digest and merged into multi-arch tags on GHCR:
 #               ghcr.io/<owner>/lang2sim-sim:<tag>        (target: sim)
@@ -15,11 +16,19 @@ on:
       - "docker/sim/**"
       - ".dockerignore"
       - ".github/workflows/sim-image.yml"
+      - "pyproject.toml"
+      - "sim2lang/**"
+      - "catalog/fixtures/**"
+      - "tests/integration/**"
   pull_request:
     paths:
       - "docker/sim/**"
       - ".dockerignore"
       - ".github/workflows/sim-image.yml"
+      - "pyproject.toml"
+      - "sim2lang/**"
+      - "catalog/fixtures/**"
+      - "tests/integration/**"
   workflow_dispatch:
 
 permissions:
@@ -34,7 +43,7 @@ jobs:
   smoke:
     name: smoke (amd64, sim-vnc)
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +66,20 @@ jobs:
 
       - name: Smoke test (headless, server-only)
         run: docker/sim/smoke_test.sh headless --image lang2sim-sim:ci-vnc
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Docker integration tests (A4, A5, A7)
+        env:
+          L2S_INTEGRATION: "1"
+          L2S_TEST_IMAGE: lang2sim-sim:ci-vnc
+          L2S_READY_TIMEOUT: "300"
+        run: |
+          pip install -e ".[sim,dev]"
+          pytest -q -rA tests/integration
 
   build:
     name: build (${{ matrix.target }}, ${{ matrix.arch }})

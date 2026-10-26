@@ -1,6 +1,6 @@
 """
 Display + GPU plan: how the user will see the simulation on this host.
-File: sim2lang/runtime/display.py
+File: lang2sim/runtime/display.py
 
     Ubuntu        -> x11       (nvidia | dri | software)
     Windows 11    -> wslg      (run from inside WSL2; d3d12 via /dev/dxg)

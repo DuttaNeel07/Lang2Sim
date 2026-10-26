@@ -1,6 +1,6 @@
 """
 Shapely 2.0 Spatial Placement & Oriented Bounding Box (OBB) Solver.
-File: sim2lang/world_gen/shapely_solver.py
+File: lang2sim/world_gen/shapely_solver.py
 """
 
 import math
@@ -8,14 +8,14 @@ from typing import List, Optional, Tuple
 from shapely.geometry import Polygon, Point, box
 from shapely import affinity
 
-from sim2lang.core.models import (
+from lang2sim.core.models import (
     Pose2D,
     Vector3D,
     EnvironmentSpec,
     ObjectSpec,
     AisleCorridor,
 )
-from sim2lang.core.config import (
+from lang2sim.core.config import (
     ROBOT_CIRCUMSCRIBED_RADIUS,
     MIN_AISLE_CORRIDOR_WIDTH,
     MIN_WALL_STANDOFF,

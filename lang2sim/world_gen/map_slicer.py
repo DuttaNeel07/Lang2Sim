@@ -1,6 +1,6 @@
 """
 Zero-SLAM 2D Occupancy Map Slicer.
-File: sim2lang/world_gen/map_slicer.py
+File: lang2sim/world_gen/map_slicer.py
 
 Converts 3D world geometric bounds and Shapely object polygons directly into
 standard Nav2 P5 Portable Gray Map (map.pgm) and YAML metadata (map.yaml)
@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 from shapely.geometry import Polygon, Point
 
-from sim2lang.core.models import Vector3D, ObjectSpec
-from sim2lang.core.config import MAP_RESOLUTION
+from lang2sim.core.models import Vector3D, ObjectSpec
+from lang2sim.core.config import MAP_RESOLUTION
 
 
 class ZeroSlamMapSlicer:
@@ -77,7 +77,7 @@ class ZeroSlamMapSlicer:
             yaw = obj.pose.yaw
 
             # Create Shapely OBB for precise polygon point-in-polygon containment
-            from sim2lang.world_gen.shapely_solver import ShapelySpatialSolver
+            from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
             solver = ShapelySpatialSolver()
             poly = solver.create_obb(cx, cy, dx, dy, yaw)
             min_x, min_y, max_x, max_y = poly.bounds
@@ -99,7 +99,10 @@ class ZeroSlamMapSlicer:
         header = f"P5\n{cols} {rows}\n255\n".encode("ascii")
         with open(pgm_path, "wb") as f:
             f.write(header)
-            f.write(grid)
+            # PGM rows run top to bottom and Nav2's map_server puts the first row at
+            # the map's max y; grid row 0 is min y (origin), so write rows in reverse.
+            for r in range(rows - 1, -1, -1):
+                f.write(grid[r * cols:(r + 1) * cols])
 
         # 4. Write Nav2 map.yaml metadata
         yaml_content = f"""image: {map_name}.pgm

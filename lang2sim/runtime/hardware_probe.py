@@ -1,6 +1,6 @@
 """
 Host hardware introspection: GPUs, VRAM, RAM, render nodes.
-File: sim2lang/runtime/hardware_probe.py
+File: lang2sim/runtime/hardware_probe.py
 
 Parsing is split from probing so the parsers are unit-testable without the
 hardware. `probe()` never raises; missing tools just mean less information.

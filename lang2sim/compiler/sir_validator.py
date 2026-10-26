@@ -1,18 +1,18 @@
 """
 Simulation Intermediate Representation (SIR) Validator.
-File: sim2lang/compiler/sir_validator.py
+File: lang2sim/compiler/sir_validator.py
 """
 
 from typing import List, Tuple
 from shapely.geometry import box, Point
 
-from sim2lang.core.models import SimSpec, SimulationIR
-from sim2lang.core.config import (
+from lang2sim.core.models import SimSpec, SimulationIR
+from lang2sim.core.config import (
     ROBOT_CIRCUMSCRIBED_RADIUS,
     MIN_AISLE_CORRIDOR_WIDTH,
     MIN_WALL_STANDOFF,
 )
-from sim2lang.world_gen.shapely_solver import ShapelySpatialSolver
+from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
 
 
 class SIRValidator:

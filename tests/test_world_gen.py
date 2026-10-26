@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sim2lang.core.models import (
+from lang2sim.core.models import (
     Pose2D,
     Vector3D,
     EnvironmentSpec,
@@ -17,11 +17,11 @@ from sim2lang.core.models import (
     MissionSpec,
     SimSpec,
 )
-from sim2lang.world_gen.shapely_solver import ShapelySpatialSolver, solve_spatial_layout
-from sim2lang.world_gen.map_slicer import ZeroSlamMapSlicer, slice_map_from_layout
-from sim2lang.compiler.sdf_compiler import HarmonicSdfCompiler, compile_world_sdf
-from sim2lang.compiler.sir_validator import SIRValidator
-from sim2lang.compiler.sir_generator import SIRGenerator
+from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver, solve_spatial_layout
+from lang2sim.world_gen.map_slicer import ZeroSlamMapSlicer, slice_map_from_layout
+from lang2sim.compiler.sdf_compiler import HarmonicSdfCompiler, compile_world_sdf
+from lang2sim.compiler.sir_validator import SIRValidator
+from lang2sim.compiler.sir_generator import SIRGenerator
 
 
 class TestWorldGenAndMapSlicer(unittest.TestCase):

@@ -1,6 +1,6 @@
 """
 Runtime and Workspace Configuration Manager
-File: sim2lang/core/config.py
+File: lang2sim/core/config.py
 """
 
 import os
