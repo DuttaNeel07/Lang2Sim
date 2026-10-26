@@ -166,3 +166,20 @@ def test_feedback_websocket_streams_nav_and_telemetry(setup):
     assert set(m) == {"nav", "telemetry", "sim"}
     assert m["nav"]["target_pose"]["x"] == 3 and m["nav"]["status"] == "navigating"
     assert m["telemetry"]["robot_pose"]["x"] == -2.0 and m["sim"]["ready"] is True
+
+
+def test_sim_health_endpoint(setup):
+    app, bridge, nav, req, disp = setup
+
+    async def go():
+        async with ControlClient("http://t", transport=httpx.ASGITransport(app=app)) as api:
+            bridge.ready = True
+            await api.sim_start(req)
+            h = await api._request("GET", "/sim/health")
+            assert h["health"] == "healthy" and h["issues"] == [] and h["rtf"] == 0.9
+            assert (await api.sim_status()).status == "running"
+            bridge.ready = False                       # readiness lost after being ready
+            h = await api._request("GET", "/sim/health")
+            assert h["health"] == "degraded" and any("lost" in i for i in h["issues"])
+            assert (await api.telemetry()).health_status == "degraded"
+    asyncio.run(go())

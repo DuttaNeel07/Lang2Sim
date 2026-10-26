@@ -11,6 +11,7 @@ Started by docker/sim/entrypoint.sh (`serve`):
     GET  /v1/sim/status    SimStatusResponse incl. readiness checks and RTF
     POST /v1/sim/stop      SimStopRequest
     GET  /v1/sim/logs      tail of the sim process output (for the self-healer)
+    GET  /v1/sim/health    healthy / degraded / crashed + the reasons (health_monitor)
 
     POST /v1/nav/initial_pose  NavInitialPoseRequest   (409 until the sim is ready)
     POST /v1/nav/goal          NavGoalRequest          -> NavStatus (preempts a running task)
@@ -61,6 +62,7 @@ from sim2lang.core.models import (
 )
 from sim2lang.runtime import launch_builder, world_check
 from sim2lang.runtime.control_api import API_PREFIX
+from sim2lang.runtime.health_monitor import HealthMonitor
 from sim2lang.runtime.ros_bridge import readiness
 
 RUNTIME_ENV_FILE = Path(os.getenv("L2S_RUNTIME_ENV_FILE", "/tmp/l2s_runtime.env"))
@@ -234,6 +236,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     """
     sim = sim or SimProcess()
     state: Dict[str, Any] = {"bridge": None, "nav": nav}
+    monitor = HealthMonitor()
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -279,8 +282,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             render = {"nvidia": "gpu", "dri": "dri"}.get(env.get("L2S_EFFECTIVE_GPU", ""), "software")
         pose = (snap.map_pose or snap.odom_pose) if snap else None
         vel = snap.velocity if snap else None
-        health = {"running": "healthy", "launching": "degraded", "degraded": "degraded",
-                  "error": "crashed"}.get(st.status, "healthy")
+        health = monitor.evaluate(st.status, snap).health
         return SimStatus(
             is_running=st.status in ("launching", "running", "degraded"),
             sim_time=st.sim_time,
@@ -334,6 +336,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def sim_start(req: SimStartRequest) -> SimStatusResponse:
         if state["bridge"]:
             state["bridge"].reset()
+        monitor.reset()
         try:
             sim.start(req)
         except RuntimeError as e:
@@ -349,6 +352,13 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def sim_stop(req: Optional[SimStopRequest] = None) -> SimStatusResponse:
         sim.stop(force=bool(req and req.force))
         return current_status()
+
+    @v1.get("/sim/health")
+    def sim_health() -> dict:
+        bridge = state["bridge"]
+        r = monitor.evaluate(current_status().status, bridge.snapshot() if bridge else None)
+        return {"health": r.health, "issues": r.issues, "rtf": r.rtf, "sim_time": r.sim_time,
+                "readiness": r.readiness}
 
     @v1.get("/sim/logs")
     def sim_logs(tail: int = Query(200, ge=1, le=LOG_RING_LINES)) -> dict:
