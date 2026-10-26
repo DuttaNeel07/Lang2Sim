@@ -1,0 +1,119 @@
+{
+  "scenes": {
+    "aws_small_warehouse": {
+      "name": "AWS RoboMaker Small Warehouse",
+      "description": "Standard industrial logistics warehouse with pallet racks and docks",
+      "dimensions": {
+        "x": 14.0,
+        "y": 10.0,
+        "z": 4.0
+      },
+      "map_yaml": "catalog/maps/aws_small_warehouse.yaml",
+      "map_pgm": "catalog/maps/aws_small_warehouse.pgm",
+      "surface_friction": 0.8,
+      "ambient_light": 0.9,
+      "semantic_anchors": {
+        "dock": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw": 0.0
+        },
+        "rack_1": {
+          "x": 2.5,
+          "y": 3.0,
+          "yaw": 0.0
+        },
+        "rack_2": {
+          "x": -2.5,
+          "y": 3.0,
+          "yaw": 0.0
+        },
+        "rack_3": {
+          "x": 2.5,
+          "y": -3.0,
+          "yaw": 0.0
+        },
+        "rack_5": {
+          "x": 7.5,
+          "y": 3.0,
+          "yaw": 0.0
+        },
+        "packaging_bench": {
+          "x": -4.5,
+          "y": 2.0,
+          "yaw": 1.5708
+        }
+      }
+    },
+    "robotics_lab": {
+      "name": "Robotics Research Workshop",
+      "description": "Lab environment with test workbenches and component carts",
+      "dimensions": {
+        "x": 18.0,
+        "y": 12.0,
+        "z": 3.5
+      },
+      "surface_friction": 0.8,
+      "ambient_light": 1.0,
+      "semantic_anchors": {
+        "dock": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw": 0.0
+        },
+        "workbench_1": {
+          "x": 5.0,
+          "y": 4.0,
+          "yaw": 0.0
+        },
+        "workbench_4": {
+          "x": -5.0,
+          "y": -4.0,
+          "yaw": 3.14159
+        }
+      }
+    }
+  },
+  "models": {
+    "aws_warehouse_rack": {
+      "dimensions": {
+        "x": 2.8,
+        "y": 1.2,
+        "z": 3.6
+      },
+      "mass": 120.0,
+      "is_static": true,
+      "category": "storage"
+    },
+    "workbench": {
+      "dimensions": {
+        "x": 2.0,
+        "y": 1.0,
+        "z": 0.9
+      },
+      "mass": 45.0,
+      "is_static": true,
+      "category": "furniture"
+    },
+    "wooden_crate": {
+      "dimensions": {
+        "x": 0.8,
+        "y": 0.8,
+        "z": 0.8
+      },
+      "mass": 15.0,
+      "is_static": false,
+      "category": "dynamic_obstacle"
+    },
+    "barrel": {
+      "dimensions": {
+        "x": 0.6,
+        "y": 0.6,
+        "z": 1.0
+      },
+      "mass": 25.0,
+      "is_static": false,
+      "category": "dynamic_obstacle"
+    }
+  }
+}
