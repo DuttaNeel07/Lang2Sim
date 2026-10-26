@@ -426,12 +426,16 @@ def build_report(
     }
 
 
-def default_report_path() -> Path:
+def default_report_path(project_name: str = "active_project", timestamp: Optional[str] = None) -> Path:
     run_dir = os.environ.get("LANG2SIM_RUN_DIR")
     if run_dir:
         return Path(run_dir).expanduser() / "benchmark_report.json"
-    base = os.environ.get("LANG2SIM_PROJECT_DIR") or str(Path.home() / ".lang2sim" / "projects" / "active_project")
-    return Path(base).expanduser() / "benchmark_report.json"
+    try:
+        from lang2sim.core.config import get_run_dir
+        return get_run_dir(project_name=project_name, timestamp=timestamp) / "benchmark_report.json"
+    except Exception:
+        base = os.environ.get("LANG2SIM_PROJECT_DIR") or str(Path.home() / ".lang2sim" / "projects" / project_name)
+        return Path(base).expanduser() / "benchmark_report.json"
 
 
 def write_report(report: Mapping[str, Any], path: Optional[str | Path] = None) -> Path:

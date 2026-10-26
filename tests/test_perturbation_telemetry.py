@@ -343,3 +343,80 @@ class TestTelemetrySubscribers:
         assert snap["active"] is True
         assert snap["collisions"] == 1
         assert "x" in snap and "y" in snap
+
+    def test_telemetry_collector_snapshot_fields_and_alias(self):
+        collector = TelemetryCollector()
+        try:
+            snap = collector.get_snapshot()
+            assert "backend" in snap
+            assert "rtf" in snap
+            assert "sim_time" in snap
+            assert "active" in snap
+            assert snap["samples_buffered"] == 0
+        finally:
+            collector.close()
+
+
+class TestWorldRouterAndClient:
+    """Test suite for FastAPI /world router and ControlClient mutation methods."""
+
+    @pytest.mark.asyncio
+    async def test_control_client_world_mutation_endpoints(self):
+        import httpx
+        from lang2sim.runtime.control_api.server import create_app
+        from lang2sim.runtime.control_api.client import ControlClient
+
+        app = create_app()
+        transport = httpx.ASGITransport(app=app)
+        async with ControlClient(transport=transport) as client:
+            # 1. Health
+            health = await client.world_health()
+            assert health["ok"] is True
+            assert "backend" in health
+
+            # 2. Spawn
+            spawn_res = await client.world_spawn({
+                "model_name": "wooden_crate",
+                "x": 2.5,
+                "y": 1.0,
+                "z": 0.5,
+                "yaw": 0.0,
+            })
+            assert spawn_res["ok"] is True
+            assert "spawn" in spawn_res["tool"]
+
+            # 3. Entities
+            entities_res = await client.world_entities()
+            assert entities_res["count"] >= 1
+            assert any("wooden_crate" in e for e in entities_res["entities"])
+
+            # 4. Light
+            light_res = await client.world_light({
+                "diffuse": 0.3,
+                "specular": 0.1,
+                "intensity": 0.5,
+            })
+            assert light_res["ok"] is True
+
+            # 5. Chassis
+            chassis_res = await client.world_chassis({
+                "force_x": 15.0,
+                "duration_s": 0.2,
+            })
+            assert chassis_res["ok"] is True
+
+            # 6. Reset
+            reset_res = await client.world_reset({})
+            assert reset_res["ok"] is True
+
+
+class TestReportPathIntegration:
+    """Test standardizing benchmark_report.json to core.config get_run_dir."""
+
+    def test_default_report_path_resolves_to_run_dir(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        from lang2sim.telemetry.nqi_scorer import default_report_path
+        path = default_report_path(project_name="test_proj", timestamp="run_042")
+        assert path.name == "benchmark_report.json"
+        assert "run_042" in str(path)
+

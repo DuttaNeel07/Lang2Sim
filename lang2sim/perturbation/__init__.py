@@ -24,6 +24,10 @@ from lang2sim.perturbation.mcp_server import (
     bridge_health,
     list_spawned_entities,
 )
+from lang2sim.perturbation.routers.world import (
+    router as world_router,
+    mount_world_router,
+)
 
 __all__ = [
     "BridgeResult",
@@ -41,4 +45,6 @@ __all__ = [
     "apply_chassis_perturbation",
     "bridge_health",
     "list_spawned_entities",
+    "world_router",
+    "mount_world_router",
 ]

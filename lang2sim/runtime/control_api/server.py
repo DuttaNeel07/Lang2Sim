@@ -214,6 +214,12 @@ def create_app(sim: Optional[SimProcess] = None) -> FastAPI:
     def sim_logs(tail: int = Query(200, ge=1, le=LOG_RING_LINES)) -> dict:
         return {"status": sim.status, "lines": sim.tail(tail)}
 
+    try:
+        from lang2sim.perturbation.routers.world import router as world_router
+        v1.include_router(world_router)
+    except ImportError:
+        pass
+
     app.include_router(v1)
     return app
 

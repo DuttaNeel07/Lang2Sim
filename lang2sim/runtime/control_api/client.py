@@ -94,6 +94,25 @@ class ControlClient:
     async def sim_logs(self, tail: int = 200) -> List[str]:
         return (await self._request("GET", "/sim/logs", params={"tail": tail}))["lines"]
 
+    # --- Part 4 world mutation endpoints ---------------------------------
+    async def world_spawn(self, req: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._request("POST", "/world/spawn", json=req)
+
+    async def world_light(self, req: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._request("POST", "/world/light", json=req)
+
+    async def world_reset(self, req: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self._request("POST", "/world/reset", json=req or {})
+
+    async def world_chassis(self, req: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._request("POST", "/world/chassis", json=req)
+
+    async def world_health(self) -> Dict[str, Any]:
+        return await self._request("GET", "/world/health")
+
+    async def world_entities(self) -> Dict[str, Any]:
+        return await self._request("GET", "/world/entities")
+
     # --- helpers ---------------------------------------------------------
     async def wait_until_ready(self, timeout: float = 60.0, interval: float = 0.5) -> Dict[str, Any]:
         """Poll /health until it answers (container boot + uvicorn start)."""

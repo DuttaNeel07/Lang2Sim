@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import collections
 import math
+import os
 import sys
 import threading
 import time
@@ -111,7 +112,12 @@ class TelemetrySample:
 class TelemetryCollector:
     """Thread-safe telemetry observer and trajectory recorder."""
 
-    def __init__(self, buffer_size: int = RING_BUFFER_SIZE) -> None:
+    def __init__(
+        self,
+        buffer_size: int = RING_BUFFER_SIZE,
+        api_base_url: Optional[str] = None,
+        poll_interval: float = 0.1,
+    ) -> None:
         self.lock = threading.Lock()
         self.ring_buffer: Deque[TelemetrySample] = collections.deque(maxlen=buffer_size)
         self.bumper = CollisionCounter()
@@ -121,7 +127,20 @@ class TelemetryCollector:
         self._executor = None
         self._thread: Optional[threading.Thread] = None
         self._ros_ok = False
+        self._api_ok = False
+        self._api_running = False
+        self._api_thread: Optional[threading.Thread] = None
+        self.rtf: float = 1.0
+        self.sim_time: float = 0.0
+        self.poll_interval = poll_interval
+        self.api_base_url = (
+            api_base_url
+            or os.environ.get("LANG2SIM_CONTROL_API")
+            or "http://127.0.0.1:9090"
+        )
         self._init_ros()
+        if not self._ros_ok:
+            self._start_api_poll()
 
     def _init_ros(self) -> None:
         try:
@@ -214,6 +233,48 @@ class TelemetryCollector:
             self.active_run_samples = None
             return traj
 
+    def _start_api_poll(self) -> None:
+        if self._api_thread is not None and self._api_thread.is_alive():
+            return
+        self._api_running = True
+        self._api_thread = threading.Thread(target=self._api_worker, daemon=True)
+        self._api_thread.start()
+
+    def _api_worker(self) -> None:
+        import json
+        import urllib.request
+        target_url = f"{self.api_base_url.rstrip('/')}/v1/sim/status"
+        while self._api_running:
+            try:
+                req = urllib.request.Request(target_url, headers={"User-Agent": "Lang2Sim-Telemetry"})
+                with urllib.request.urlopen(req, timeout=0.8) as resp:
+                    if resp.status == 200:
+                        payload = json.loads(resp.read().decode("utf-8"))
+                        self._api_ok = True
+                        self.rtf = float(payload.get("real_time_factor") or 1.0)
+                        self.sim_time = float(payload.get("sim_time") or 0.0)
+                        pose = payload.get("robot_pose") or {}
+                        vel = payload.get("robot_velocity") or {}
+                        px = float(pose.get("x", 0.0))
+                        py = float(pose.get("y", 0.0))
+                        yaw = float(pose.get("yaw", 0.0))
+                        vx = float(vel.get("x", 0.0)) if isinstance(vel, dict) else 0.0
+                        wz = float(vel.get("yaw", 0.0)) if isinstance(vel, dict) else 0.0
+                        self.record_kinematics(time.time(), px, py, yaw, vx, wz)
+            except Exception:
+                self._api_ok = False
+            time.sleep(self.poll_interval)
+
+    def close(self) -> None:
+        """Cleanly terminate background polling threads."""
+        self._api_running = False
+        if self._thread and self._thread.is_alive():
+            try:
+                if self._executor:
+                    self._executor.shutdown()
+            except Exception:
+                pass
+
     def snapshot(self) -> dict[str, Any]:
         """Return instantaneous state for the Textual TUI sidebar at 10Hz+."""
         with self.lock:
@@ -222,18 +283,24 @@ class TelemetryCollector:
                 x, y, yaw, v, w = latest.x, latest.y, latest.yaw, latest.v, latest.w
             else:
                 x, y, yaw, v, w = 0.0, 0.0, 0.0, 0.0, 0.0
+            backend = "ros2" if self._ros_ok else ("control_api" if self._api_ok else "mock")
             return {
-                "active": self._ros_ok,
+                "active": self._ros_ok or self._api_ok,
+                "backend": backend,
                 "x": round(x, 2),
                 "y": round(y, 2),
                 "yaw": round(yaw, 3),
                 "v": round(v, 2),
                 "w": round(w, 2),
+                "rtf": round(self.rtf, 2),
+                "sim_time": round(self.sim_time, 2),
                 "collisions": self.bumper.collision_count,
                 "last_force_n": round(self.bumper.last_force_n, 1),
                 "last_contact_entity": self.bumper.last_contact_entity,
                 "samples_buffered": len(self.ring_buffer),
             }
+
+    get_snapshot = snapshot
 
 
 # --------------------------------------------------------------------------- Replay Source
