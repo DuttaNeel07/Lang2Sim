@@ -1,5 +1,10 @@
 """Perturbation and FastMCP package for Lang2Sim."""
 
+import sys
+
+# Backward-compatibility alias
+sys.modules.setdefault("sim2lang.perturbation", sys.modules[__name__])
+
 from lang2sim.perturbation.gazebo_bridge import (
     BridgeResult,
     GazeboBridge,

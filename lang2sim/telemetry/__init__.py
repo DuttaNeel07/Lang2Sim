@@ -1,5 +1,10 @@
 """Telemetry and scoring package for Lang2Sim."""
 
+import sys
+
+# Backward-compatibility alias
+sys.modules.setdefault("sim2lang.telemetry", sys.modules[__name__])
+
 from lang2sim.telemetry.trajectory import Trajectory
 from lang2sim.telemetry.nqi_scorer import (
     NQIParams,

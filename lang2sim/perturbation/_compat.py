@@ -5,7 +5,10 @@ from __future__ import annotations
 try:
     from lang2sim.core.models import Pose2D
 except ImportError:
-    from pydantic import BaseModel, Field
+    try:
+        from sim2lang.core.models import Pose2D
+    except ImportError:
+        from pydantic import BaseModel, Field
 
     class Pose2D(BaseModel):
         """2D ground pose (x, y, yaw)."""
