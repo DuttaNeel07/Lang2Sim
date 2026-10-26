@@ -180,6 +180,12 @@ class NavStatus(BaseModel):
     distance_remaining: float = 0.0
     target_pose: Optional[Pose2D] = None
     status: Literal["idle", "navigating", "succeeded", "failed", "canceled"] = "idle"
+    waypoint_index: int = Field(0, description="0-based index of the waypoint being driven to")
+    waypoints_total: int = Field(0, description="Number of poses in the current task (1 for a single goal)")
+    navigation_time: float = Field(0.0, description="Sim seconds spent on the current leg")
+    eta_seconds: Optional[float] = Field(None, description="Nav2's estimated time remaining on this leg")
+    recoveries: int = Field(0, description="Nav2 recovery behaviours run on this leg")
+    message: Optional[str] = Field(None, description="Why a task failed or was canceled")
 
 
 class SimStatus(BaseModel):
