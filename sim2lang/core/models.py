@@ -17,6 +17,18 @@ class Pose2D(BaseModel):
     y: float = Field(..., description="Y coordinate in meters relative to world origin")
     yaw: float = Field(0.0, ge=-3.14159, le=3.14159, description="Yaw orientation in radians")
 
+    @classmethod
+    def from_anchor(cls, anchor: Any) -> "Pose2D":
+        """Convert either a list [x, y, yaw] or a dict {'x':..., 'y':..., 'yaw':...}."""
+        if isinstance(anchor, (list, tuple)):
+            yaw = float(anchor[2]) if len(anchor) > 2 else 0.0
+            return cls(x=float(anchor[0]), y=float(anchor[1]), yaw=yaw)
+        elif isinstance(anchor, dict):
+            return cls(**anchor)
+        elif isinstance(anchor, cls):
+            return anchor
+        raise ValueError(f"Cannot parse anchor of type {type(anchor)}: {anchor}")
+
 
 class Vector3D(BaseModel):
     """3D bounding dimensions in meters."""
@@ -146,16 +158,42 @@ class AisleCorridor(BaseModel):
 
 class SimulationIR(BaseModel):
     """Validated intermediate representation graph linking entities and corridors."""
-    ir_version: str = "2.0.0"
-    project_name: str
-    sim_spec: SimSpec
+    spec: SimSpec
+    world_sdf_path: Optional[str] = None
+    map_yaml_path: Optional[str] = None
+    map_pgm_path: Optional[str] = None
+    resolved_anchors: Dict[str, List[float]] = Field(default_factory=dict)
     aisle_corridors: List[AisleCorridor] = Field(default_factory=list)
     is_valid: bool = False
     validation_messages: List[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# 8. Control API Contracts (Used by Dev 3 Container Runtime & Dev 4)
+# 8. Status Models (PR #7 Aligned)
+# ---------------------------------------------------------------------------
+
+class NavStatus(BaseModel):
+    """Navigation task state streamed via WebSocket or GET /nav/status."""
+    is_active: bool = False
+    current_task: Optional[str] = None
+    distance_remaining: float = 0.0
+    target_pose: Optional[Pose2D] = None
+    status: Literal["idle", "navigating", "succeeded", "failed", "canceled"] = "idle"
+
+
+class SimStatus(BaseModel):
+    """Simulation state monitor model (PR #7 and HealthMonitor aligned)."""
+    is_running: bool = False
+    sim_time: float = 0.0
+    real_time_factor: float = 1.0
+    robot_pose: Pose2D = Field(default_factory=lambda: Pose2D(x=0.0, y=0.0, yaw=0.0))
+    robot_velocity: Optional[Pose2D] = None
+    render_mode: Literal["gpu", "dri", "software", "headless"] = "software"
+    health_status: Literal["healthy", "degraded", "crashed"] = "healthy"
+
+
+# ---------------------------------------------------------------------------
+# 9. Control API Contracts (Dev 3 Container Server & Dev 4)
 # ---------------------------------------------------------------------------
 
 class SimStartRequest(BaseModel):
@@ -197,15 +235,6 @@ class NavWaypointsRequest(BaseModel):
     """Request payload sent to POST /nav/waypoints."""
     waypoints: List[Pose2D]
     timeout_seconds: float = 180.0
-
-
-class NavStatus(BaseModel):
-    """Navigation task state streamed via WebSocket or GET /nav/status."""
-    task_active: bool = False
-    state: Literal["idle", "navigating", "succeeded", "failed", "canceled"]
-    current_pose: Optional[Pose2D] = None
-    distance_remaining: float = 0.0
-    elapsed_time: float = 0.0
 
 
 class HealEvent(BaseModel):
