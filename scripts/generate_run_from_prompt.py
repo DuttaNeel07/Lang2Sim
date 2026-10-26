@@ -18,9 +18,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from sim2lang.world_gen import catalog, solve_spatial_layout, slice_map_from_layout
-from sim2lang.compiler.sdf_compiler import compile_world_sdf
-from sim2lang.core.models import (
+from lang2sim.world_gen import catalog, solve_spatial_layout, slice_map_from_layout
+from lang2sim.compiler.sdf_compiler import compile_world_sdf
+from lang2sim.core.models import (
     EnvironmentSpec,
     MissionSpec,
     SimSpec,
@@ -28,7 +28,7 @@ from sim2lang.core.models import (
     Pose2D,
     Vector3D,
 )
-from sim2lang.runtime.run_folder import write_manifest
+from lang2sim.runtime.run_folder import write_manifest
 
 
 def parse_prompt(prompt: str) -> dict:
