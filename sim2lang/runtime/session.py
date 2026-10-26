@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 from typing import Callable, Dict, Optional
 
-from sim2lang.core.models import SimStatusResponse
+from sim2lang.core.models import NavStatus, SimSpec, SimStatusResponse
 from sim2lang.runtime.control_api.client import ControlClient
 from sim2lang.runtime.display import DisplayPlan
 from sim2lang.runtime.docker_runner import DockerRunner, RunOptions, default_run_options
@@ -31,6 +31,7 @@ cfg = importlib.import_module("sim2lang.core.config")
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "catalog" / "fixtures"
 ProgressFn = Callable[[SimStatusResponse, float], None]
+NavProgressFn = Callable[[NavStatus], None]
 
 
 class SimNotReady(RuntimeError):
@@ -98,6 +99,25 @@ class SimSession:
             if st.status in ("error", "stopped") or time.monotonic() - t0 > timeout:
                 lines = await self.api.sim_logs(60)
                 raise SimNotReady(st, "\n".join(lines))
+            await asyncio.sleep(poll_s)
+
+    async def run_mission(self, run_dir: Optional[Path] = None, *, on_progress: Optional[NavProgressFn] = None,
+                          poll_s: float = 2.0) -> NavStatus:
+        """Drive the run's spec.json mission (waypoints, then the goal) and wait for the result."""
+        run_dir = Path(run_dir or self.run_dir or ".")
+        spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text())
+        poses = [*spec.mission.waypoints, spec.mission.goal_pose]
+        timeout = spec.mission.timeout_seconds
+        await self.api.nav_waypoints(poses, timeout_seconds=timeout)
+        last = None
+        while True:
+            st = await self.api.nav_status()
+            key = (st.status, st.waypoint_index, round(st.distance_remaining))  # 1 m steps
+            if on_progress and key != last:
+                on_progress(st)
+                last = key
+            if not st.is_active:
+                return st
             await asyncio.sleep(poll_s)
 
     async def stop(self) -> None:

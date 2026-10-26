@@ -43,3 +43,34 @@ def test_view_hint_and_image(projects, mode, hint):
     assert s.opts.image == ("lang2sim-sim:dev-vnc" if mode == "vnc" else "lang2sim-sim:dev")
     assert s.opts.extra_env["L2S_CAMERA"] == "0"
     assert s.opts.projects_dir == projects
+
+
+def test_run_mission_sends_waypoints_then_goal(projects):
+    import asyncio
+
+    from sim2lang.core.models import NavStatus
+
+    run = copy_fixture("small_warehouse")
+
+    class FakeAPI:
+        def __init__(self):
+            self.sent, self.polls = None, 0
+
+        async def nav_waypoints(self, poses, timeout_seconds):
+            self.sent = (poses, timeout_seconds)
+            return NavStatus(is_active=True, status="navigating", waypoints_total=len(poses))
+
+        async def nav_status(self):
+            self.polls += 1
+            if self.polls < 3:
+                return NavStatus(is_active=True, status="navigating", waypoint_index=self.polls,
+                                 waypoints_total=4, distance_remaining=3.0 / self.polls)
+            return NavStatus(is_active=False, status="succeeded", waypoint_index=3, waypoints_total=4)
+
+    s = SimSession(DisplayPlan("headless", "software", True), runner=NoDocker())
+    s.api = FakeAPI()
+    seen = []
+    st = asyncio.run(s.run_mission(run, on_progress=seen.append, poll_s=0))
+    poses, timeout = s.api.sent
+    assert st.status == "succeeded" and len(poses) == 4 and timeout == 300
+    assert (poses[-1].x, poses[-1].y) == (-4.0, 3.5) and len(seen) == 3

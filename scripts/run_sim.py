@@ -6,6 +6,7 @@ File: scripts/run_sim.py
     python scripts/run_sim.py ~/.lang2sim/projects/demo/runs/20261026_150000
     python scripts/run_sim.py --fixture small_warehouse
     python scripts/run_sim.py --fixture tb3_world --display vnc     # macOS: real Gazebo GUI in a browser
+    python scripts/run_sim.py --fixture small_warehouse --mission  # also drive spec.json's mission
 
 Steps: doctor checks -> display plan -> sim container -> world pre-flight ->
 sim_launch.py -> Gazebo + TurtleBot3 + Nav2 (+ GUI/RViz) -> wait until every
@@ -43,6 +44,7 @@ def parse(argv=None):
     ap.add_argument("--no-gui", action="store_true", help="no Gazebo window")
     ap.add_argument("--no-rviz", action="store_true")
     ap.add_argument("--no-camera", action="store_true", help="skip the camera bridge (faster without a GPU)")
+    ap.add_argument("--mission", action="store_true", help="drive spec.json's waypoints + goal once ready")
     ap.add_argument("--timeout", type=float, default=300, help="seconds to wait for readiness")
     ap.add_argument("--exit-when-ready", action="store_true", help="stop as soon as the sim is ready (tests)")
     return ap.parse_args(argv)
@@ -53,6 +55,11 @@ def progress(st, elapsed):
     todo = [k for k, v in st.readiness.items() if not v]
     print(f"  {elapsed:5.0f}s  {st.status:<10} ready: {', '.join(done) or '-'}"
           + (f"  waiting: {', '.join(todo)}" if todo else ""), flush=True)
+
+
+def nav_progress(st):
+    print(f"  {st.status:<10} waypoint {st.waypoint_index + 1}/{st.waypoints_total}  "
+          f"{st.distance_remaining:5.1f} m to go" + (f"  ({st.message})" if st.message else ""), flush=True)
 
 
 async def run(a) -> int:
@@ -85,6 +92,12 @@ async def run(a) -> int:
         for line in st.world_report:
             print(f"[run_sim] world check {line}")
         print(f"[run_sim] READY  sim time {st.sim_time:.1f}s, RTF {st.rtf:.2f}. {session.view_hint}.")
+        if a.mission:
+            print("[run_sim] driving the mission from spec.json")
+            nav = await session.run_mission(run_dir, on_progress=nav_progress)
+            print(f"[run_sim] MISSION {nav.status.upper()}" + (f": {nav.message}" if nav.message else ""))
+            if a.exit_when_ready:
+                return 0 if nav.status == "succeeded" else 1
         if a.exit_when_ready:
             return 0
         print("[run_sim] Ctrl-C to stop.")
