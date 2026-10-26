@@ -70,15 +70,31 @@ and a full benchmark on `empty_room`, headless, software rendering, RTF ≈ 0.6:
 | NQI | 81.6 | 35.2 |
 | AMCL vs ground truth | 0.10 m mean | 0.06 m mean |
 
+## Demo tooling (built on top)
+
+- **Dashboard**: `http://localhost:9090/dashboard` (control API) or the replay server: map, live
+  robot and trail, crates, nominal vs stress paths, live tiles and charts, NQI table, events.
+  Data routes: `/v1/run`, `/v1/run/map`, `/v1/run/trajectories`, `/v1/run/report`
+  (`runtime/dashboard.py`).
+- **TUI commands**: `/mission [stress]`, `/stress`, `/benchmark`, `/report`, `/status`,
+  `/dashboard`, `/replay`, `/help` (`cli/demo_commands.py`); plain-English stress requests run as
+  `/stress`, and the reply says what was executed.
+- **Grounded chat**: each LLM turn gets live telemetry and the latest report as context
+  (`agent/grounding.py`).
+- **Crash safety**: recordings stream to `logs/trajectory_<label>.partial.jsonl`;
+  `python -m lang2sim.telemetry.benchmark <run_dir>` rescores a folder and recovers cut-short runs.
+- **Replay (Mode B)**: `python -m lang2sim.telemetry.replay <run_dir>` or `/replay demo` serves a
+  recorded run on the API port; `catalog/demo_runs/empty_room_benchmark` is a real recorded benchmark.
+- **Scoring**: C_min from the Waffle chassis rectangle; mission success within Nav2's goal tolerance
+  (report `scoring` says which); obstacles = everything spawned in the sim session.
+
+Pitch runbook: [demo.md](demo.md).
+
 ## Open decisions
 
-- **Goal tolerance**: the architecture's 0.15 m marks a run that Nav2 calls
-  succeeded (TB3 goal checker: 0.25 m, final error 0.152 m) as failed.
-  `--goal-tolerance` sets it per run; pick a team default.
-- **Robot footprint in C_min**: the scorer models the Waffle as a 0.22 m
-  circle, so a 7 cm pass reads as −0.01 m and zeroes the clearance term
-  (~40 NQI points). An oriented-box robot footprint would fix it.
-- **"SLAM Drift (ATE)" row**: the pipeline is zero-SLAM, so this column is
-  AMCL-vs-ground-truth localization error; the table label could say so.
+- **Goal tolerance**: now defaults to Nav2's goal checker (0.25 m for TB3);
+  the architecture's 0.15 m is `--goal-tolerance 0.15`. Confirm as the team default.
+- (Resolved) robot footprint in C_min: chassis rectangle; ATE row label:
+  "Localization Error (AMCL vs truth)".
 - **Failed missions** keep E_p from the distance actually driven; NQI has no
   mission-success term in the architecture's formula.

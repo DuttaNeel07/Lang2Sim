@@ -95,6 +95,7 @@ Use `sim2lang.runtime.control_api.client.ControlClient` (async) or
 | WS | `/nav/feedback?hz=5` | Stream of `{"nav", "telemetry", "live", "sim"}` |
 | GET | `/telemetry` | `SimStatus`: map pose, velocity, RTF, render mode, health |
 | GET | `/heal/log` | Self-healing actions this run |
+| GET | `/dashboard` | Live benchmark dashboard (data: `/run`, `/run/map`, `/run/trajectories`, `/run/report`) |
 | GET | `/telemetry/live` | `TelemetryLive`: world pose + source, speed, lidar clearance, distance to goal, collisions |
 | GET | `/telemetry/setup` | Was this run's robot instrumented (bumper + ground truth), and why not |
 | POST | `/telemetry/record/start`, `/telemetry/record/stop` | Record a run; stop returns `TelemetryRecordResult` and writes `logs/trajectory_<label>.json` |

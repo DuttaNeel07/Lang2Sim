@@ -149,6 +149,8 @@ async def run(a) -> int:
         for line in st.world_report:
             print(f"[run_sim] world check {line}")
         print(f"[run_sim] READY  sim time {st.sim_time:.1f}s, RTF {st.rtf:.2f}. {session.view_hint}.")
+        print(f"[run_sim] dashboard: http://localhost:{session.opts.api_port}/dashboard  "
+              "(TUI: lang2sim, then /mission, /stress, /benchmark)")
         if a.benchmark:
             report = await benchmark(session, run_dir, a)
             if a.exit_when_ready:
