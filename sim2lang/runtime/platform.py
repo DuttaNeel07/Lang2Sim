@@ -31,6 +31,8 @@ class DockerInfo:
     operating_system: Optional[str] = None  # "Docker Desktop", "Ubuntu 24.04 LTS", ...
     arch: Arch = "unknown"
     runtimes: List[str] = field(default_factory=list)
+    mem_total_mb: Optional[int] = None   # memory the daemon's VM/host gives containers
+    cpus: Optional[int] = None
     error: Optional[str] = None
 
     @property
@@ -94,6 +96,8 @@ def parse_docker_info(info_json: str, cli_path: Optional[str] = None) -> DockerI
         operating_system=d.get("OperatingSystem"),
         arch=normalize_arch(d.get("Architecture", "")),
         runtimes=sorted((d.get("Runtimes") or {}).keys()),
+        mem_total_mb=int(d["MemTotal"]) // (1024 * 1024) if d.get("MemTotal") else None,
+        cpus=d.get("NCPU"),
     )
 
 

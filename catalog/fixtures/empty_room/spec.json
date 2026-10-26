@@ -1,0 +1,63 @@
+{
+  "spec_version": "2.0.0",
+  "environment": {
+    "environment_type": "indoor_warehouse",
+    "room_dimensions": {
+      "x": 8.0,
+      "y": 6.0,
+      "z": 3.0
+    },
+    "wall_height": 2.5,
+    "ambient_light_luminance": 1.0,
+    "ground_terrain": "concrete",
+    "surface_friction": 0.8,
+    "sky_weather": {
+      "sky_enabled": true,
+      "clouds_speed": 10.0,
+      "fog_enabled": false,
+      "fog_density": 0.0,
+      "sun_elevation": 0.8
+    }
+  },
+  "objects": [],
+  "robot_model": "turtlebot3_waffle",
+  "sensor_noise": {
+    "camera": {
+      "enabled": false,
+      "motion_blur_kernel": 0,
+      "brightness_attenuation": 1.0,
+      "gaussian_noise_stddev": 0.0
+    },
+    "lidar": {
+      "enabled": false,
+      "dropout_probability": 0.0,
+      "range_noise_stddev": 0.0
+    }
+  },
+  "adversarial_triggers": [],
+  "mission": {
+    "initial_pose": {
+      "x": -2.5,
+      "y": -1.5,
+      "yaw": 0.0
+    },
+    "waypoints": [
+      {
+        "x": 2.5,
+        "y": -1.5,
+        "yaw": 0.0
+      },
+      {
+        "x": 2.5,
+        "y": 1.5,
+        "yaw": 0.0
+      }
+    ],
+    "goal_pose": {
+      "x": -2.5,
+      "y": 1.5,
+      "yaw": 3.14159
+    },
+    "timeout_seconds": 300.0
+  }
+}

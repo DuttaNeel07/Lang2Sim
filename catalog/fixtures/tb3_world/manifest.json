@@ -1,0 +1,14 @@
+{
+  "manifest_version": "1.0",
+  "world_sdf": "world.sdf",
+  "world_name": "default",
+  "map_yaml": "map.yaml",
+  "spec_json": "spec.json",
+  "robot_model": "turtlebot3_waffle",
+  "initial_pose": {
+    "x": -2.0,
+    "y": -0.5,
+    "yaw": 0.0
+  },
+  "nav2_params": null
+}

@@ -180,6 +180,12 @@ class NavStatus(BaseModel):
     distance_remaining: float = 0.0
     target_pose: Optional[Pose2D] = None
     status: Literal["idle", "navigating", "succeeded", "failed", "canceled"] = "idle"
+    waypoint_index: int = Field(0, description="0-based index of the waypoint being driven to")
+    waypoints_total: int = Field(0, description="Number of poses in the current task (1 for a single goal)")
+    navigation_time: float = Field(0.0, description="Sim seconds spent on the current leg")
+    eta_seconds: Optional[float] = Field(None, description="Nav2's estimated time remaining on this leg")
+    recoveries: int = Field(0, description="Nav2 recovery behaviours run on this leg")
+    message: Optional[str] = Field(None, description="Why a task failed or was canceled")
 
 
 class SimStatus(BaseModel):
@@ -205,6 +211,28 @@ class SimStartRequest(BaseModel):
     robot_model: str = "turtlebot3_waffle"
     initial_pose: Pose2D
     use_gui: bool = True
+    use_rviz: bool = Field(True, description="Open RViz2 with the Nav2 panels (ignored without a display)")
+    world_name: Optional[str] = Field(None, description="World name; read from the SDF when omitted")
+    nav2_params_path: Optional[str] = Field(
+        None, description="Nav2 params file inside the container; default: TurtleBot3 Waffle params"
+    )
+
+
+class RunManifest(BaseModel):
+    """Contract for one run folder (decision 1): ~/.lang2sim/projects/<project>/runs/<timestamp>/manifest.json.
+
+    Paths are relative to the run folder. Part 1 writes the files, Part 3 only reads them.
+    """
+    manifest_version: Literal["1.0"] = "1.0"
+    world_sdf: str = Field("world.sdf", description="Gazebo Harmonic world (SDF 1.9+), no robot inside")
+    world_name: Optional[str] = Field(None, description="<world name=...>; read from the SDF when omitted")
+    map_yaml: str = Field("map.yaml", description="Nav2 map whose frame equals the world frame")
+    spec_json: Optional[str] = Field("spec.json", description="The SimSpec this run was generated from")
+    robot_model: Literal["turtlebot3_waffle"] = Field(
+        "turtlebot3_waffle", description="Only TurtleBot3 Waffle is supported for the MVP (decision 4)"
+    )
+    initial_pose: Pose2D = Field(..., description="Robot spawn pose in the world/map frame")
+    nav2_params: Optional[str] = Field(None, description="Custom Nav2 params; default: TurtleBot3 Waffle params")
 
 
 class SimStopRequest(BaseModel):
@@ -219,6 +247,11 @@ class SimStatusResponse(BaseModel):
     sim_time: float = Field(0.0, description="Current simulation time in seconds")
     active_nodes: List[str] = Field(default_factory=list)
     active_topics: List[str] = Field(default_factory=list)
+    ready: bool = Field(False, description="All readiness checks pass: robot can be given goals")
+    readiness: Dict[str, bool] = Field(
+        default_factory=dict, description="gazebo_clock, odometry, laser_scan, nav2_active, localized"
+    )
+    world_report: List[str] = Field(default_factory=list, description="World pre-flight findings for this run")
 
 
 class NavInitialPoseRequest(BaseModel):
