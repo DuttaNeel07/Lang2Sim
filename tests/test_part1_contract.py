@@ -10,8 +10,8 @@ import pytest
 
 pytest.importorskip("shapely")
 
-from sim2lang.core.models import ObjectSpec, Pose2D, Vector3D  # noqa: E402
-from sim2lang.world_gen import slice_map_from_layout  # noqa: E402
+from lang2sim.core.models import ObjectSpec, Pose2D, Vector3D  # noqa: E402
+from lang2sim.world_gen import slice_map_from_layout  # noqa: E402
 
 
 def _pgm(path):

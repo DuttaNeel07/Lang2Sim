@@ -25,11 +25,11 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from sim2lang.runtime import doctor, hardware_probe  # noqa: E402
-from sim2lang.runtime import platform as host_platform  # noqa: E402
-from sim2lang.runtime.display import DISPLAY_MODES, choose_display  # noqa: E402
-from sim2lang.runtime.run_folder import RunFolderError, load_manifest  # noqa: E402
-from sim2lang.runtime.session import SimNotReady, SimSession, copy_fixture  # noqa: E402
+from lang2sim.runtime import doctor, hardware_probe  # noqa: E402
+from lang2sim.runtime import platform as host_platform  # noqa: E402
+from lang2sim.runtime.display import DISPLAY_MODES, choose_display  # noqa: E402
+from lang2sim.runtime.run_folder import RunFolderError, load_manifest  # noqa: E402
+from lang2sim.runtime.session import SimNotReady, SimSession, copy_fixture  # noqa: E402
 
 
 def parse(argv=None):
@@ -40,7 +40,7 @@ def parse(argv=None):
     ap.add_argument("--display", choices=DISPLAY_MODES, help="override the auto-chosen display mode")
     ap.add_argument("--software", action="store_true", help="force CPU rendering")
     ap.add_argument("--image", help="sim image (default: $L2S_IMAGE or the pinned GHCR image)")
-    ap.add_argument("--dev", action="store_true", help="mount this checkout's sim2lang/ into the container")
+    ap.add_argument("--dev", action="store_true", help="mount this checkout's lang2sim/ into the container")
     ap.add_argument("--no-gui", action="store_true", help="no Gazebo window")
     ap.add_argument("--no-rviz", action="store_true")
     ap.add_argument("--no-camera", action="store_true", help="skip the camera bridge (faster without a GPU)")

@@ -27,7 +27,7 @@ from typing import List, Sequence, Tuple
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from sim2lang.core.models import (  # noqa: E402
+from lang2sim.core.models import (  # noqa: E402
     EnvironmentSpec,
     MissionSpec,
     ObjectSpec,
@@ -36,7 +36,7 @@ from sim2lang.core.models import (  # noqa: E402
     SimSpec,
     Vector3D,
 )
-from sim2lang.runtime.run_folder import write_manifest  # noqa: E402
+from lang2sim.runtime.run_folder import write_manifest  # noqa: E402
 
 OUT = REPO / "catalog" / "fixtures"
 MIN_CLEARANCE = 0.5
@@ -56,7 +56,7 @@ def mission(start: Tuple[float, float, float], waypoints: Sequence[Tuple[float, 
 def check_clearance(spec: SimSpec) -> None:
     from shapely.geometry import Point
 
-    from sim2lang.world_gen.shapely_solver import ShapelySpatialSolver
+    from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
 
     solver = ShapelySpatialSolver()
     room = solver.create_room_polygon(spec.environment.room_dimensions)
@@ -71,8 +71,8 @@ def check_clearance(spec: SimSpec) -> None:
 
 
 def generate(name: str, room: Tuple[float, float], objects: List[ObjectSpec], m: MissionSpec) -> None:
-    from sim2lang.compiler import compile_world_sdf, generate_simulation_ir
-    from sim2lang.world_gen import slice_map_from_layout
+    from lang2sim.compiler import compile_world_sdf, generate_simulation_ir
+    from lang2sim.world_gen import slice_map_from_layout
 
     spec = SimSpec(environment=EnvironmentSpec(room_dimensions=Vector3D(x=room[0], y=room[1], z=3.0)),
                    objects=objects, mission=m)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from sim2lang.runtime.world_check import (
+from lang2sim.runtime.world_check import (
     NORMALIZED_NAME,
     REQUIRED_SYSTEMS,
     check_world,
@@ -94,8 +94,8 @@ def test_part1_compiled_world_passes_after_normalizing(tmp_path):
     """Part 1's Harmonic template: valid poses, and Sensors/Imu get added."""
     pytest.importorskip("jinja2")
     pytest.importorskip("shapely")
-    from sim2lang.compiler import compile_world_sdf
-    from sim2lang.core.models import (
+    from lang2sim.compiler import compile_world_sdf
+    from lang2sim.core.models import (
         EnvironmentSpec,
         MissionSpec,
         Pose2D,

@@ -7,12 +7,12 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from textual.widgets import Markdown, Static
 
-from sim2lang.cli.app import Lang2SimApp
-from sim2lang.cli.screens.workspace_screen import WorkspaceScreen
-from sim2lang.cli.widgets.thought_box import ThoughtBox
-from sim2lang.cli.widgets.action_pill import ActionPill
-from sim2lang.agent.nemotron_client import NemotronClient
-from sim2lang.agent.react_loop import (
+from lang2sim.cli.app import Lang2SimApp
+from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
+from lang2sim.cli.widgets.thought_box import ThoughtBox
+from lang2sim.cli.widgets.action_pill import ActionPill
+from lang2sim.agent.nemotron_client import NemotronClient
+from lang2sim.agent.react_loop import (
     ReActSupervisor,
     ThoughtChunk,
     ThoughtCompleted,
@@ -21,7 +21,7 @@ from sim2lang.agent.react_loop import (
     ContentChunk,
     TurnCompleted,
 )
-from sim2lang.core.session_manager import (
+from lang2sim.core.session_manager import (
     SessionManager,
     ChatMessage,
     ToolCallRecord,
@@ -143,7 +143,7 @@ async def test_workspace_screen_restores_thought_box_and_action_pills(tmp_path):
     # Mount in textual app using the custom SessionManager
     app = Lang2SimApp()
     async with app.run_test() as pilot:
-        with patch("sim2lang.cli.screens.workspace_screen.session_manager", mgr):
+        with patch("lang2sim.cli.screens.workspace_screen.session_manager", mgr):
             ws = WorkspaceScreen(session_id=session.id)
             app.switch_screen(ws)
             await pilot.pause()

@@ -7,11 +7,11 @@ import importlib
 
 import pytest
 
-from sim2lang.runtime.display import DisplayPlan
-from sim2lang.runtime.run_folder import load_manifest
-from sim2lang.runtime.session import SimSession, copy_fixture
+from lang2sim.runtime.display import DisplayPlan
+from lang2sim.runtime.run_folder import load_manifest
+from lang2sim.runtime.session import SimSession, copy_fixture
 
-cfg = importlib.import_module("sim2lang.core.config")
+cfg = importlib.import_module("lang2sim.core.config")
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def test_view_hint_and_image(projects, mode, hint):
 def test_run_mission_sends_waypoints_then_goal(projects):
     import asyncio
 
-    from sim2lang.core.models import NavStatus
+    from lang2sim.core.models import NavStatus
 
     run = copy_fixture("small_warehouse")
 
