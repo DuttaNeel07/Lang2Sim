@@ -10,17 +10,17 @@ from dataclasses import dataclass
 
 @dataclass
 class TelemetryData:
-    sim_state: str = "Active (GUI)"
-    sim_time: str = "00:08.4"
-    rtf: str = "1.0x"
-    robot_x: float = 3.20
-    robot_y: float = 1.80
-    speed: float = 0.35
-    clearance: float = 0.48
+    sim_state: str = "Idle"
+    sim_time: str = "--:--"
+    rtf: str = "--"
+    robot_x: float = 0.00
+    robot_y: float = 0.00
+    speed: float = 0.00
+    clearance: float = 0.00
     bumper_force: float = 0.0
     collision_count: int = 0
-    tokens_used: int = 1420
-    context_capacity_pct: int = 1
+    tokens_used: int = 0
+    context_capacity_pct: int = 0
 
 class TelemetrySidebar(Widget):
     """Right-hand sidebar displaying live simulation, robot kinematics, bumper, and context stats."""

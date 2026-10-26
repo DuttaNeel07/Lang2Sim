@@ -23,7 +23,18 @@ SYSTEM_PROMPT = (
 )
 
 
-SIM_KEYWORDS = ("simulat", "warehouse", "empty room", "gazebo world")
+SIM_KEYWORDS = (
+    "simulat",
+    "warehouse",
+    "empty room",
+    "gazebo world",
+    "generat",
+    "create",
+    "build",
+    "spawn",
+    "room",
+    "rack",
+)
 
 
 class WorkspaceScreen(Screen):

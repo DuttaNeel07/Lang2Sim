@@ -21,6 +21,8 @@ import re
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+REPO = Path(__file__).resolve().parent.parent
+
 from lang2sim.core.models import (
     EnvironmentSpec,
     MissionSpec,
@@ -190,7 +192,7 @@ def make_session(display: Optional[str] = None, software: bool = False, camera: 
 
     plat, hw = host_platform.detect(), hardware_probe.probe()
     plan = choose_display(plat, hw, prefer=display, force_software=software)
-    session = SimSession(plan, image=os.environ.get("L2S_IMAGE") or None, host_env=plat.env,
+    session = SimSession(plan, image=os.environ.get("L2S_IMAGE") or None, dev_src=REPO, host_env=plat.env,
                          has_dxg=hw.has_dxg, extra_env={} if camera else {"L2S_CAMERA": "0"})
     return session, plan
 

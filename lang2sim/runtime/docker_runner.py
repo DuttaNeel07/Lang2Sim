@@ -114,6 +114,7 @@ def build_run_args(opts: RunOptions) -> List[str]:
     env("L2S_DISPLAY_MODE", plan.mode)
     env("L2S_GPU", plan.gpu)
     env("L2S_FOXGLOVE", 1 if plan.foxglove else 0)
+    env("L2S_API_APP", "lang2sim.runtime.control_api.server:app")
 
     # Data
     mount(opts.projects_dir, cfg.CONTAINER_PROJECTS_DIR)
@@ -165,6 +166,11 @@ def default_run_options(plan: DisplayPlan, *, image: Optional[str] = None,
     catalog = cfg.get_catalog_dir()
     uid = os.getuid() if hasattr(os, "getuid") else None
     gid = os.getgid() if hasattr(os, "getgid") else None
+    if project_src is None:
+        repo_candidate = Path(__file__).resolve().parent.parent.parent
+        if (repo_candidate / "lang2sim").is_dir():
+            project_src = repo_candidate
+
     return RunOptions(
         image=image_for(image or cfg.DEFAULT_SIM_IMAGE, plan),
         plan=plan,
