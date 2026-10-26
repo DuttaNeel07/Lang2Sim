@@ -185,8 +185,13 @@ def describe(spec: SimSpec) -> str:
 
 # --- launch, drive and score (Part 3 runtime + Part 4 NQI) ---------------------------
 
-def make_session(display: Optional[str] = None, software: bool = False, camera: bool = True):
-    """SimSession for this machine (doctor-style detection, image from $L2S_IMAGE)."""
+def make_session(display: Optional[str] = None, software: bool = False, camera: Optional[bool] = None):
+    """SimSession for this machine (doctor-style detection, image from $L2S_IMAGE).
+
+    camera None = auto: the robot camera bridge is skipped under CPU (software) rendering,
+    where it alone can drop the sim to ~0.1x real time; L2S_CAMERA=1/0 forces it on/off.
+    Navigation and telemetry use the lidar, not the camera.
+    """
     import os
 
     from lang2sim.runtime import hardware_probe
@@ -196,6 +201,9 @@ def make_session(display: Optional[str] = None, software: bool = False, camera: 
 
     plat, hw = host_platform.detect(), hardware_probe.probe()
     plan = choose_display(plat, hw, prefer=display, force_software=software)
+    if camera is None:
+        env = os.environ.get("L2S_CAMERA")
+        camera = env != "0" if env in ("0", "1") else plan.gpu != "software"
     session = SimSession(plan, image=os.environ.get("L2S_IMAGE") or None, dev_src=REPO, host_env=plat.env,
                          has_dxg=hw.has_dxg, extra_env={} if camera else {"L2S_CAMERA": "0"})
     return session, plan

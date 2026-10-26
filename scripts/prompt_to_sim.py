@@ -45,7 +45,7 @@ def main() -> int:
         print(f"      {s}")
     display = rest[rest.index("--display") + 1] if "--display" in rest else None
     session, plan = make_session(display=display, software="--software" in rest,
-                                 camera="--no-camera" not in rest)
+                                 camera=False if "--no-camera" in rest else None)
     print(f"[4/4] Part 3 runtime ({plan.describe()}): starting {session.opts.image}")
     try:
         return asyncio.run(_drive(session, run, gui="--no-gui" not in rest, rviz="--no-rviz" not in rest))
