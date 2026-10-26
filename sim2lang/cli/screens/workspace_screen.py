@@ -3,26 +3,71 @@ Screen 2: 80/20 Workspace Screen
 File: sim2lang/cli/screens/workspace_screen.py
 """
 
-import asyncio
+from typing import List, Dict, Any, Optional
 from textual.screen import Screen
 from textual.widgets import Static, Markdown
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.binding import Binding
 from textual import work
 from ..widgets.prompt_card import PromptCard
-from ..widgets.thought_box import ThoughtBox
-from ..widgets.action_pill import ActionPill
 from ..widgets.telemetry_sidebar import TelemetrySidebar
+from ...agent.nemotron_client import NemotronClient
+from ...core.session_manager import session_manager, ChatSession, ChatMessage
+
+SYSTEM_PROMPT = (
+    "You are Sim2Lang Copilot, an expert AI robotics simulation assistant. "
+    "You help roboticists design, configure, inspect, and reason about Gazebo Harmonic "
+    "simulations, SDF scene layouts, Nav2 navigation stacks, and robot sensor telemetry. "
+    "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown."
+)
+
 
 class WorkspaceScreen(Screen):
-    """The 80/20 split workspace screen featuring conversational execution and live telemetry."""
+    """The 80/20 split workspace screen featuring conversational LLM execution and live telemetry."""
 
-    def __init__(self, initial_prompt: str = "", **kwargs):
+    BINDINGS = [
+        Binding("ctrl+s", "open_sessions", "Sessions", show=False),
+    ]
+
+    def __init__(
+        self,
+        initial_prompt: str = "",
+        session_id: Optional[str] = None,
+        workspace_name: str = "active_project",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.initial_prompt = initial_prompt
+        self.client = NemotronClient()
+        self.workspace_name = workspace_name
+
+        # Session initialization
+        if session_id:
+            loaded = session_manager.get_session(session_id)
+            if loaded:
+                self.session = loaded
+            else:
+                self.session = session_manager.create_session(
+                    title=initial_prompt[:40] if initial_prompt else "New Session",
+                    workspace_name=workspace_name,
+                    system_prompt=SYSTEM_PROMPT,
+                )
+        else:
+            self.session = session_manager.create_session(
+                title=initial_prompt[:40] if initial_prompt else "New Session",
+                workspace_name=workspace_name,
+                system_prompt=SYSTEM_PROMPT,
+            )
+
+        self.conversation_history: List[Dict[str, str]] = [
+            {"role": m.role, "content": m.content} for m in self.session.messages
+        ]
+        self.total_tokens_used: int = self.session.total_tokens
+        self.is_streaming: bool = False
 
     def compose(self):
         # Top title bar
-        yield Static("S2L | Simulation Active — lang2sim", id="workspace-header")
+        yield Static(f"S2L | {self.session.title} — lang2sim", id="workspace-header")
 
         # 80/20 Horizontal body
         with Horizontal(id="workspace-body"):
@@ -42,82 +87,191 @@ class WorkspaceScreen(Screen):
         # Bottom footer bar
         with Horizontal(id="workspace-footer"):
             yield Static("~", classes="footer-left")
-            yield Static(" " * 40)
-            yield Static("[#ced6e0]1.4K (1%)[/]   [#57606f]ctrl+p commands[/]   [#2ed573]●[/] [#57606f]lang2sim 2.0.0[/]", classes="footer-right")
+            yield Static("", classes="footer-spacer")
+            yield Static(
+                f"[#ced6e0]{self.total_tokens_used:,} tokens (1%)[/]   "
+                "[#57606f]ctrl+s sessions[/]   [#57606f]ctrl+p commands[/]   [#2ed573]●[/] [#57606f]lang2sim 2.0.0[/]",
+                id="footer-status",
+                classes="footer-right",
+            )
 
     def on_mount(self) -> None:
-        # Focus sticky input card
+        """Mount existing session messages, focus input, and process initial prompt."""
+        chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+
+        # Restore past messages if loading an existing session
+        for msg in self.session.messages:
+            if msg.role == "user":
+                user_card = Static(f"[bold #ffffff]{msg.content}[/]", classes="user-prompt-card")
+                chat_scroll.mount(user_card)
+            elif msg.role == "assistant":
+                resp_md = Markdown(msg.content, classes="assistant-response")
+                chat_scroll.mount(resp_md)
+
+        sidebar = self.query_one(TelemetrySidebar)
+        capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
+        sidebar.update_telemetry(
+            tokens_used=self.total_tokens_used,
+            context_capacity_pct=capacity_pct,
+        )
+
+        chat_scroll.scroll_end(animate=False)
         self.query_one("#sticky-input-card", PromptCard).focus_input()
-        # If there was an initial prompt from landing screen, process it!
+
         if self.initial_prompt:
             self.handle_user_prompt(self.initial_prompt)
+
+    def action_open_sessions(self) -> None:
+        """Open custom floating sessions modal."""
+        from .sessions_modal import SessionsModal
+        self.app.push_screen(
+            SessionsModal(workspace_name=self.session.workspace_name),
+            callback=self.on_session_switched,
+        )
+
+    def on_session_switched(self, session_id: Optional[str]) -> None:
+        if session_id and session_id != self.session.id:
+            self.load_session(session_id)
+
+    def load_session(self, session_id: str) -> None:
+        """Load and mount a selected session cleanly."""
+        loaded = session_manager.get_session(session_id)
+        if not loaded:
+            return
+
+        self.session = loaded
+        self.conversation_history = [
+            {"role": m.role, "content": m.content} for m in self.session.messages
+        ]
+        self.total_tokens_used = self.session.total_tokens
+
+        chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+        chat_scroll.remove_children()
+
+        for msg in self.session.messages:
+            if msg.role == "user":
+                user_card = Static(f"[bold #ffffff]{msg.content}[/]", classes="user-prompt-card")
+                chat_scroll.mount(user_card)
+            elif msg.role == "assistant":
+                resp_md = Markdown(msg.content, classes="assistant-response")
+                chat_scroll.mount(resp_md)
+
+        # Update header and sidebar
+        self.query_one("#workspace-header", Static).update(
+            f"S2L | {self.session.title} — lang2sim"
+        )
+        sidebar = self.query_one(TelemetrySidebar)
+        capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
+        sidebar.update_telemetry(
+            tokens_used=self.total_tokens_used,
+            context_capacity_pct=capacity_pct,
+        )
+
+        footer_right = self.query_one("#footer-status", Static)
+        if footer_right:
+            footer_right.update(
+                f"[#ced6e0]{self.total_tokens_used:,} tokens ({capacity_pct}%)[/]   "
+                "[#57606f]ctrl+s sessions[/]   [#57606f]ctrl+p commands[/]   [#2ed573]●[/] [#57606f]lang2sim 2.0.0[/]"
+            )
+
+        chat_scroll.scroll_end(animate=False)
+        self.query_one("#sticky-input-card", PromptCard).focus_input()
 
     def on_prompt_card_submitted(self, message: PromptCard.Submitted) -> None:
         """When user types in sticky input card, add prompt and run execution."""
         self.handle_user_prompt(message.value)
 
     def handle_user_prompt(self, prompt: str) -> None:
-        """Post user message and run async task to process."""
+        """Mount user message and launch async LLM streaming worker."""
+        cleaned_prompt = prompt.strip()
+        if not cleaned_prompt or self.is_streaming:
+            return
+
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
 
-        # 1. Add user prompt card
-        user_card = Static(f"[bold #ffffff]{prompt}[/]", classes="user-prompt-card")
+        # 1. Auto-name session if it is still "New Session"
+        if self.session.title == "New Session":
+            self.session.title = cleaned_prompt[:40]
+            self.query_one("#workspace-header", Static).update(
+                f"S2L | {self.session.title} — lang2sim"
+            )
+
+        # 2. Mount user prompt card
+        user_card = Static(f"[bold #ffffff]{cleaned_prompt}[/]", classes="user-prompt-card")
         chat_scroll.mount(user_card)
         chat_scroll.scroll_end(animate=False)
 
-        # 2. Trigger non-blocking worker for reasoning and execution
-        self.run_execution_cycle(prompt)
+        prompt_tokens = max(1, len(cleaned_prompt) // 4)
+        self.session.messages.append(
+            ChatMessage(role="user", content=cleaned_prompt, tokens=prompt_tokens)
+        )
+        self.conversation_history.append({"role": "user", "content": cleaned_prompt})
+        session_manager.save_session(self.session)
 
-    @work(exclusive=False, thread=True)
-    def run_execution_cycle(self, prompt: str) -> None:
-        """Simulate or execute non-blocking reasoning cycle with thoughts, tools, and response."""
+        # 3. Mount streaming assistant Markdown widget
+        response_widget = Markdown("● *Thinking...*", classes="assistant-response")
+        chat_scroll.mount(response_widget)
+        chat_scroll.scroll_end(animate=False)
+
+        # 4. Stream response asynchronously with low latency
+        self.stream_response(response_widget, cleaned_prompt)
+
+    @work(exclusive=True)
+    async def stream_response(self, response_widget: Markdown, prompt: str) -> None:
+        """Stream conversational response directly from LLM with low latency."""
+        self.is_streaming = True
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
         sidebar = self.query_one(TelemetrySidebar)
+        sticky_card = self.query_one("#sticky-input-card", PromptCard)
 
-        # Step 1: Mount thought block
-        thought = ThoughtBox(
-            duration_str="1.2s",
-            content=f"Analyzing prompt '{prompt}'. Formulating spatial bounds, corridor clearance rules, and simulation parameters..."
-        )
-        self.app.call_from_thread(chat_scroll.mount, thought)
-        self.app.call_from_thread(chat_scroll.scroll_end)
+        if not self.client.is_configured():
+            await response_widget.update(
+                "**● API Key Required**\n\n"
+                "Please configure your API key to chat with Sim2Lang:\n"
+                "- Run: `export NVIDIA_API_KEY='nvapi-...'`\n"
+                "- Or set `OPENAI_API_KEY='sk-...'`\n"
+                "- Or add `NVIDIA_API_KEY=...` to `.env` in the project root."
+            )
+            self.is_streaming = False
+            sticky_card.focus_input()
+            return
 
-        # Simulate quick thinking pause
-        asyncio.run(asyncio.sleep(0.4))
+        chunks: List[str] = []
+        try:
+            async for chunk in self.client.stream_chat(self.conversation_history):
+                chunks.append(chunk)
+                await response_widget.update("".join(chunks))
+                chat_scroll.scroll_end(animate=False)
 
-        # Step 2: Mount Tool Action Pills
-        pill1 = ActionPill(tool_name="solve_spatial_layout", duration_str="0.4s", status="completed")
-        self.app.call_from_thread(chat_scroll.mount, pill1)
-        
-        asyncio.run(asyncio.sleep(0.3))
-        
-        pill2 = ActionPill(tool_name="compile_world_sdf", duration_str="0.8s", status="completed")
-        self.app.call_from_thread(chat_scroll.mount, pill2)
-        
-        asyncio.run(asyncio.sleep(0.3))
+            full_text = "".join(chunks).strip()
+            if full_text:
+                self.conversation_history.append({"role": "assistant", "content": full_text})
+                prompt_tokens = max(1, len(prompt) // 4)
+                resp_tokens = max(1, len(full_text) // 4)
+                self.total_tokens_used += prompt_tokens + resp_tokens
+                capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
 
-        # Step 3: Mount Markdown Response
-        response_md = Markdown(
-            f"""
-* **Warehouse Area Defined:** 14x10m with non-intersecting outer boundary.
-* **Corridor Safety Corridor:** Enforced $W_{{corridor}} \\ge 2.2\\text{{m}}$ and wall standoff $\\ge 0.5\\text{{m}}$.
-* **Zero-SLAM Map Sliced:** Generated verified `map.yaml` and `map.pgm`.
-* **Nav2 Simple Commander:** Dispatched mobile robot to target anchor pose.
-* **Gazebo Status:** Physics running at Real-Time Factor 1.0x.
-            """
-        )
-        self.app.call_from_thread(chat_scroll.mount, response_md)
-        self.app.call_from_thread(chat_scroll.scroll_end)
+                self.session.messages.append(
+                    ChatMessage(role="assistant", content=full_text, tokens=resp_tokens)
+                )
+                self.session.total_tokens = self.total_tokens_used
+                session_manager.save_session(self.session)
 
-        # Update telemetry sidebar live
-        self.app.call_from_thread(
-            sidebar.update_telemetry,
-            sim_state="Active (GUI)",
-            sim_time="00:12.6",
-            rtf="1.0x",
-            robot_x=3.85,
-            robot_y=2.10,
-            speed=0.35,
-            clearance=0.48,
-            tokens_used=1840,
-        )
+                sidebar.update_telemetry(
+                    tokens_used=self.total_tokens_used,
+                    context_capacity_pct=capacity_pct,
+                )
+
+                footer_right = self.query_one("#footer-status", Static)
+                if footer_right:
+                    footer_right.update(
+                        f"[#ced6e0]{self.total_tokens_used:,} tokens ({capacity_pct}%)[/]   "
+                        "[#57606f]ctrl+s sessions[/]   [#57606f]ctrl+p commands[/]   [#2ed573]●[/] [#57606f]lang2sim 2.0.0[/]"
+                    )
+            else:
+                await response_widget.update("*(No response received from model)*")
+        except Exception as e:
+            await response_widget.update(f"[bold #ef4444]⚠ Connection Error:[/] {str(e)}")
+        finally:
+            self.is_streaming = False
+            sticky_card.focus_input()

@@ -88,5 +88,9 @@ class PromptCard(Widget):
             self.post_message(self.Submitted(value))
 
     def focus_input(self) -> None:
-        inp = self.query_one(f"#{self.card_id}", Input)
-        inp.focus()
+        try:
+            inp = self.query_one(Input)
+            inp.focus()
+        except Exception:
+            pass
+
