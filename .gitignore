@@ -7,4 +7,4 @@ __pycache__/
 SIM2LANG.md
 .env
 *.env
-
+test_output/

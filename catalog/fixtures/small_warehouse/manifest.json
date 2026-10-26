@@ -1,0 +1,14 @@
+{
+  "manifest_version": "1.0",
+  "world_sdf": "world.sdf",
+  "world_name": "small_warehouse",
+  "map_yaml": "map.yaml",
+  "spec_json": "spec.json",
+  "robot_model": "turtlebot3_waffle",
+  "initial_pose": {
+    "x": -4.5,
+    "y": -3.5,
+    "yaw": 0.0
+  },
+  "nav2_params": null
+}

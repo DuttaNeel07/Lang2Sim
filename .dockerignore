@@ -1,0 +1,14 @@
+# Lang2Sim build context is the repo root, but the sim image only needs a few
+# paths. Allow-list them so docs, .git, venvs and project outputs never get sent
+# to the Docker daemon.
+*
+
+!docker/sim/
+
+# The control API (and later launch/nav/self-healing code) ships in the image.
+!pyproject.toml
+!sim2lang/
+
+**/__pycache__
+**/*.pyc
+**/.DS_Store

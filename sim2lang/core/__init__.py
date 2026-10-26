@@ -1,4 +1,6 @@
-from .models import (
+"""Core data contracts, schemas, and configurations for Sim2Lang."""
+
+from sim2lang.core.models import (
     Pose2D,
     Vector3D,
     SkyWeatherSpec,
@@ -10,8 +12,17 @@ from .models import (
     DynamicObstacleTrigger,
     MissionSpec,
     SimSpec,
+    SimulationIR,
+    SimStartRequest,
+    RunManifest,
+    SimStopRequest,
+    SimStatusResponse,
+    NavInitialPoseRequest,
+    NavGoalRequest,
+    NavWaypointsRequest,
+    NavStatus,
 )
-from .config import get_projects_dir, get_active_project_dir
+from sim2lang.core.config import Config, config
 
 __all__ = [
     "Pose2D",
@@ -25,6 +36,15 @@ __all__ = [
     "DynamicObstacleTrigger",
     "MissionSpec",
     "SimSpec",
-    "get_projects_dir",
-    "get_active_project_dir",
+    "SimulationIR",
+    "SimStartRequest",
+    "RunManifest",
+    "SimStopRequest",
+    "SimStatusResponse",
+    "NavInitialPoseRequest",
+    "NavGoalRequest",
+    "NavWaypointsRequest",
+    "NavStatus",
+    "Config",
+    "config",
 ]

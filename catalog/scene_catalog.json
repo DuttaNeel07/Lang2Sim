@@ -7,6 +7,7 @@
       "environment_type": "indoor_warehouse",
       "base_world": "catalog/scenes/aws_small_warehouse/world.sdf",
       "map_yaml": "catalog/maps/aws_small_warehouse.yaml",
+      "map_pgm": "catalog/maps/aws_small_warehouse.pgm",
       "dimensions": {
         "x": 14.0,
         "y": 10.0,
@@ -16,10 +17,64 @@
       "anchors": {
         "dock": [0.0, 0.0, 0.0],
         "rack_1": [2.5, 3.0, 0.0],
+        "rack_2": [-2.5, 3.0, 0.0],
         "rack_3": [5.0, 3.0, 0.0],
         "rack_5": [7.5, 3.0, 0.0],
         "packaging_bench": [-3.0, 2.0, 0.0]
       }
+    },
+    "robotics_lab": {
+      "display_name": "Robotics Research Workshop",
+      "environment_type": "indoor_office",
+      "dimensions": {
+        "x": 18.0,
+        "y": 12.0,
+        "z": 3.5
+      },
+      "surface_friction": 0.8,
+      "anchors": {
+        "dock": [0.0, 0.0, 0.0],
+        "workbench_1": [5.0, 4.0, 0.0],
+        "workbench_4": [-5.0, -4.0, 3.14159]
+      }
+    }
+  },
+  "models": {
+    "aws_warehouse_rack": {
+      "dimensions": {
+        "x": 2.8,
+        "y": 1.2,
+        "z": 3.6
+      },
+      "mass": 120.0,
+      "is_static": true
+    },
+    "workbench": {
+      "dimensions": {
+        "x": 2.0,
+        "y": 1.0,
+        "z": 0.9
+      },
+      "mass": 45.0,
+      "is_static": true
+    },
+    "wooden_crate": {
+      "dimensions": {
+        "x": 0.8,
+        "y": 0.8,
+        "z": 0.8
+      },
+      "mass": 15.0,
+      "is_static": false
+    },
+    "barrel": {
+      "dimensions": {
+        "x": 0.6,
+        "y": 0.6,
+        "z": 1.0
+      },
+      "mass": 25.0,
+      "is_static": false
     }
   }
 }

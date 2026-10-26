@@ -14,3 +14,12 @@ pip install -e .
 ```bash
 lang2sim
 ```
+
+## Run a simulation (Part 3)
+```bash
+pip install -e ".[sim,dev]"
+python scripts/run_sim.py --fixture small_warehouse --mission
+```
+Per-OS setup, the run-folder contract, the control API and troubleshooting:
+[docs/part3-runtime.md](docs/part3-runtime.md).
+

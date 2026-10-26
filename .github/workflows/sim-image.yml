@@ -1,0 +1,190 @@
+name: sim-image
+
+# Builds the Lang2Sim simulation runtime image (docker/sim/Dockerfile).
+#   PRs:      build sim-vnc for amd64, run the smoke test and the Docker
+#             integration tests (fixture runs reach ready, self-healing), no push.
+#   Pushes:   smoke test, then native amd64 + arm64 builds of both targets,
+#             pushed by digest and merged into multi-arch tags on GHCR:
+#               ghcr.io/<owner>/lang2sim-sim:<tag>        (target: sim)
+#               ghcr.io/<owner>/lang2sim-sim:<tag>-vnc    (target: sim-vnc)
+
+on:
+  push:
+    branches: [staging, main]
+    tags: ["v*"]
+    paths:
+      - "docker/sim/**"
+      - ".dockerignore"
+      - ".github/workflows/sim-image.yml"
+      - "pyproject.toml"
+      - "sim2lang/**"
+      - "catalog/fixtures/**"
+      - "tests/integration/**"
+  pull_request:
+    paths:
+      - "docker/sim/**"
+      - ".dockerignore"
+      - ".github/workflows/sim-image.yml"
+      - "pyproject.toml"
+      - "sim2lang/**"
+      - "catalog/fixtures/**"
+      - "tests/integration/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: sim-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke (amd64, sim-vnc)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build sim-vnc (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/sim/Dockerfile
+          target: sim-vnc
+          platforms: linux/amd64
+          load: true
+          tags: lang2sim-sim:ci-vnc
+          cache-from: type=gha,scope=sim-vnc-amd64
+          cache-to: type=gha,scope=sim-vnc-amd64,mode=max
+
+      - name: Smoke test (Xvfb + llvmpipe, GUI on)
+        run: docker/sim/smoke_test.sh vnc --image lang2sim-sim:ci-vnc
+
+      - name: Smoke test (headless, server-only)
+        run: docker/sim/smoke_test.sh headless --image lang2sim-sim:ci-vnc
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Docker integration tests (A4, A5, A7)
+        env:
+          L2S_INTEGRATION: "1"
+          L2S_TEST_IMAGE: lang2sim-sim:ci-vnc
+          L2S_READY_TIMEOUT: "300"
+        run: |
+          pip install -e ".[sim,dev]"
+          pytest -q -rA tests/integration
+
+  build:
+    name: build (${{ matrix.target }}, ${{ matrix.arch }})
+    needs: smoke
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [sim, sim-vnc]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Image name (GHCR needs lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lang2sim-sim" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/sim/Dockerfile
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.target }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: publish (${{ matrix.target }})
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [sim, sim-vnc]
+    steps:
+      - name: Image name (GHCR needs lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lang2sim-sim" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.target }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
+            suffix=${{ matrix.target == 'sim-vnc' && '-vnc' || '' }},onlatest=true
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Create multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Inspect
+        run: docker buildx imagetools inspect "${IMAGE}:${{ steps.meta.outputs.version }}"
