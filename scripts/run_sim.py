@@ -7,6 +7,12 @@ File: scripts/run_sim.py
     python scripts/run_sim.py --fixture small_warehouse
     python scripts/run_sim.py --fixture tb3_world --display vnc     # macOS: real Gazebo GUI in a browser
     python scripts/run_sim.py --fixture small_warehouse --mission  # also drive spec.json's mission
+    python scripts/run_sim.py --fixture small_warehouse --benchmark --light 0.1   # nominal vs stress NQI
+
+--mission records the run's telemetry and writes <run>/benchmark_report.json
+(NQI, nominal only). --benchmark runs the mission twice, nominal then with the
+spec's adversarial triggers (default: a crate dropped on the robot's path),
+and prints the nominal vs adversarial table (architecture §8.4).
 
 Steps: doctor checks -> display plan -> sim container -> world pre-flight ->
 sim_launch.py -> Gazebo + TurtleBot3 + Nav2 (+ GUI/RViz) -> wait until every
@@ -45,6 +51,12 @@ def parse(argv=None):
     ap.add_argument("--no-rviz", action="store_true")
     ap.add_argument("--no-camera", action="store_true", help="skip the camera bridge (faster without a GPU)")
     ap.add_argument("--mission", action="store_true", help="drive spec.json's waypoints + goal once ready")
+    ap.add_argument("--benchmark", action="store_true",
+                    help="nominal + adversarial runs of the mission, scored into benchmark_report.json")
+    ap.add_argument("--light", type=float, help="with --benchmark: sun intensity 0..1 during the stress run")
+    ap.add_argument("--goal-tolerance", type=float, default=0.15,
+                    help="NQI mission success radius in m (architecture: 0.15; Nav2 TB3 goal checker: 0.25)")
+    ap.add_argument("--no-score", action="store_true", help="with --mission: drive only, no telemetry/NQI")
     ap.add_argument("--timeout", type=float, default=300, help="seconds to wait for readiness")
     ap.add_argument("--exit-when-ready", action="store_true", help="stop as soon as the sim is ready (tests)")
     return ap.parse_args(argv)
@@ -60,6 +72,55 @@ def progress(st, elapsed):
 def nav_progress(st):
     print(f"  {st.status:<10} waypoint {st.waypoint_index + 1}/{st.waypoints_total}  "
           f"{st.distance_remaining:5.1f} m to go" + (f"  ({st.message})" if st.message else ""), flush=True)
+
+
+def _params(a):
+    from lang2sim.telemetry.nqi_scorer import NQIParams
+    return NQIParams(eps_pos=a.goal_tolerance)
+
+
+def _print_report(report) -> None:
+    from lang2sim.telemetry.nqi_scorer import render_to_console
+    render_to_console(report)
+    for name, run in report["runs"].items():
+        print(f"[run_sim] {name}: pose from {run.get('pose_source')}, collisions via "
+              f"{run.get('contact_force_source')}, nav {run.get('nav_status')}, "
+              f"goal error {run.get('final_goal_error_m')} m")
+    print(f"[run_sim] report: {report['path']}")
+
+
+async def scored_mission(session, run_dir, a):
+    """--mission: drive with telemetry recording and write a nominal benchmark_report.json."""
+    from lang2sim.runtime.control_api.client import ControlAPIError
+    if not a.no_score:
+        try:
+            setup = await session.api.telemetry_setup()
+        except ControlAPIError:
+            setup = None
+            print("[run_sim] this sim image has no telemetry API; driving without scoring (rebuild the image)")
+        if setup is not None:
+            if not setup.get("enabled"):
+                print(f"[run_sim] telemetry: stock robot ({setup.get('reason')}); scoring from AMCL poses, "
+                      "no collision sensing")
+            report = await session.score_single_run(run_dir, on_progress=nav_progress, params=_params(a))
+            _print_report(report)
+            from lang2sim.core.models import NavStatus
+            return NavStatus.model_validate(report["nav"])
+    return await session.run_mission(run_dir, on_progress=nav_progress)
+
+
+async def benchmark(session, run_dir, a):
+    """--benchmark: nominal vs adversarial runs (architecture §8.4 table)."""
+    def on_trigger(tr, err):
+        pose = tr.get("spawn_pose") or {}
+        print(f"[run_sim] stress: spawn {tr.get('model_name')} at ({pose.get('x')}, {pose.get('y')})"
+              + (f" FAILED: {err}" if err else ""), flush=True)
+
+    report = await session.run_benchmark(run_dir, light=a.light, on_progress=nav_progress, on_trigger=on_trigger,
+                                         on_phase=lambda m: print(f"[run_sim] benchmark: {m}", flush=True),
+                                         params=_params(a))
+    _print_report(report)
+    return report
 
 
 async def run(a) -> int:
@@ -92,9 +153,13 @@ async def run(a) -> int:
         for line in st.world_report:
             print(f"[run_sim] world check {line}")
         print(f"[run_sim] READY  sim time {st.sim_time:.1f}s, RTF {st.rtf:.2f}. {session.view_hint}.")
-        if a.mission:
+        if a.benchmark:
+            report = await benchmark(session, run_dir, a)
+            if a.exit_when_ready:
+                return 0 if report else 1
+        elif a.mission:
             print("[run_sim] driving the mission from spec.json")
-            nav = await session.run_mission(run_dir, on_progress=nav_progress)
+            nav = await scored_mission(session, run_dir, a)
             print(f"[run_sim] MISSION {nav.status.upper()}" + (f": {nav.message}" if nav.message else ""))
             if a.exit_when_ready:
                 return 0 if nav.status == "succeeded" else 1
