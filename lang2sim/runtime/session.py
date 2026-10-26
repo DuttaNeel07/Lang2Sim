@@ -222,7 +222,7 @@ class SimSession:
         Archetype 4 default: a wooden crate dropped onto the nominal path ahead of the
         robot. `light` dims the sun (0..1) for the adversarial run and restores it after.
         """
-        from lang2sim.telemetry.benchmark import default_stress_trigger, write_benchmark
+        from lang2sim.telemetry.benchmark import default_stress_trigger, mission_targets, write_benchmark
         from lang2sim.telemetry.nqi_scorer import NQIParams
 
         params = params or NQIParams()
@@ -236,7 +236,7 @@ class SimSession:
         phase("returning to start")
         await self.return_to_start(run_dir)
         triggers = ([t.model_dump(mode="json") for t in spec.adversarial_triggers] if spec.adversarial_triggers
-                    else [default_stress_trigger(nominal.result.trajectory)])
+                    else [default_stress_trigger(nominal.result.trajectory, targets=mission_targets(spec))])
         if light is not None:
             await self.api.world_light({"intensity": light})
         try:

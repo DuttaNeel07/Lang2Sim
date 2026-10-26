@@ -190,7 +190,7 @@ def test_run_benchmark_writes_nominal_vs_adversarial_report(run_dir):
     assert saved["stress"]["source"] == "default_crate"
     assert saved["runs"]["adversarial"]["nqi"] < saved["runs"]["nominal"]["nqi"]
     assert saved["deltas"]["path_length_pct"] > 0
-    assert saved["runs"]["adversarial"]["dynamic_obstacles"][0]["r"] == 0.42
+    assert saved["runs"]["adversarial"]["dynamic_obstacles"][0]["model"] == "wooden_crate"
 
 
 def test_run_benchmark_uses_spec_triggers_when_given(run_dir):
@@ -222,3 +222,30 @@ def test_recording_stops_even_when_the_mission_errors(run_dir):
     with pytest.raises(RuntimeError):
         asyncio.run(session_with(api).run_recorded_mission(run_dir))
     assert api.calls[-1] == ("record_stop", "nominal")
+
+
+def test_default_trigger_keeps_the_crate_off_waypoints(run_dir):
+    spec = spec_of(run_dir)
+    targets = mission_targets(spec)
+    tr = default_stress_trigger(recorded(spec), targets=targets)
+    p = tr["spawn_pose"]
+    start = (spec.mission.initial_pose.x, spec.mission.initial_pose.y)
+    assert all(math.hypot(p["x"] - a[0], p["y"] - a[1]) >= 1.2 for a in [start, *targets])
+    # Still on the nominal path, aligned with it (the second leg runs along +y).
+    assert p["x"] == pytest.approx(2.5, abs=0.05) and p["yaw"] == pytest.approx(math.pi / 2, abs=0.05)
+
+
+def test_box_footprint_clearance_is_measured_to_the_box_edge():
+    from lang2sim.telemetry.benchmark import footprint_points
+    from lang2sim.telemetry.nqi_scorer import min_clearance
+    from lang2sim.telemetry.trajectory import Trajectory
+
+    crate = {"x": 0.0, "y": 0.0, "yaw": 0.0, "shape": "box", "size": [0.6, 0.6], "r": 0.4243}
+    # Robot passes 0.5 m from the crate centre diagonally: 0.5 - 0.3*sqrt(2) would be a hit for
+    # the bounding circle, but the box corner is at 0.4243 and the closest edge point ~0.2 m away.
+    traj = Trajectory.from_samples([{"t": i * 0.1, "x": -2.0 + 0.1 * i, "y": 0.5} for i in range(41)])
+    exact = min_clearance(traj, footprint_points(crate), r_robot=0.0)
+    circle = min_clearance(traj, [(0.0, 0.0, 0.4243)], r_robot=0.0)
+    assert exact == pytest.approx(0.2, abs=0.026)
+    assert circle == pytest.approx(0.0757, abs=0.01)
+    assert footprint_points({"x": 1.0, "y": 2.0, "r": 0.3}) == [(1.0, 2.0, 0.3)]

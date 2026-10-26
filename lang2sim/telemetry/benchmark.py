@@ -72,10 +72,37 @@ def load_occupancy(run_dir: Path, map_name: str = "map.yaml") -> Optional[Occupa
         return None
 
 
+BOX_OUTLINE_STEP_M = 0.05
+
+
+def footprint_points(entity: Mapping[str, Any], step: float = BOX_OUTLINE_STEP_M) -> List[Tuple[float, float, float]]:
+    """A spawned entity's ground footprint as clearance obstacles (x, y, r).
+
+    Boxes become points along their outline (r = 0), so C_min measures the distance to
+    the real box edge to within step/2; a bounding circle would overstate a 0.6 m crate's
+    footprint by up to 0.12 m and report near-misses that never happened. Circles and
+    entries without a shape stay one circle of radius r.
+    """
+    x, y = float(entity["x"]), float(entity["y"])
+    if entity.get("shape") != "box" or len(entity.get("size") or []) != 2:
+        return [(x, y, float(entity.get("r", 0.0)))]
+    sx, sy = (float(v) for v in entity["size"])
+    yaw = float(entity.get("yaw", 0.0))
+    c, s = math.cos(yaw), math.sin(yaw)
+    corners = [(-sx / 2, -sy / 2), (sx / 2, -sy / 2), (sx / 2, sy / 2), (-sx / 2, sy / 2)]
+    pts: List[Tuple[float, float, float]] = []
+    for (ax, ay), (bx, by) in zip(corners, corners[1:] + corners[:1]):
+        n = max(1, int(math.ceil(math.hypot(bx - ax, by - ay) / step)))
+        for i in range(n):
+            u, v = ax + (bx - ax) * i / n, ay + (by - ay) * i / n
+            pts.append((x + c * u - s * v, y + s * u + c * v, 0.0))
+    return pts
+
+
 def dynamic_obstacles(trajectory: Mapping[str, Any],
                       spawned: Optional[Sequence[Mapping[str, Any]]] = None) -> List[Tuple[float, float, float]]:
     entries = spawned if spawned is not None else (trajectory.get("meta") or {}).get("spawned_entities", [])
-    return [(float(e["x"]), float(e["y"]), float(e.get("r", 0.0))) for e in entries or []]
+    return [p for e in entries or [] for p in footprint_points(e)]
 
 
 def score_recorded_run(trajectory: Mapping[str, Any], *, run_dir: Optional[Path] = None, spec: Any = None,
@@ -106,7 +133,8 @@ def score_recorded_run(trajectory: Mapping[str, Any], *, run_dir: Optional[Path]
         "time_base": meta.get("time_base"),
         "contact_force_source": meta.get("contact_force_source"),
         "contact_events": meta.get("contact_events", []),
-        "dynamic_obstacles": [{"x": x, "y": y, "r": r} for x, y, r in obstacles],
+        "dynamic_obstacles": [{k: e.get(k) for k in ("name", "model", "x", "y", "yaw", "shape", "size", "r")}
+                              for e in (spawned if spawned is not None else meta.get("spawned_entities", [])) or []],
         "min_scan_range_m": meta.get("min_scan_range_m"),
     })
     # ATE columns here are AMCL-vs-ground-truth localization error, not SLAM drift.
@@ -126,25 +154,48 @@ def write_benchmark(run_dir: Path, nominal: Mapping[str, Any], adversarial: Opti
     return path, report
 
 
-def default_stress_trigger(nominal: Mapping[str, Any], *, model_name: str = "wooden_crate",
-                           at_path_fraction: float = 0.6, fire_at_time_fraction: float = 0.35) -> Dict[str, Any]:
-    """Archetype 4 default: drop a crate on the nominal path, ahead of the robot.
+KEEP_CLEAR_OF_TARGETS_M = 1.2   # a crate this close to a waypoint/goal makes it unreachable, not a detour
 
-    The crate goes where the nominal run was at `at_path_fraction` of its path
-    length and is spawned once `fire_at_time_fraction` of the nominal duration has
-    elapsed, i.e. while the robot is still well short of it. Returned in
-    core.models.DynamicObstacleTrigger form.
+
+def _point_at_fraction(pts: Sequence[XY], seg: Sequence[float], fraction: float) -> Tuple[XY, float]:
+    """Point at `fraction` of the polyline length, and the path heading there."""
+    target, acc = fraction * sum(seg), 0.0
+    for i, d in enumerate(seg):
+        if d > 0 and acc + d >= target:
+            f = (target - acc) / d
+            a, b = pts[i], pts[i + 1]
+            return (a[0] + f * (b[0] - a[0]), a[1] + f * (b[1] - a[1])), math.atan2(b[1] - a[1], b[0] - a[0])
+        acc += d
+    return pts[-1], 0.0
+
+
+def default_stress_trigger(nominal: Mapping[str, Any], *, targets: Sequence[XY] = (),
+                           model_name: str = "wooden_crate", at_path_fraction: float = 0.6,
+                           fire_at_time_fraction: float = 0.35,
+                           keep_clear_m: float = KEEP_CLEAR_OF_TARGETS_M) -> Dict[str, Any]:
+    """Archetype 4 default: drop a crate across the nominal path, ahead of the robot.
+
+    The crate goes on the nominal trajectory near `at_path_fraction` of its length,
+    moved along the path (nearest first) until it is at least `keep_clear_m` from the
+    start and every mission target, so it forces a detour rather than blocking a
+    waypoint. It is aligned with the path and spawned once `fire_at_time_fraction` of
+    the nominal duration has elapsed, while the robot is still short of it. Returned
+    in core.models.DynamicObstacleTrigger form.
     """
     samples = nominal["samples"]
     pts = [(s["x"], s["y"]) for s in samples]
     seg = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
-    total = sum(seg)
-    target, acc, spot = at_path_fraction * total, 0.0, pts[-1]
-    for i, d in enumerate(seg):
-        if acc + d >= target:
-            spot = pts[i + 1]
+    avoid = [pts[0], *targets]
+    candidates = sorted({round(at_path_fraction + k * 0.02, 2) for k in range(-25, 26)
+                         if 0.2 <= at_path_fraction + k * 0.02 <= 0.9},
+                        key=lambda f: abs(f - at_path_fraction))
+    spot, heading = _point_at_fraction(pts, seg, at_path_fraction)
+    for f in candidates:
+        p, h = _point_at_fraction(pts, seg, f)
+        if all(math.hypot(p[0] - a[0], p[1] - a[1]) >= keep_clear_m for a in avoid):
+            spot, heading = p, h
             break
-        acc += d
     duration = samples[-1]["t"] - samples[0]["t"] if len(samples) >= 2 else 0.0
     return {"trigger_type": "time", "trigger_value": round(max(1.0, fire_at_time_fraction * duration), 2),
-            "model_name": model_name, "spawn_pose": {"x": round(spot[0], 3), "y": round(spot[1], 3), "yaw": 0.0}}
+            "model_name": model_name,
+            "spawn_pose": {"x": round(spot[0], 3), "y": round(spot[1], 3), "yaw": round(heading, 4)}}
