@@ -22,6 +22,8 @@ Started by docker/sim/entrypoint.sh (`serve`):
     WS   /v1/nav/feedback?hz=5  {"nav": NavStatus, "telemetry": SimStatus, "live": TelemetryLive, "sim": {...}}
     GET  /v1/telemetry         SimStatus: map pose, velocity, RTF, render mode, health
 
+    GET  /dashboard                  live benchmark dashboard (map, trail, crates, charts, NQI table)
+    GET  /v1/run, /v1/run/map, /v1/run/trajectories, /v1/run/report   its data (runtime/dashboard.py)
     GET  /v1/telemetry/live          TelemetryLive: world pose + source, speed, clearance, collisions
     GET  /v1/telemetry/setup         was this run's robot instrumented (bumper + ground truth)
     POST /v1/telemetry/record/start  TelemetryRecordRequest -> TelemetryLive
@@ -657,6 +659,19 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         pass
 
     app.include_router(v1)
+
+    # Live benchmark dashboard (http://localhost:9090/dashboard) + /v1/run data routes.
+    def spawned_now() -> List[Dict[str, Any]]:
+        try:
+            from lang2sim.perturbation.routers.world import spawned_since
+            return spawned_since(0.0)
+        except ImportError:
+            return []
+
+    from lang2sim.runtime.dashboard import make_router as dashboard_router
+    app.include_router(dashboard_router(
+        lambda: Path(sim.request.run_dir) if sim.request is not None else None, mode="live",
+        get_world=lambda: sim.world_name, get_spawned=spawned_now))
     return app
 
 

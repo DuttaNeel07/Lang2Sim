@@ -42,3 +42,6 @@ lang2sim = "lang2sim.cli.app:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lang2sim*"]
+
+[tool.setuptools.package-data]
+"lang2sim.runtime" = ["static/*.html"]

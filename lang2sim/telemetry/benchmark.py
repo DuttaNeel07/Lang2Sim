@@ -280,59 +280,9 @@ def default_stress_trigger(nominal: Mapping[str, Any], *, targets: Sequence[XY] 
 
 
 # --------------------------------------------------------------------------- run folders
-LABELS = ("nominal", "adversarial")
-
-
-def _read_jsonl(path: Path) -> List[Dict[str, Any]]:
-    import json
-
-    out: List[Dict[str, Any]] = []
-    try:
-        for line in Path(path).read_text(encoding="utf-8").splitlines():
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                continue
-    except OSError:
-        pass
-    return out
-
-
-def load_recorded_runs(run_dir: Path) -> Dict[str, Dict[str, Any]]:
-    """Recorded trajectories of a run folder, by label (nominal first).
-
-    Uses logs/trajectory_<label>.json when the recording finished, else the streamed
-    logs/trajectory_<label>.partial.jsonl of a run that was cut short (meta.partial = True).
-    A partial run's spawned entities come from logs/spawns.jsonl, limited to the time
-    between its recording start and the next recording's start.
-    """
-    import json
-
-    from lang2sim.runtime.telemetry_recorder import PARTIAL_SUFFIX, load_partial
-
-    logs = Path(run_dir) / "logs"
-    found: Dict[str, Dict[str, Any]] = {}
-    labels = list(LABELS) + sorted(
-        {p.name[len("trajectory_"):].split(".")[0] for p in logs.glob("trajectory_*")} - set(LABELS))
-    for label in labels:
-        final, partial = logs / f"trajectory_{label}.json", logs / f"trajectory_{label}{PARTIAL_SUFFIX}"
-        data = None
-        if final.is_file():
-            try:
-                data = json.loads(final.read_text(encoding="utf-8"))
-            except ValueError:
-                data = None
-        if data is None and partial.is_file():
-            data = load_partial(partial)
-        if data is not None:
-            found[label] = data
-    spawns = _read_jsonl(logs / "spawns.jsonl")
-    starts = sorted((d["meta"].get("recording_wall_time") or 0.0, k) for k, d in found.items()
-                    if d["meta"].get("partial"))
-    for i, (t0, label) in enumerate(starts):
-        t1 = starts[i + 1][0] if i + 1 < len(starts) else float("inf")
-        found[label]["meta"]["spawned_entities"] = [e for e in spawns if t0 <= e.get("wall_time", 0) < t1]
-    return found
+# The loader is stdlib-only and lives with the recorder so the sim container (dashboard,
+# replay) can use it without this module's numpy/scorer imports.
+from lang2sim.runtime.telemetry_recorder import LABELS, load_recorded_runs  # noqa: E402,F401
 
 
 def score_run_folder(run_dir: Path, goal_tolerance: Optional[float] = None) -> Tuple[Path, Dict[str, Any]]:
@@ -345,16 +295,26 @@ def score_run_folder(run_dir: Path, goal_tolerance: Optional[float] = None) -> T
         raise FileNotFoundError(f"no recorded trajectories in {run_dir / 'logs'}")
     spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text()) if (run_dir / "spec.json").is_file() else None
     params, scoring = scoring_params(run_dir, goal_tolerance)
+    previous = {}
+    try:
+        import json
+
+        previous = json.loads((run_dir / REPORT_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
     scored = {}
     for label, data in runs.items():
         status = "interrupted" if data["meta"].get("partial") else None
+        old_run = next((r for r in (previous.get("runs") or {}).values() if r.get("label") == label), {})
+        status = status or old_run.get("nav_status")          # Nav2's verdict is not in the trajectory
         scored[label] = score_recorded_run(data, run_dir=run_dir, spec=spec, nav_status=status, params=params)
         scored[label]["partial"] = bool(data["meta"].get("partial"))
     labels = list(scored)
     nominal = scored.get("nominal") or scored[labels[0]]
     adversarial = scored.get("adversarial") or (scored[labels[1]] if len(labels) > 1 and labels[0] == "nominal" else None)
     return write_benchmark(run_dir, nominal, adversarial, params, scoring=scoring,
-                           extra={"run_dir": str(run_dir), "rescored": True,
+                           extra={**{k: previous[k] for k in ("stress",) if k in previous},
+                                  "run_dir": str(run_dir), "rescored": True,
                                   "partial_runs": [k for k, v in scored.items() if v["partial"]]})
 
 

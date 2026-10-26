@@ -430,3 +430,53 @@ def build_live(*, sim_time: float, rtf: Optional[float], pose: Optional[Pose], s
         "recording_label": recorder.label,
         "samples_recorded": recorder.sample_count,
     }
+
+
+# --------------------------------------------------------------------------- run folders
+LABELS = ("nominal", "adversarial")
+
+
+def read_jsonl(path: Path) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    try:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    except OSError:
+        pass
+    return out
+
+
+def load_recorded_runs(run_dir: Path) -> Dict[str, Dict[str, Any]]:
+    """Recorded trajectories of a run folder, by label (nominal first).
+
+    Uses logs/trajectory_<label>.json when the recording finished, else the streamed
+    logs/trajectory_<label>.partial.jsonl of a run that was cut short (meta.partial = True).
+    A partial run's spawned entities come from logs/spawns.jsonl, limited to the time
+    between its recording start and the next recording's start.
+    """
+    logs = Path(run_dir) / "logs"
+    found: Dict[str, Dict[str, Any]] = {}
+    labels = list(LABELS) + sorted(
+        {p.name[len("trajectory_"):].split(".")[0] for p in logs.glob("trajectory_*")} - set(LABELS))
+    for label in labels:
+        final, partial = logs / f"trajectory_{label}.json", logs / f"trajectory_{label}{PARTIAL_SUFFIX}"
+        data = None
+        if final.is_file():
+            try:
+                data = json.loads(final.read_text(encoding="utf-8"))
+            except ValueError:
+                data = None
+        if data is None and partial.is_file():
+            data = load_partial(partial)
+        if data is not None:
+            found[label] = data
+    spawns = read_jsonl(logs / "spawns.jsonl")
+    starts = sorted((d["meta"].get("recording_wall_time") or 0.0, k) for k, d in found.items()
+                    if d["meta"].get("partial"))
+    for i, (t0, label) in enumerate(starts):
+        t1 = starts[i + 1][0] if i + 1 < len(starts) else float("inf")
+        found[label]["meta"]["spawned_entities"] = [e for e in spawns if t0 <= e.get("wall_time", 0) < t1]
+    return found
