@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+.sim2lang.json
+SIM2LANG.md
