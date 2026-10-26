@@ -5,7 +5,12 @@
 # Ctrl-C stops the simulation cleanly.
 set -e
 cd "$(dirname "$0")"
-PROMPT="${1:-a dark warehouse with 3 racks and 2 crates}"
+PROMPT="${1:-a warehouse with 3 racks and 2 crates}"   # no "dark": dim light hides the robot in Gazebo
+
+if [ "$1" = "--status" ]; then   # is the robot alive and driving?
+  curl -s localhost:9090/v1/sim/status; echo; curl -s localhost:9090/v1/nav/status; echo
+  curl -s localhost:9090/v1/telemetry; echo; exit 0
+fi
 say() { printf '\033[1;36m==> %s\033[0m\n' "$*"; }
 
 # 1. Python env
@@ -27,11 +32,17 @@ fi
 export L2S_IMAGE="$IMAGE"
 
 # 4. Flags: GPU, LLM, display
-FLAGS=()
+FLAGS=(--no-camera)   # camera sensor not needed for the demo; keeps RTF up on CPU rendering
 docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q nvidia || FLAGS+=(--software)
 [ -n "$NVIDIA_API_KEY$OPENAI_API_KEY" ] || FLAGS+=(--no-llm)
 command -v xhost >/dev/null && xhost +SI:localuser:"$(id -un)" >/dev/null 2>&1 || true
 docker rm -f lang2sim-sim >/dev/null 2>&1 || true   # leftover from an earlier run
 
-say "image $IMAGE  flags: ${FLAGS[*]:-none}"
+say "image $IMAGE  flags: ${FLAGS[*]}"
+if [ "$1" = "--fixture" ]; then   # fallback: known-good warehouse + mission
+  SW=(); [[ " ${FLAGS[*]} " == *" --software "* ]] && SW=(--software)
+  exec python scripts/run_sim.py --fixture small_warehouse --mission "${SW[@]}"
+fi
+say "Gazebo + RViz windows open in ~20 s. The robot (TurtleBot3) starts at the bottom-left corner."
+say "RViz shows it best: robot model, red laser dots, map, green planned path. Status: bash pitch_demo.sh --status"
 exec python scripts/prompt_to_sim.py "$PROMPT" "${FLAGS[@]}"
