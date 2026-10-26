@@ -195,9 +195,14 @@ async def test_workspace_screen_conversation_flow():
             for word in ["Gazebo ", "Harmonic ", "is ", "running."]:
                 yield word
 
-        with patch.object(workspace.client, "stream_chat", side_effect=mock_stream):
+        with patch.object(workspace.client, "is_configured", return_value=True), \
+             patch.object(workspace.client, "stream_chat", side_effect=mock_stream):
             workspace.handle_user_prompt("What is running?")
             await pilot.pause()
+            for _ in range(10):
+                if len(workspace.conversation_history) == 3:
+                    break
+                await pilot.pause(0.05)
 
             # Verify prompt and assistant response appended
             assert len(workspace.conversation_history) == 3
