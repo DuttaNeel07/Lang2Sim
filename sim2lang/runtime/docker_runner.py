@@ -28,6 +28,7 @@ cfg = importlib.import_module("sim2lang.core.config")
 
 CONTAINER_NAME = "lang2sim-sim"
 LABEL = "dev.lang2sim.role=sim"
+SIM_USER = "lang2sim"  # runtime user in docker/sim/Dockerfile
 
 # In-container ports are fixed by the image; host ports are configurable.
 CONTAINER_API_PORT = 9090
@@ -253,5 +254,12 @@ class DockerRunner:
         return (cp.stdout or "") + (cp.stderr or "")
 
     def exec(self, cmd: Sequence[str], name: str = CONTAINER_NAME,
-             timeout: Optional[float] = 60) -> "subprocess.CompletedProcess[str]":
-        return self._call(["exec", name, *cmd], check=False, timeout=timeout)
+             timeout: Optional[float] = 60, user: str = SIM_USER,
+             ) -> "subprocess.CompletedProcess[str]":
+        """Run a command in the container as the sim user.
+
+        Must match the user the sim runs as: ROS 2's default (Fast DDS) shared
+        memory transport is per-user, so a root `ros2 topic echo` discovers
+        topics but never receives data.
+        """
+        return self._call(["exec", "-u", user, name, *cmd], check=False, timeout=timeout)

@@ -17,14 +17,17 @@ import asyncio
 import os
 import socket
 import time
-from pathlib import Path
 
 import pytest
 
 from sim2lang.core.models import Pose2D, SimStartRequest
 from sim2lang.runtime.control_api.client import ControlClient
 from sim2lang.runtime.display import DisplayPlan
-from sim2lang.runtime.docker_runner import DockerRunner, RunOptions, host_to_container_path
+from sim2lang.runtime.docker_runner import (
+    DockerRunner,
+    RunOptions,
+    host_to_container_path,
+)
 from sim2lang.runtime.platform import detect_docker
 
 pytestmark = pytest.mark.skipif(os.getenv("L2S_INTEGRATION") != "1",

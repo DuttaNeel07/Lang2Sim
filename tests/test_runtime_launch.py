@@ -296,3 +296,10 @@ def test_doctor_missing_image_is_warning_with_pull_hint():
     res = doctor.run_checks(mac(), NONE, runner=StubRunner(present=False))
     img = next(c for c in res if c.name == "image")
     assert img.status == "warn" and "docker pull" in (img.fix or "")
+
+
+def test_runner_exec_runs_as_sim_user():
+    # Root can't read the sim user's Fast DDS shared-memory segments.
+    fake = FakeDocker()
+    DockerRunner(run=fake).exec(["ros2", "topic", "list"])
+    assert fake.calls[-1][:4] == ["exec", "-u", "lang2sim", "lang2sim-sim"]
