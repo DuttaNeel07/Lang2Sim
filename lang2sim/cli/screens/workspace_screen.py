@@ -68,7 +68,8 @@ class WorkspaceScreen(Screen):
         self.total_tokens_used: int = self.session.total_tokens
         self.is_streaming: bool = False
         from ..demo_commands import DemoRunner
-        self.demo = DemoRunner(say=self._demo_say, show=self._demo_show)
+        self.demo = DemoRunner(say=self._demo_say, show=self._demo_show, progress=self._demo_progress)
+        self._progress_line: Optional[Static] = None
 
     def compose(self):
         # Top title bar
@@ -251,6 +252,17 @@ class WorkspaceScreen(Screen):
 
     def _demo_show(self, renderable) -> None:
         self._mount_chat(Static(renderable, classes="demo-table"))
+
+    def _demo_progress(self, markup: Optional[str]) -> None:
+        """One status line updated in place (None: leave it and start a new one next time)."""
+        if markup is None:
+            self._progress_line = None
+            return
+        if self._progress_line is None or not self._progress_line.is_attached:
+            self._progress_line = Static(markup, classes="demo-line demo-progress")
+            self._mount_chat(self._progress_line)
+        else:
+            self._progress_line.update(markup)
 
     def _mount_chat(self, widget) -> None:
         try:

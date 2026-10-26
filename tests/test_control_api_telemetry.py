@@ -110,7 +110,7 @@ def test_live_and_record_roundtrip_writes_trajectory(setup):
         assert c.post("/v1/telemetry/record/stop").status_code == 409
 
 
-def test_record_stop_reports_entities_spawned_during_the_run(setup):
+def test_record_stop_reports_every_obstacle_in_the_world(setup):
     app, bridge, req, run = setup
     with TestClient(app) as c:
         c.post("/v1/sim/start", json=req.model_dump(mode="json"))
@@ -121,9 +121,11 @@ def test_record_stop_reports_entities_spawned_during_the_run(setup):
         for i in range(3):
             bridge._on_odom(odom(5.0 + 0.1 * i, 0.0))
         res = c.post("/v1/telemetry/record/stop").json()
-        assert [e["name"] for e in res["spawned_entities"]] == ["wooden_crate_1"]
-        assert res["spawned_entities"][0]["r"] == pytest.approx(0.4243)
-        assert res["trajectory"]["meta"]["spawned_entities"][0]["x"] == 3.5
+        # The box from before the recording is still in the world: an obstacle for this run too.
+        assert [(e["name"], e["during_run"]) for e in res["spawned_entities"]] == [
+            ("old_box", False), ("wooden_crate_1", True)]
+        assert res["spawned_entities"][1]["r"] == pytest.approx(0.4243)
+        assert res["trajectory"]["meta"]["spawned_entities"][1]["x"] == 3.5
 
 
 def test_websocket_carries_live_telemetry(setup):

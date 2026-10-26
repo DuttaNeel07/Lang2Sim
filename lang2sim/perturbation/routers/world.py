@@ -36,8 +36,18 @@ _SPAWN_FILE: Dict[str, Any] = {"path": None}   # <run>/logs/spawns.jsonl, set pe
 
 
 def set_spawn_log_file(path: Optional[str]) -> None:
-    """Also append every spawn to this JSON-lines file (survives an API crash mid-run)."""
+    """Also append every spawn to this JSON-lines file (survives an API crash mid-run).
+
+    Marks the start of a sim session in the file: entities logged before the marker
+    belong to an earlier session and are no longer in the world."""
     _SPAWN_FILE["path"] = path
+    if path:
+        try:
+            import json
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"type": "session_start", "wall_time": time.time()}) + "\n")
+        except OSError:
+            pass
 
 
 def record_spawn(name: str, model: str, x: float, y: float, yaw: float = 0.0) -> Dict[str, Any]:

@@ -584,7 +584,12 @@ def render_comparison_table(report: Mapping[str, Any]):
     mission_delta = ""
     if adv is not None:
         mission_delta = "Baseline maintained" if a.get("S_mission") == nom.get("S_mission") else "[red]Changed[/]"
-    row("Mission Completion Status", _mission_str(nom.get("S_mission")), _mission_str(a.get("S_mission")), mission_delta)
+    def mission(run: Mapping[str, Any]) -> str:
+        if run.get("nav_status") == "interrupted":
+            return "[yellow]Interrupted (partial)[/]"
+        return _mission_str(run.get("S_mission"))
+
+    row("Mission Completion Status", mission(nom), mission(a) if adv is not None else "", mission_delta)
     row("Mission Duration (T)", _fmt(nom.get("duration_s"), " s", 1), _fmt(a.get("duration_s"), " s", 1),
         _delta_str(deltas.get("duration_pct"), False))
     row("Traversed Path Length (L)", _fmt(nom.get("path_length_m"), " m"), _fmt(a.get("path_length_m"), " m"),

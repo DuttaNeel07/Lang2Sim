@@ -167,6 +167,8 @@ async function loadRun() {
   for (const e of run.spawned_entities || []) {
     if (!S.spawnedSeen.has(e.name)) { S.spawnedSeen.add(e.name); logEvent(`Obstacle spawned: ${e.model} at (${fmt(e.x)}, ${fmt(e.y)})`, "bad"); }
   }
+  // While a run is being recorded its streamed samples are on disk: refresh so its path grows live.
+  if (S.live && S.live.recording && (S.trajTick = (S.trajTick || 0) + 1) % 2 === 0) await loadTrajectories();
   if (run.has_report && run.report_generated_at !== S.reportStamp) {
     S.reportStamp = run.report_generated_at; S.report = await getJSON("/v1/run/report"); renderReport();
     await loadTrajectories(); if (S.report) logEvent(`Benchmark scored: NQI ${nqiSummary()}`, "good");

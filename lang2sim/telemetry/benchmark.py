@@ -202,7 +202,7 @@ def score_recorded_run(trajectory: Mapping[str, Any], *, run_dir: Optional[Path]
         "time_base": meta.get("time_base"),
         "contact_force_source": meta.get("contact_force_source"),
         "contact_events": meta.get("contact_events", []),
-        "dynamic_obstacles": [{k: e.get(k) for k in ("name", "model", "x", "y", "yaw", "shape", "size", "r")}
+        "dynamic_obstacles": [{k: e.get(k) for k in ("name", "model", "x", "y", "yaw", "shape", "size", "r", "during_run")}
                               for e in (spawned if spawned is not None else meta.get("spawned_entities", [])) or []],
         "min_scan_range_m": meta.get("min_scan_range_m"),
     })

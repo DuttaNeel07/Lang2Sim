@@ -454,8 +454,8 @@ def load_recorded_runs(run_dir: Path) -> Dict[str, Dict[str, Any]]:
 
     Uses logs/trajectory_<label>.json when the recording finished, else the streamed
     logs/trajectory_<label>.partial.jsonl of a run that was cut short (meta.partial = True).
-    A partial run's spawned entities come from logs/spawns.jsonl, limited to the time
-    between its recording start and the next recording's start.
+    A partial run's obstacles come from logs/spawns.jsonl: everything spawned in its sim
+    session (after the last session_start marker) before the next recording started.
     """
     logs = Path(run_dir) / "logs"
     found: Dict[str, Dict[str, Any]] = {}
@@ -473,10 +473,14 @@ def load_recorded_runs(run_dir: Path) -> Dict[str, Dict[str, Any]]:
             data = load_partial(partial)
         if data is not None:
             found[label] = data
-    spawns = read_jsonl(logs / "spawns.jsonl")
+    records = read_jsonl(logs / "spawns.jsonl")
+    sessions = sorted(r["wall_time"] for r in records if r.get("type") == "session_start")
+    spawns = [r for r in records if r.get("type") != "session_start" and "x" in r]
     starts = sorted((d["meta"].get("recording_wall_time") or 0.0, k) for k, d in found.items()
                     if d["meta"].get("partial"))
     for i, (t0, label) in enumerate(starts):
         t1 = starts[i + 1][0] if i + 1 < len(starts) else float("inf")
-        found[label]["meta"]["spawned_entities"] = [e for e in spawns if t0 <= e.get("wall_time", 0) < t1]
+        s0 = max([s for s in sessions if s <= t0], default=0.0)
+        found[label]["meta"]["spawned_entities"] = [
+            {**e, "during_run": e.get("wall_time", 0) >= t0} for e in spawns if s0 <= e.get("wall_time", 0) < t1]
     return found

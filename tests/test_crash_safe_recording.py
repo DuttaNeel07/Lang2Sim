@@ -86,3 +86,19 @@ def test_final_trajectory_wins_over_partial(run_dir):
 def test_cli_without_recordings(run_dir, capsys):
     assert main([str(run_dir)]) == 2
     assert "no recorded trajectories" in capsys.readouterr().out
+
+
+def test_partial_run_obstacles_are_scoped_to_its_sim_session(run_dir):
+    rec = TelemetryRecorder()
+    p = partial_path(run_dir / "logs", "adversarial")
+    rec.start("adversarial", rate_hz=10, stream_path=p)
+    drive(rec, crash=True)
+    t0 = load_partial(p)["meta"]["recording_wall_time"]
+    box = {"model": "cargo_box", "y": -0.9, "yaw": 0.0, "shape": "box", "size": [1.0, 0.6], "r": 0.58}
+    lines = [{"name": "old_session_box", "x": 0.0, "wall_time": t0 - 100, **box},     # earlier sim, gone
+             {"type": "session_start", "wall_time": t0 - 50},
+             {"name": "left_from_last_run", "x": 1.0, "wall_time": t0 - 10, **box},  # still in the world
+             {"name": "dropped_now", "x": 2.0, "wall_time": t0 + 5, **box}]
+    (run_dir / "logs" / "spawns.jsonl").write_text("".join(json.dumps(r) + "\n" for r in lines))
+    found = load_recorded_runs(run_dir)["adversarial"]["meta"]["spawned_entities"]
+    assert [(e["name"], e["during_run"]) for e in found] == [("left_from_last_run", False), ("dropped_now", True)]

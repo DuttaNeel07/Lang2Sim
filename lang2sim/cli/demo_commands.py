@@ -21,7 +21,8 @@ of the robot") is recognised by parse_stress_intent and executed as /stress; the
 says exactly what was run.
 
 Pure helpers (parsing, crate placement) are unit-tested; DemoRunner does the I/O and
-reports through two callbacks: say(rich markup) and show(rich renderable).
+reports through callbacks: say(rich markup), show(rich renderable) and progress(rich
+markup, or None to finish) for one status line that updates in place.
 """
 
 from __future__ import annotations
@@ -215,11 +216,13 @@ def _f(v: Any, d: int = 2, unit: str = "") -> str:
 class DemoRunner:
     """Executes demo commands against the control API and reports through say/show."""
 
-    def __init__(self, base_url: Optional[str] = None, say: Say = print, show: Show = print) -> None:
+    def __init__(self, base_url: Optional[str] = None, say: Say = print, show: Show = print,
+                 progress: Optional[Callable[[Optional[str]], None]] = None) -> None:
         from lang2sim.telemetry.live import api_base_url
 
         self.base_url = api_base_url(base_url)
         self.say, self.show = say, show
+        self.progress = progress or (lambda m: say(m) if m else None)
         self.mission_lock = threading.Lock()
         self._replay_server = None
 
@@ -371,6 +374,7 @@ class DemoRunner:
             else:
                 self.say("[bold]Nominal run[/] recording: driving the mission from spec.json…")
             run = await s.run_recorded_mission(run_dir, label=label, on_progress=self._nav_progress)
+            self.progress(None)
             self.say(f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
                      f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions")
             from lang2sim.telemetry.benchmark import score_run_folder
@@ -398,8 +402,13 @@ class DemoRunner:
                 self.say(f"[#ef4444]■[/] Stress: {tr.get('model_name')} dropped at ({p.get('x')}, {p.get('y')})"
                          + (f" [#ef4444]failed: {err}[/]" if err else ""))
 
+            def phase(m: str) -> None:
+                self.progress(None)
+                self.say(f"[bold #38bdf8]▸ {m}[/]")
+
             report = await s.run_benchmark(run_dir, light=light, on_progress=self._nav_progress, on_trigger=trig,
-                                           on_phase=lambda m: self.say(f"[bold #38bdf8]▸ {m}[/]"))
+                                           on_phase=phase)
+            self.progress(None)
             self.show_report(report)
             self.say(f"[#8b98a8]Report: {report.get('path')}[/]")
         finally:
@@ -443,5 +452,7 @@ class DemoRunner:
 
     def _nav_progress(self, st) -> None:
         if st.is_active:
-            self.say(f"[#8b98a8]  waypoint {st.waypoint_index + 1}/{st.waypoints_total} · "
-                     f"{st.distance_remaining:.1f} m to go[/]")
+            self.progress(f"[#8b98a8]  ▸ driving · waypoint {st.waypoint_index + 1}/{st.waypoints_total} · "
+                          f"{st.distance_remaining:.1f} m to go[/]")
+        else:
+            self.progress(None)

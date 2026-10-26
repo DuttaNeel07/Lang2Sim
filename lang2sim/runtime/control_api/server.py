@@ -613,7 +613,9 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         state["record"] = None
         try:
             from lang2sim.perturbation.routers.world import spawned_since
-            spawned = spawned_since(rec["wall0"])
+            # Everything spawned in this sim session so far is still in the world (nothing deletes
+            # entities), so a crate left from an earlier run is an obstacle for this one too.
+            spawned = [{**e, "during_run": e["wall_time"] >= rec["wall0"]} for e in spawned_since(0.0)]
         except ImportError:
             spawned = []
         data["meta"]["spawned_entities"] = spawned

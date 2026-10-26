@@ -77,10 +77,12 @@ class PlayedRun:
 
 def _crate_times(label: str, run_meta: Dict[str, Any], report: Optional[Dict[str, Any]], t0: float) -> List[Dict[str, Any]]:
     crates = [dict(e) for e in run_meta.get("spawned_entities") or []]
-    fired = [tr.get("fired_at_s") for tr in ((report or {}).get("stress") or {}).get("triggers") or []]
-    for i, c in enumerate(crates):
-        at = fired[i] if label == "adversarial" and i < len(fired) and fired[i] is not None else 0.0
-        c["appear_t"] = t0 + float(at)
+    fired = iter([tr.get("fired_at_s") for tr in ((report or {}).get("stress") or {}).get("triggers") or []])
+    for c in crates:
+        # Already in the world when the run began -> visible from the start; dropped during the
+        # run -> at the recorded trigger time (benchmark runs), else from the start.
+        at = next(fired, None) if label == "adversarial" and c.get("during_run", True) else None
+        c["appear_t"] = t0 + float(at or 0.0)
     return crates
 
 
