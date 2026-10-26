@@ -263,6 +263,7 @@ class NavGoalRequest(BaseModel):
     """Request payload sent to POST /nav/goal."""
     goal_pose: Pose2D
     timeout_seconds: float = 120.0
+    clear_costmaps: bool = Field(False, description="Clear global + local costmaps before planning (detours)")
 
 
 class NavWaypointsRequest(BaseModel):

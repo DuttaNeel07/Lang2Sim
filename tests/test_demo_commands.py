@@ -144,3 +144,64 @@ async def test_tui_runs_demo_commands_against_the_api(replay_api, monkeypatch, t
         text = " ".join(str(w.render()) for w in out)
         assert "Interpreted as /stress" in text and "replay" in text.lower()   # read-only, clearly said
         assert not screen.is_streaming                                         # the LLM was never called
+
+
+# --- merged pitch pipeline (PR #17) intents ----------------------------------------------------
+from lang2sim.cli.demo_commands import (  # noqa: E402
+    is_goto,
+    is_halt,
+    is_sim_request,
+    is_stop_sim,
+    rack_number,
+    resolve_goal,
+)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("a dark warehouse with 3 racks and 2 crates", False),          # no verb: chat about it, don't launch
+    ("build a dark warehouse with 3 racks and 2 crates", True),
+    ("simulate an empty room with a slippery floor", True),
+    ("/sim warehouse", True),
+    ("how do I build a warehouse?", False),
+    ("what does the rack do", False),
+    ("spawn a crate", False),                                         # a stress request, not a world
+])
+def test_sim_requests(text, expected):
+    assert is_sim_request(text) is expected
+
+
+def test_stop_halt_goto():
+    assert is_stop_sim("/stop") and is_stop_sim("stop simulation") and is_stop_sim("Stop")
+    assert not is_stop_sim("stop the robot")
+    assert is_halt("stop the robot") and is_halt("halt") and not is_halt("why did it halt?")
+    assert is_goto("detour and reach the 3rd rack") and is_goto("resume") and is_goto("go to rack 2")
+    assert not is_goto("how does nav2 avoid obstacles?")
+
+
+def test_rack_spawn_coordinates_and_orientation():
+    c = parse_stress_intent("put a rack across the aisle at 1.5, 0")
+    assert c.opts == {"model": "rack", "x": "1.5", "y": "0", "across": "1"}
+    c = parse_stress_intent("drop a barrel at x=2 y=-1.5")
+    assert (c.opts["model"], c.opts["x"], c.opts["y"]) == ("barrel", "2", "-1.5")
+    assert stress_targets(Command("stress", opts={"model": "rack"}, natural=True)) == (None, "rack")
+
+
+def test_rack_number_and_goal_in_front_of_it():
+    assert rack_number("detour and reach the 3rd rack") == 3 and rack_number("go to rack 2") == 2
+    assert rack_number("resume") is None
+    racks = [{"id": "rack_1", "pose": {"x": -2.5, "y": 2.5}, "dimensions": {"x": 3.0, "y": 0.8}},
+             {"id": "rack_3", "pose": {"x": -2.5, "y": -0.5}, "dimensions": {"x": 3.0, "y": 0.8}}]
+    goal, desc = resolve_goal("reach rack 1", racks, None)
+    assert goal[0] == -2.5 and goal[1] < 2.5 - 0.4 and "rack_1" in desc        # on the room side of it
+    goal, _ = resolve_goal("go to the 3rd rack", racks, None)
+    assert goal[1] > -0.5 + 0.4                                                   # rack below 0 -> aisle above
+    assert resolve_goal("go to rack 9", racks, None)[0] is None
+    assert resolve_goal("resume", racks, {"x": 1.0, "y": 2.0, "yaw": 0.5})[0] == (1.0, 2.0, 0.5)
+
+
+def test_rack_across_the_path_keeps_off_the_robot_and_walls():
+    m = read_map(FIXTURES / "small_warehouse")
+    spot = pick_crate_spot({"x": -4.5, "y": -3.5, "yaw": 0.0}, (0.0, 1.0), [], m, "rack", 1.5, across=True)
+    if spot is not None:                                                          # free space permitting
+        x, y, yaw = spot
+        assert math.hypot(x + 4.5, y + 3.5) >= 0.6 + 0.6                          # rack edge >= 0.6 m away

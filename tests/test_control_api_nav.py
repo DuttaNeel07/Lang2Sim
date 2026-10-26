@@ -183,3 +183,21 @@ def test_sim_health_endpoint(setup):
             assert h["health"] == "degraded" and any("lost" in i for i in h["issues"])
             assert (await api.telemetry()).health_status == "degraded"
     asyncio.run(go())
+
+
+def test_goal_can_clear_costmaps_first(setup):
+    app, bridge, nav, req, disp = setup
+    from fastapi.testclient import TestClient
+
+    cleared = []
+    nav.clearAllCostmaps = lambda: cleared.append(True)
+    bridge.ready = True
+    with TestClient(app) as c:
+        c.post("/v1/sim/start", json=req.model_dump(mode="json"))
+        r = c.post("/v1/nav/goal", json={"goal_pose": {"x": 1.0, "y": 0.0, "yaw": 0.0}, "clear_costmaps": True})
+        assert r.status_code == 202
+        for _ in range(50):
+            if cleared:
+                break
+            time.sleep(0.05)
+    assert cleared == [True]

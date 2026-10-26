@@ -525,7 +525,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     @v1.post("/nav/goal", response_model=NavStatus, status_code=202)
     def nav_goal(req: NavGoalRequest) -> NavStatus:
         require_ready()
-        return dispatcher().go_to(req.goal_pose, req.timeout_seconds)
+        return dispatcher().go_to(req.goal_pose, req.timeout_seconds, clear_costmaps=req.clear_costmaps)
 
     @v1.post("/nav/waypoints", response_model=NavStatus, status_code=202)
     def nav_waypoints(req: NavWaypointsRequest) -> NavStatus:

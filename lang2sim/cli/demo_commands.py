@@ -27,6 +27,7 @@ markup, or None to finish) for one status line that updates in place.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import math
 import re
@@ -39,19 +40,23 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tup
 
 COMMANDS = ("mission", "stress", "benchmark", "report", "status", "dashboard", "replay", "help")
 DEMO_RUN = Path(__file__).resolve().parents[2] / "catalog" / "demo_runs" / "empty_room_benchmark"
-CRATE_HALF = {"wooden_crate": (0.3, 0.3), "cargo_box": (0.5, 0.3), "barrel": (0.3, 0.3)}
+# Half extents (along the model's x, along its y) of each spawnable model (perturbation/sdf_snippets.py).
+CRATE_HALF = {"wooden_crate": (0.3, 0.3), "cargo_box": (0.5, 0.3), "barrel": (0.3, 0.3), "rack": (1.4, 0.6)}
 KEEP_CLEAR_OF_TARGETS_M = 1.2
 
 HELP = """[bold #38bdf8]Demo commands[/] (they act on the running simulation, or a replay):
   [bold]/mission[/] [#8b98a8]\\[stress][/]        drive the mission with telemetry recording and score it
-  [bold]/stress[/] [#8b98a8]\\[light=0.1] \\[model=wooden_crate|cargo_box|barrel] \\[ahead=1.5][/]
+  [bold]/stress[/] [#8b98a8]\\[light=0.1] \\[model=wooden_crate|cargo_box|barrel|rack] \\[x= y=] \\[across=1][/]
                            dim the lights and drop an obstacle in front of the moving robot
   [bold]/benchmark[/] [#8b98a8]\\[light=0.1][/]   nominal run, back to start, stress run, NQI comparison
   [bold]/report[/]                 show the latest NQI table
   [bold]/status[/]                 simulation, robot and recording state
   [bold]/dashboard[/]              open the live dashboard in the browser
   [bold]/replay[/] [#8b98a8]\\[run_dir|demo][/]  serve a recorded run if the live sim is down
-You can also just say it: [italic]"drop the lights to 10% and spawn a crate in front of the robot"[/]."""
+  [bold]/sim[/] [#8b98a8]<scenario>[/]          build a world from a sentence and run it (e.g. /sim a dark warehouse with 3 racks)
+  [bold]/stop[/]                   stop the simulation this app started
+Or just say it: [italic]"drop the lights to 10% and spawn a crate in front of the robot"[/],
+[italic]"put a rack across the aisle at 1.5, 0"[/], [italic]"stop the robot"[/], [italic]"detour and reach rack 3"[/]."""
 
 
 # --------------------------------------------------------------------------- parsing
@@ -86,8 +91,17 @@ def parse_command(text: str) -> Optional[Command]:
 
 
 _LIGHT_WORDS = r"(?:light|lights|lighting|luminance|sun|brightness)"
-_OBSTACLE_WORDS = {"barrel": "barrel", "cargo": "cargo_box", "box": "cargo_box", "crate": "wooden_crate",
+_OBSTACLE_WORDS = {"barrel": "barrel", "drum": "barrel", "rack": "rack", "shelf": "rack", "shelve": "rack",
+                   "shelving": "rack", "cargo": "cargo_box", "box": "cargo_box", "crate": "wooden_crate",
                    "obstacle": "wooden_crate", "pallet": "wooden_crate"}
+_QUESTION = re.compile(r"^(why|what|how|when|where|who|which|is|are|was|were|did|does|do|can|could|should|would|will|explain|tell me)\b")
+_COORDS = re.compile(r"\bat\s*\(?\s*(?:x\s*=\s*)?(-?\d+(?:\.\d+)?)\s*(?:,|\s)\s*(?:y\s*=\s*)?(-?\d+(?:\.\d+)?)\s*\)?")
+_ACROSS = re.compile(r"\b(horizontal(?:ly)?|across|perpendicular|sideways|crosswise)\b")
+
+
+def is_question(text: str) -> bool:
+    t = text.lower().strip()
+    return t.endswith("?") or bool(_QUESTION.match(t))
 
 
 def parse_stress_intent(text: str) -> Optional[Command]:
@@ -97,7 +111,7 @@ def parse_stress_intent(text: str) -> Optional[Command]:
     obstacle). Questions ("why did the robot slow down?") never match.
     """
     t = text.lower().strip()
-    if not t or t.startswith("/") or t.endswith("?") or re.match(r"^(why|what|how|when|where|is|are|did|does|can)\b", t):
+    if not t or t.startswith("/") or is_question(t):
         return None
     action = re.search(r"\b(drop|spawn|place|put|add|throw|inject|dim|lower|reduce|darken|set|stress[- ]?test)\b", t)
     if not action:
@@ -125,6 +139,11 @@ def parse_stress_intent(text: str) -> Optional[Command]:
             break
     if obstacle:
         opts["model"] = obstacle
+        m = _COORDS.search(t)
+        if m:
+            opts["x"], opts["y"] = m.group(1), m.group(2)
+        if _ACROSS.search(t):
+            opts["across"] = "1"
     if not opts:
         return None
     if re.search(r"\b(blur|noise|fog)\b", t):
@@ -134,6 +153,7 @@ def parse_stress_intent(text: str) -> Optional[Command]:
         said.append(f"light={opts['light']}")
     if "model" in opts:
         said.append(f"model={opts['model']}")
+    said += [f"{k}={opts[k]}" for k in ("x", "y", "across") if k in opts]
     note = f"Interpreted as /stress {' '.join(said)}" + (f" ({'; '.join(notes)})" if notes else "")
     return Command("stress", opts=opts, note=note, natural=True)
 
@@ -154,8 +174,9 @@ def stress_targets(cmd: Command) -> Tuple[Optional[float], Optional[str]]:
 
 
 # --------------------------------------------------------------------------- crate placement
-def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[float, float]) -> bool:
-    """True when the crate's footprint (plus 5 cm) is free space on the map (or no map is known)."""
+def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[float, float],
+          yaw: float = 0.0) -> bool:
+    """True when the obstacle's footprint (rotated by yaw, plus 5 cm) is free map space (or no map)."""
     if not map_info:
         return True
     w, h, res = map_info["width"], map_info["height"], map_info["resolution"]
@@ -164,11 +185,13 @@ def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[fl
     if cells is None:
         cells = map_info["_cells"] = base64.b64decode(map_info["cells_b64"])
     hx, hy = half[0] + 0.05, half[1] + 0.05
-    steps = 5
-    for i in range(steps + 1):
-        for j in range(steps + 1):
-            px, py = x - hx + 2 * hx * i / steps, y - hy + 2 * hy * j / steps
-            col, row_b = int((px - ox) / res), int((py - oy) / res)
+    c, s_ = math.cos(yaw), math.sin(yaw)
+    nx, ny = max(2, int(2 * hx / res / 2)), max(2, int(2 * hy / res / 2))
+    for i in range(nx + 1):
+        for j in range(ny + 1):
+            u, v = -hx + 2 * hx * i / nx, -hy + 2 * hy * j / ny
+            px, py = x + c * u - s_ * v, y + s_ * u + c * v
+            col, row_b = int(math.floor((px - ox) / res)), int(math.floor((py - oy) / res))
             if not (0 <= col < w and 0 <= row_b < h):
                 return False
             if cells[(h - 1 - row_b) * w + col] != 0:
@@ -178,7 +201,8 @@ def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[fl
 
 def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, float]],
                     avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
-                    model: str = "wooden_crate", ahead: float = 1.5) -> Optional[Tuple[float, float, float]]:
+                    model: str = "wooden_crate", ahead: float = 1.5,
+                    across: bool = False) -> Optional[Tuple[float, float, float]]:
     """(x, y, yaw) for a crate in front of the robot, across its way, or None if nowhere fits.
 
     'In front' is toward the robot's current target when known (its planned direction),
@@ -192,16 +216,87 @@ def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, fl
     else:
         yaw = pose.get("yaw", 0.0)
     half = CRATE_HALF.get(model, CRATE_HALF["wooden_crate"])
-    distances = [ahead + d for d in (0.0, 0.25, -0.25, 0.5, -0.5, 0.75, 1.0, 1.25)]
+    obj_yaw = yaw + (math.pi / 2 if across else 0.0)
+    # Distance from the obstacle's centre to its edge facing the robot, so it never lands on the robot.
+    reach = abs(half[0] * math.cos(obj_yaw - yaw)) + abs(half[1] * math.sin(obj_yaw - yaw))
+    base = max(ahead, reach + 0.6)
+    distances = [base + d for d in (0.0, 0.25, -0.25, 0.5, -0.5, 0.75, 1.0, 1.25)]
     for d in distances:
-        if d < 0.8:                      # never on top of the robot
+        if d - reach < 0.45:             # never on top of the robot
             continue
         cx, cy = x + d * math.cos(yaw), y + d * math.sin(yaw)
-        if any(math.hypot(cx - a, cy - b) < KEEP_CLEAR_OF_TARGETS_M for a, b in avoid):
+        if any(math.hypot(cx - a, cy - b) < KEEP_CLEAR_OF_TARGETS_M + max(half) - 0.3 for a, b in avoid):
             continue
-        if _free(map_info, cx, cy, half):
-            return round(cx, 3), round(cy, 3), round(yaw, 4)
+        if _free(map_info, cx, cy, half, obj_yaw):
+            return round(cx, 3), round(cy, 3), round(math.atan2(math.sin(obj_yaw), math.cos(obj_yaw)), 4)
     return None
+
+
+# --------------------------------------------------------------------------- other intents
+_STOP_SIM = re.compile(r"^(/stop|stop|stop (the )?sim(ulation)?|kill (the )?sim(ulation)?|exit simulation|shut ?down( the sim(ulation)?)?)\.?$")
+_HALT = re.compile(r"\b(stop (the )?robot|halt|freeze|stop moving|cancel (the )?nav(igation)?|pause (the )?robot)\b")
+_GOTO = re.compile(r"\b(detour|divert|re-?route|re-?plan|reach|resume|continue|navigate|go to|drive to|head to|move to)\b")
+_SIM_VERB = re.compile(r"\b(simulate|build|create|generate|make|set ?up|spawn|load|launch|design)\b")
+_SIM_NOUN = re.compile(r"\b(warehouse|room|world|scene|lab|field|office|factory|workshop|layout|environment|simulation|map)\b")
+_ORDINALS = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4,
+             "fifth": 5, "5th": 5, "sixth": 6, "6th": 6}
+
+
+def is_stop_sim(text: str) -> bool:
+    return bool(_STOP_SIM.match(text.lower().strip()))
+
+
+def is_halt(text: str) -> bool:
+    t = text.lower().strip()
+    return not is_question(t) and bool(_HALT.search(t))
+
+
+def is_goto(text: str) -> bool:
+    t = text.lower().strip()
+    return not is_question(t) and bool(_GOTO.search(t))
+
+
+def is_sim_request(text: str) -> bool:
+    """'build a dark warehouse with 3 racks' -> True; questions and chit-chat -> False."""
+    t = text.lower().strip()
+    if t.startswith("/sim"):
+        return True
+    return not is_question(t) and bool(_SIM_VERB.search(t)) and bool(_SIM_NOUN.search(t))
+
+
+def rack_number(text: str) -> Optional[int]:
+    t = text.lower()
+    for word, n in _ORDINALS.items():
+        if re.search(rf"\b{word}\b", t):
+            return n
+    m = re.search(r"\b(?:rack|shelf|aisle)\s*#?\s*(\d+)", t)
+    return int(m.group(1)) if m else None
+
+
+def resolve_goal(text: str, objects: Sequence[Dict[str, Any]], mission_goal: Optional[Dict[str, float]],
+                 map_info: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Tuple[float, float, float]], str]:
+    """Where "detour and reach rack 3" / "resume" should go: (x, y, yaw) and a description.
+
+    A numbered rack -> the free aisle 1.5 m in front of it (on the side facing the room
+    centre), checked against the map; otherwise the mission goal.
+    """
+    n = rack_number(text)
+    if n is not None:
+        rack = next((o for o in objects if o.get("id") == f"rack_{n}"), None)
+        if rack is None:
+            return None, f"there is no rack_{n} in this world"
+        rx, ry = rack["pose"]["x"], rack["pose"]["y"]
+        depth = (rack.get("dimensions") or {}).get("y", 1.0) / 2
+        side = -1.0 if ry > 0 else 1.0
+        for off in (0.9, 1.2, 1.5, 0.6, 1.8):
+            gx, gy = rx, ry + side * (depth + off)
+            if _free(map_info, gx, gy, (0.2, 0.2)):
+                yaw = math.atan2(ry - gy, 0.0)
+                return (round(gx, 3), round(gy, 3), round(yaw, 4)), f"the aisle in front of rack_{n}"
+        return None, f"no free space in front of rack_{n} on the map"
+    if mission_goal is not None:
+        return (mission_goal["x"], mission_goal["y"], mission_goal.get("yaw", 0.0)), "the mission goal"
+    return None, "no target in the request and no mission goal"
 
 
 # --------------------------------------------------------------------------- runner
@@ -344,18 +439,87 @@ class DemoRunner:
                 mission = info.get("mission") or {}
                 avoid = [(p["x"], p["y"]) for p in [*mission.get("waypoints", []), mission.get("goal_pose")] if p]
                 target = (nav.target_pose.x, nav.target_pose.y) if nav.is_active and nav.target_pose else None
-                spot = pick_crate_spot(live.pose.model_dump(), target, avoid, map_info, model, ahead)
-                if spot is None:
-                    raise RuntimeError("no free spot ahead of the robot that keeps waypoints reachable; "
-                                       "try again once it is mid-leg")
+                across = cmd.opts.get("across", "0").lower() in ("1", "true", "yes")
+                if "x" in cmd.opts and "y" in cmd.opts:          # explicit coordinates win
+                    px, py = float(cmd.opts["x"]), float(cmd.opts["y"])
+                    heading = math.atan2(py - live.pose.y, px - live.pose.x)
+                    yaw = heading + (math.pi / 2 if across else 0.0)
+                    spot = (px, py, round(math.atan2(math.sin(yaw), math.cos(yaw)), 4))
+                    if not _free(map_info, px, py, CRATE_HALF[model], spot[2]):
+                        self.say("[#f39c12]That spot overlaps a wall or another object on the map; spawning anyway.[/]")
+                    where = "at the requested position"
+                else:
+                    spot = pick_crate_spot(live.pose.model_dump(), target, avoid, map_info, model, ahead, across)
+                    if spot is None:
+                        raise RuntimeError("no free spot ahead of the robot that keeps waypoints reachable; "
+                                           "try again once it is mid-leg")
+                    d = math.hypot(spot[0] - live.pose.x, spot[1] - live.pose.y)
+                    where = f"{d:.1f} m ahead of the robot" + ("" if nav.is_active else
+                                                                " [#8b98a8](robot not navigating: placed along its heading)[/]")
                 res = await s.api.world_spawn({"model_name": model, "x": spot[0], "y": spot[1], "yaw": spot[2]})
                 name = (res.get("data") or {}).get("entity_name") or model
-                d = math.hypot(spot[0] - live.pose.x, spot[1] - live.pose.y)
-                self.say(f"[#ef4444]■[/] Spawned [bold]{name}[/] at ({spot[0]:.2f}, {spot[1]:.2f}), "
-                         f"{d:.1f} m ahead of the robot" + ("" if nav.is_active else
-                                                            " [#8b98a8](robot not navigating: placed along its heading)[/]"))
+                self.say(f"[#ef4444]■[/] Spawned [bold]{name}[/]{' across the path' if across else ''} at "
+                         f"({spot[0]:.2f}, {spot[1]:.2f}), {where}")
                 if not live.recording:
                     self.say("[#8b98a8]Not recording: start [bold]/mission stress[/] first to score this run.[/]")
+        finally:
+            await s.stop()
+
+    async def cmd_halt(self, cmd: Command) -> None:
+        """Stop the robot where it is (cancel the Nav2 task); the simulation keeps running."""
+        s = self._session()
+        try:
+            st = await s.api.nav_cancel()
+            live = await s.api.telemetry_live()
+        finally:
+            await s.stop()
+        where = f" at ({live.pose.x:.2f}, {live.pose.y:.2f})" if live.pose else ""
+        self.say(f"[#f39c12]■ Robot stopped[/]{where}. Navigation {st.status}; the simulation keeps running. "
+                 "Say [italic]resume[/] or [italic]go to rack 2[/] to move again.")
+
+    async def cmd_goto(self, cmd: Command) -> None:
+        """Re-plan to a target from the sentence (a numbered rack, or the mission goal), clearing costmaps."""
+        import json
+
+        from lang2sim.core.models import Pose2D
+
+        text = cmd.opts.get("text", "")
+        s = self._session()
+        try:
+            info = await self._run_info(s)
+            map_info = await s.api._request("GET", "/run/map")
+            objects: List[Dict[str, Any]] = []
+            try:
+                run_dir = await self._host_run_dir(s)
+                objects = json.loads((run_dir / "spec.json").read_text()).get("objects") or []
+            except Exception:  # noqa: BLE001 - racks are optional (the mission goal still works)
+                pass
+            goal, desc = resolve_goal(text, objects, (info.get("mission") or {}).get("goal_pose"), map_info)
+            if goal is None:
+                self.say(f"[#f39c12]Can't navigate: {desc}.[/]")
+                return
+            await s.api.nav_goal(Pose2D(x=goal[0], y=goal[1], yaw=goal[2]), timeout_seconds=180.0, clear_costmaps=True)
+            self.say(f"[#38bdf8]➜ Re-planning to {desc}[/] ({goal[0]:.2f}, {goal[1]:.2f}); costmaps cleared, "
+                     "Nav2 plans around everything it sees now.")
+            last = None
+            while True:
+                await asyncio.sleep(1.0)
+                st = await s.api.nav_status()
+                if st.is_active:
+                    key = round(st.distance_remaining, 1)
+                    if key != last:
+                        self.progress(f"[#8b98a8]  ▸ navigating to {desc} · {st.distance_remaining:.1f} m to go"
+                                      + (f" · {st.recoveries} recoveries" if st.recoveries else "") + "[/]")
+                        last = key
+                    continue
+                self.progress(None)
+                live = await s.api.telemetry_live()
+                pose = f" Robot at ({live.pose.x:.2f}, {live.pose.y:.2f})." if live.pose else ""
+                if st.status == "succeeded":
+                    self.say(f"[#2ed573]✓ Reached {desc}.[/]{pose}")
+                else:
+                    self.say(f"[#ef4444]✗ Navigation {st.status}[/]{': ' + st.message if st.message else ''}.{pose}")
+                return
         finally:
             await s.stop()
 
@@ -377,8 +541,14 @@ class DemoRunner:
             self.progress(None)
             self.say(f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
                      f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions")
+            import json
+
             from lang2sim.telemetry.benchmark import score_run_folder
 
+            traj_file = run_dir / "logs" / f"trajectory_{label}.json"
+            if not traj_file.is_file():      # the container could not write into the run folder
+                traj_file.parent.mkdir(parents=True, exist_ok=True)
+                traj_file.write_text(json.dumps(run.result.trajectory), encoding="utf-8")
             path, report = score_run_folder(run_dir)
             self.show_report(report)
             self.say(f"[#8b98a8]Report: {path}[/]")

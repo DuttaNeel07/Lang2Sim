@@ -67,6 +67,7 @@ class _Task:
     kind: str                      # "goal" | "waypoints" | "initial_pose"
     poses: List[Pose2D]
     timeout_s: float = 120.0
+    clear_costmaps: bool = False   # flush both costmaps before the first leg (detours, re-plans)
 
 
 class NavDispatcher:
@@ -91,8 +92,8 @@ class NavDispatcher:
     def set_initial_pose(self, pose: Pose2D) -> None:
         self._submit(_Task("initial_pose", [pose]))
 
-    def go_to(self, goal: Pose2D, timeout_s: float = 120.0) -> NavStatus:
-        return self._submit(_Task("goal", [goal], timeout_s))
+    def go_to(self, goal: Pose2D, timeout_s: float = 120.0, clear_costmaps: bool = False) -> NavStatus:
+        return self._submit(_Task("goal", [goal], timeout_s, clear_costmaps))
 
     def follow(self, waypoints: Sequence[Pose2D], timeout_s: float = 180.0) -> NavStatus:
         if not waypoints:
@@ -170,6 +171,12 @@ class NavDispatcher:
             self._run(task)
 
     def _run(self, task: _Task) -> None:
+        if task.clear_costmaps:
+            # On the navigator's own thread: stale inflation/recovery costs would block the re-plan.
+            try:
+                self._nav.clearAllCostmaps()
+            except Exception:  # noqa: BLE001 - a failed clear must not lose the goal
+                pass
         total = len(task.poses)
         for i, pose in enumerate(task.poses):
             self._set(is_active=True, status="navigating", current_task=task.kind, target_pose=pose,

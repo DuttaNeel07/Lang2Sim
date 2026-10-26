@@ -132,8 +132,9 @@ class ControlClient:
                                    json=NavInitialPoseRequest(pose=pose).model_dump(mode="json"))
         return NavStatus.model_validate(data)
 
-    async def nav_goal(self, goal: Pose2D, timeout_seconds: float = 120.0) -> NavStatus:
-        body = NavGoalRequest(goal_pose=goal, timeout_seconds=timeout_seconds).model_dump(mode="json")
+    async def nav_goal(self, goal: Pose2D, timeout_seconds: float = 120.0, clear_costmaps: bool = False) -> NavStatus:
+        body = NavGoalRequest(goal_pose=goal, timeout_seconds=timeout_seconds,
+                              clear_costmaps=clear_costmaps).model_dump(mode="json")
         return NavStatus.model_validate(await self._request("POST", "/nav/goal", json=body))
 
     async def nav_waypoints(self, waypoints: Sequence[Pose2D], timeout_seconds: float = 180.0) -> NavStatus:

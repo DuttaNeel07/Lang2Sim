@@ -25,6 +25,8 @@ SPAWN_FOOTPRINTS: Dict[str, tuple] = {
     "wooden_crate": ("box", 0.6, 0.6),
     "cargo_box": ("box", 1.0, 0.6),
     "barrel": ("circle", 0.3),
+    "rack": ("box", 2.8, 1.2),
+    "aws_warehouse_rack": ("box", 2.8, 1.2),
 }
 # Bounding radius of each footprint (kept for consumers that only handle circles).
 SPAWN_FOOTPRINT_RADIUS: Dict[str, float] = {
