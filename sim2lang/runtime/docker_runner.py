@@ -181,6 +181,25 @@ def default_run_options(plan: DisplayPlan, *, image: Optional[str] = None,
     )
 
 
+def allow_local_x11_clients() -> bool:
+    """`xhost +SI:localuser:<me>`: let containers running as our UID draw on X.
+
+    Needed on Ubuntu desktops (X/XWayland reject unknown clients by default).
+    No-op where xhost or DISPLAY is missing. Returns True if it ran.
+    """
+    import getpass
+    import shutil
+
+    if not os.environ.get("DISPLAY") or not shutil.which("xhost"):
+        return False
+    try:
+        subprocess.run(["xhost", f"+SI:localuser:{getpass.getuser()}"],
+                       capture_output=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Docker CLI wrapper
 # ---------------------------------------------------------------------------
@@ -240,6 +259,8 @@ class DockerRunner:
             if not replace:
                 raise DockerError(f"container {opts.name} already exists")
             self.remove(opts.name)
+        if opts.plan.mode == "x11":
+            allow_local_x11_clients()
         cp = self._call(build_run_args(opts), timeout=120)
         return cp.stdout.strip()
 
