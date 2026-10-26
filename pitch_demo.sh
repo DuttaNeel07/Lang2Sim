@@ -40,7 +40,7 @@ docker rm -f lang2sim-sim >/dev/null 2>&1 || true   # leftover from an earlier r
 
 say "image $IMAGE  flags: ${FLAGS[*]}"
 if [ "$1" = "--fixture" ]; then   # fallback: known-good warehouse + mission
-  SW=(); [[ " ${FLAGS[*]} " == *" --software "* ]] && SW=(--software)
+  SW=(--no-camera); [[ " ${FLAGS[*]} " == *" --software "* ]] && SW+=(--software)
   exec python scripts/run_sim.py --fixture small_warehouse --mission "${SW[@]}"
 fi
 say "Gazebo + RViz windows open in ~20 s. The robot (TurtleBot3) starts at the bottom-left corner."
