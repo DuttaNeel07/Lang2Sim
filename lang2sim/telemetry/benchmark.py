@@ -24,6 +24,7 @@ and writes benchmark_report.json into the run folder (architecture §4.2).
 
 from __future__ import annotations
 
+import json
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -88,13 +89,30 @@ def nav2_goal_tolerance(nav2_params: Path) -> Optional[float]:
     return None
 
 
+SCORING_SIDECAR = "scoring.l2s.json"     # written by the generated launch file (runtime/launch_builder.py)
+
+
+def _scoring_sidecar(run_dir: Optional[Path]) -> Dict[str, Any]:
+    if run_dir is None:
+        return {}
+    try:
+        data = json.loads((Path(run_dir) / SCORING_SIDECAR).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def scoring_params(run_dir: Optional[Path], goal_tolerance: Optional[float] = None,
                    base: NQIParams = NQIParams()) -> Tuple[NQIParams, Dict[str, Any]]:
     """NQI params for a recorded TurtleBot3 Waffle run, and where each choice came from."""
     from dataclasses import replace
 
+    sidecar = _scoring_sidecar(run_dir)
     if goal_tolerance is not None:
         eps, source = float(goal_tolerance), "explicit"
+    elif sidecar.get("goal_tolerance_m") is not None:
+        # The run's launch file aimed Nav2 tighter than the mission's success radius (localization margin).
+        eps, source = float(sidecar["goal_tolerance_m"]), str(sidecar.get("goal_tolerance_source") or "mission")
     else:
         nav2 = nav2_goal_tolerance(Path(run_dir) / NAV2_PARAMS_NAME) if run_dir is not None else None
         eps, source = (nav2, "nav2_goal_checker") if nav2 is not None else (base.eps_pos, "default")
