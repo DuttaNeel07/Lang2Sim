@@ -6,21 +6,23 @@ File: lang2sim/cli/widgets/telemetry_sidebar.py
 from textual.widget import Widget
 from textual.widgets import Static
 from textual.containers import Vertical
+from textual import work
 from dataclasses import dataclass
 
 @dataclass
 class TelemetryData:
-    sim_state: str = "Active (GUI)"
-    sim_time: str = "00:08.4"
-    rtf: str = "1.0x"
-    robot_x: float = 3.20
-    robot_y: float = 1.80
-    speed: float = 0.35
-    clearance: float = 0.48
+    sim_state: str = "Idle (Offline)"
+    sim_time: str = "00:00.0"
+    rtf: str = "0.0x"
+    robot_x: float = 0.0
+    robot_y: float = 0.0
+    speed: float = 0.0
+    clearance: float = 0.0
     bumper_force: float = 0.0
     collision_count: int = 0
-    tokens_used: int = 1420
-    context_capacity_pct: int = 1
+    ate_drift_m: float = 0.0
+    tokens_used: int = 0
+    context_capacity_pct: int = 0
 
 class TelemetrySidebar(Widget):
     """Right-hand sidebar displaying live simulation, robot kinematics, bumper, and context stats."""
@@ -49,6 +51,7 @@ class TelemetrySidebar(Widget):
             yield Static(self._format_pose(), id="robot-pose", classes="sidebar-metric")
             yield Static(self._format_speed(), id="robot-speed", classes="sidebar-metric")
             yield Static(self._format_clearance(), id="robot-clearance", classes="sidebar-metric")
+            yield Static(self._format_ate_drift(), id="robot-drift", classes="sidebar-metric")
 
             yield Static("[bold #f1f2f6]BUMPER[/]", classes="sidebar-section-title")
             yield Static(self._format_bumper_force(), id="bumper-force", classes="sidebar-metric")
@@ -77,6 +80,11 @@ class TelemetrySidebar(Widget):
         color = "#ff4757" if self.data.clearance < 0.25 else "#2ed573"
         return f"Clearance: [{color}]{self.data.clearance:.2f}m[/]"
 
+    def _format_ate_drift(self) -> str:
+        color = "#ff4757" if self.data.ate_drift_m > 0.35 else "#2ed573"
+        alert = " [#ff4757]⚠ divergence[/]" if self.data.ate_drift_m > 0.35 else ""
+        return f"Drift (ATE): [{color}]{self.data.ate_drift_m:.2f}m[/]{alert}"
+
     def _format_bumper_force(self) -> str:
         return f"Forces: [#ced6e0]{self.data.bumper_force:.1f} N[/]"
 
@@ -85,7 +93,8 @@ class TelemetrySidebar(Widget):
         return f"Hits: [{color}]{self.data.collision_count}[/]"
 
     def _format_context(self) -> str:
-        return f"[#ced6e0]{self.data.tokens_used:,} tokens\n{self.data.context_capacity_pct}% used\n$0.00 spent[/]"
+        spend = (self.data.tokens_used / 1_000_000.0) * 0.20
+        return f"[#ced6e0]{self.data.tokens_used:,} tokens\n{self.data.context_capacity_pct}% used\n${spend:.4f} spent[/]"
 
     def update_telemetry(self, **kwargs) -> None:
         """Update any metric dynamically and refresh corresponding label."""
@@ -100,6 +109,7 @@ class TelemetrySidebar(Widget):
             self.query_one("#robot-pose", Static).update(self._format_pose())
             self.query_one("#robot-speed", Static).update(self._format_speed())
             self.query_one("#robot-clearance", Static).update(self._format_clearance())
+            self.query_one("#robot-drift", Static).update(self._format_ate_drift())
             self.query_one("#bumper-force", Static).update(self._format_bumper_force())
             self.query_one("#collision-count", Static).update(self._format_collision_count())
             self.query_one("#token-context", Static).update(self._format_context())

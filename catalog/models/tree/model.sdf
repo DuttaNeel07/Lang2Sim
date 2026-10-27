@@ -1,0 +1,36 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="tree">
+    <static>true</static>
+    <link name="link">
+      <inertial>
+        <mass>80.0</mass>
+        <inertia>
+          <ixx>8.000</ixx>
+          <iyy>8.000</iyy>
+          <izz>8.000</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="trunk_vis">
+        <pose>0 0 0.75 0 0 0</pose>
+        <geometry><cylinder><radius>0.15</radius><length>1.5</length></cylinder></geometry>
+        <material><diffuse>0.36 0.25 0.15 1.0</diffuse><ambient>0.3 0.2 0.1 1.0</ambient></material>
+      </visual>
+      <collision name="trunk_col">
+        <pose>0 0 0.75 0 0 0</pose>
+        <geometry><cylinder><radius>0.15</radius><length>1.5</length></cylinder></geometry>
+      </collision>
+      <visual name="crown_vis">
+        <pose>0 0 2.25 0 0 0</pose>
+        <geometry><cone><radius>0.9</radius><length>2.0</length></cone></geometry>
+        <material><diffuse>0.13 0.40 0.14 1.0</diffuse><ambient>0.1 0.3 0.1 1.0</ambient></material>
+      </visual>
+      <collision name="crown_col">
+        <pose>0 0 2.25 0 0 0</pose>
+        <geometry><cone><radius>0.9</radius><length>2.0</length></cone></geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>

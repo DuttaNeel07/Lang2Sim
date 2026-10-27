@@ -1,80 +1,374 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "scenes": {
-    "aws_small_warehouse": {
-      "display_name": "AWS RoboMaker Small Warehouse",
+    "small_warehouse": {
+      "display_name": "Industrial Logistics Warehouse",
+      "description": "14x10 m warehouse with 4 pallet racks, 2 wooden pallet stacks, and a central conveyor. Tests tight aisle clearance (1.2m) and 90-degree corridor navigation.",
       "environment_type": "indoor_warehouse",
-      "base_world": "catalog/scenes/aws_small_warehouse/world.sdf",
-      "map_yaml": "catalog/maps/aws_small_warehouse.yaml",
-      "map_pgm": "catalog/maps/aws_small_warehouse.pgm",
+      "fixture_path": "catalog/fixtures/small_warehouse",
       "dimensions": {
         "x": 14.0,
         "y": 10.0,
-        "z": 5.0
+        "z": 4.0
       },
+      "difficulty": "Intermediate",
+      "tags": ["warehouse", "racks", "pallets", "narrow_aisles", "logistics"],
+      "recommended_robot": "turtlebot3_waffle",
       "surface_friction": 0.8,
       "anchors": {
         "dock": [0.0, 0.0, 0.0],
         "rack_1": [2.5, 3.0, 0.0],
         "rack_2": [-2.5, 3.0, 0.0],
-        "rack_3": [5.0, 3.0, 0.0],
-        "rack_5": [7.5, 3.0, 0.0],
-        "packaging_bench": [-3.0, 2.0, 0.0]
+        "pallet_stack": [-3.0, -2.0, 0.0]
       }
     },
-    "robotics_lab": {
-      "display_name": "Robotics Research Workshop",
+    "multi_room_office": {
+      "display_name": "Multi-Room Enterprise Office",
+      "description": "16x12 m executive office divided into 4 cubicle rooms with doorway frames (1.0m), desks, and swivel chairs. Tests tight doorway ingress and AMCL re-localization.",
       "environment_type": "indoor_office",
+      "fixture_path": "catalog/fixtures/empty_room",
       "dimensions": {
-        "x": 18.0,
+        "x": 16.0,
         "y": 12.0,
         "z": 3.5
       },
-      "surface_friction": 0.8,
+      "difficulty": "Advanced",
+      "tags": ["office", "rooms", "doors", "desks", "chairs", "localization"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.75,
       "anchors": {
         "dock": [0.0, 0.0, 0.0],
-        "workbench_1": [5.0, 4.0, 0.0],
-        "workbench_4": [-5.0, -4.0, 3.14159]
+        "room_1_door": [2.0, 0.0, 0.0],
+        "room_2_door": [-2.0, 0.0, 0.0],
+        "desk_main": [4.0, 3.0, 0.0]
       }
+    },
+    "hospital_corridor": {
+      "display_name": "Healthcare Clinic & Patient Corridor",
+      "description": "20x6 m elongated healthcare hallway with patient beds, medical carts, and nursing station. Tests narrow long-range hallway LiDAR feature extraction and collision-free passing.",
+      "environment_type": "indoor_healthcare",
+      "fixture_path": "catalog/fixtures/empty_room",
+      "dimensions": {
+        "x": 20.0,
+        "y": 6.0,
+        "z": 3.5
+      },
+      "difficulty": "Intermediate",
+      "tags": ["hospital", "corridor", "hallway", "medical", "narrow_passage"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.85,
+      "anchors": {
+        "hallway_start": [-8.0, 0.0, 0.0],
+        "nurse_station": [0.0, 1.5, 0.0],
+        "hallway_end": [8.0, 0.0, 0.0]
+      }
+    },
+    "outdoor_obstacle_yard": {
+      "display_name": "Outdoor Park & Obstacle Yard",
+      "description": "25x15 m outdoor training yard with pine trees, modular brick walls, oil drums, and traffic cones. Tests uneven perimeter navigation, GPS-denied dead-reckoning, and multi-obstacle circumnavigation.",
+      "environment_type": "outdoor_terrain",
+      "fixture_path": "catalog/fixtures/empty_room",
+      "dimensions": {
+        "x": 25.0,
+        "y": 15.0,
+        "z": 4.0
+      },
+      "difficulty": "Expert",
+      "tags": ["outdoor", "trees", "brick_walls", "drums", "cones", "wide_area"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.65,
+      "anchors": {
+        "dock": [0.0, 0.0, 0.0],
+        "tree_grove": [6.0, 4.0, 0.0],
+        "brick_barrier": [-5.0, 2.0, 1.57]
+      }
+    },
+    "tb3_world": {
+      "display_name": "TurtleBot3 Standard Obstacle Maze",
+      "description": "Standard 8x8 m TurtleBot3 benchmark maze with 9 cylindrical pillar obstacles and 4 bounding walls for baseline SLAM and Nav2 tuning.",
+      "environment_type": "indoor_arena",
+      "fixture_path": "catalog/fixtures/tb3_world",
+      "dimensions": {
+        "x": 8.0,
+        "y": 8.0,
+        "z": 2.5
+      },
+      "difficulty": "Beginner / Smoke-Test",
+      "tags": ["benchmark", "pillars", "maze", "smoke_test", "standard", "turtlebot3"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.8,
+      "anchors": {
+        "dock": [0.0, 0.0, 0.0]
+      }
+    },
+    "turtlebot3_house": {
+      "display_name": "TurtleBot3 Residential House",
+      "description": "Official ROBOTIS multi-room residential home with living room, bedroom, kitchen, tables, sofa, and door boundaries for realistic indoor service robotics benchmarks.",
+      "environment_type": "indoor_residential",
+      "fixture_path": "catalog/environments/turtlebot3_house.world",
+      "dimensions": {
+        "x": 18.0,
+        "y": 18.0,
+        "z": 3.0
+      },
+      "difficulty": "Advanced",
+      "tags": ["turtlebot3", "house", "residential", "multi_room", "furniture", "doors", "robotis"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.8
+    },
+    "turtlebot3_autorace_2020": {
+      "display_name": "TurtleBot3 AutoRace 2020 Track",
+      "description": "Official ROBOTIS autonomous driving test course featuring curved lane line markings, traffic lights, traffic signs, intersection, parking zone, and obstacles.",
+      "environment_type": "indoor_track",
+      "fixture_path": "catalog/environments/turtlebot3_autorace_2020.world",
+      "dimensions": {
+        "x": 10.0,
+        "y": 10.0,
+        "z": 2.5
+      },
+      "difficulty": "Expert",
+      "tags": ["turtlebot3", "autorace", "lanes", "traffic_lights", "signs", "autonomous_driving", "robotis"],
+      "recommended_robot": "turtlebot3_burger_cam",
+      "surface_friction": 0.85
+    },
+    "turtlebot3_dqn_stage1": {
+      "display_name": "TurtleBot3 DQN Stage 1 (Empty Arena)",
+      "description": "Official ROBOTIS reinforcement learning benchmark Stage 1: 4x4m bounded arena without obstacles for baseline navigation and goal-seeking.",
+      "environment_type": "rl_benchmark",
+      "fixture_path": "catalog/environments/turtlebot3_dqn_stage1.world",
+      "dimensions": {
+        "x": 4.0,
+        "y": 4.0,
+        "z": 2.0
+      },
+      "difficulty": "Beginner",
+      "tags": ["turtlebot3", "dqn", "stage1", "rl", "arena", "training", "robotis"],
+      "recommended_robot": "turtlebot3_burger",
+      "surface_friction": 0.8
+    },
+    "turtlebot3_dqn_stage2": {
+      "display_name": "TurtleBot3 DQN Stage 2 (Static Obstacles)",
+      "description": "Official ROBOTIS reinforcement learning benchmark Stage 2: 4x4m arena with 4 static cylinder obstacles for collision avoidance training.",
+      "environment_type": "rl_benchmark",
+      "fixture_path": "catalog/environments/turtlebot3_dqn_stage2.world",
+      "dimensions": {
+        "x": 4.0,
+        "y": 4.0,
+        "z": 2.0
+      },
+      "difficulty": "Intermediate",
+      "tags": ["turtlebot3", "dqn", "stage2", "static_obstacles", "rl", "training", "robotis"],
+      "recommended_robot": "turtlebot3_burger",
+      "surface_friction": 0.8
+    },
+    "turtlebot3_dqn_stage3": {
+      "display_name": "TurtleBot3 DQN Stage 3 (Dynamic Obstacles)",
+      "description": "Official ROBOTIS reinforcement learning benchmark Stage 3: 4x4m arena with moving dynamic obstacle entities testing reactive collision avoidance.",
+      "environment_type": "rl_benchmark",
+      "fixture_path": "catalog/environments/turtlebot3_dqn_stage3.world",
+      "dimensions": {
+        "x": 4.0,
+        "y": 4.0,
+        "z": 2.0
+      },
+      "difficulty": "Advanced",
+      "tags": ["turtlebot3", "dqn", "stage3", "dynamic_obstacles", "moving", "rl", "robotis"],
+      "recommended_robot": "turtlebot3_burger",
+      "surface_friction": 0.8
+    },
+    "turtlebot3_dqn_stage4": {
+      "display_name": "TurtleBot3 DQN Stage 4 (Complex Corridor Maze)",
+      "description": "Official ROBOTIS reinforcement learning benchmark Stage 4: 5x5m multi-turn corridor maze with tight turns and blind corners.",
+      "environment_type": "rl_benchmark",
+      "fixture_path": "catalog/environments/turtlebot3_dqn_stage4.world",
+      "dimensions": {
+        "x": 5.0,
+        "y": 5.0,
+        "z": 2.0
+      },
+      "difficulty": "Expert",
+      "tags": ["turtlebot3", "dqn", "stage4", "maze", "corridors", "blind_corners", "robotis"],
+      "recommended_robot": "turtlebot3_burger",
+      "surface_friction": 0.8
+    },
+    "nav2_warehouse": {
+      "display_name": "Nav2 Industrial Logistics Warehouse",
+      "description": "Standard Nav2 open-source warehouse simulation environment with pallet racks, staging bays, forklift lanes, and narrow industrial corridors.",
+      "environment_type": "indoor_warehouse",
+      "fixture_path": "catalog/environments/warehouse.sdf",
+      "map_path": "catalog/maps/nav2_warehouse.yaml",
+      "dimensions": {
+        "x": 20.0,
+        "y": 20.0,
+        "z": 5.0
+      },
+      "difficulty": "Intermediate",
+      "tags": ["warehouse", "nav2", "depot", "industrial", "logistics", "turtlebot3"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.8
+    },
+    "nav2_depot": {
+      "display_name": "Nav2 Distribution Depot",
+      "description": "Standard Nav2 open-source distribution depot facility with loading docks, storage zones, and wide transport aisles.",
+      "environment_type": "indoor_logistics",
+      "fixture_path": "catalog/environments/depot.sdf",
+      "map_path": "catalog/maps/nav2_depot.yaml",
+      "dimensions": {
+        "x": 22.0,
+        "y": 16.0,
+        "z": 4.5
+      },
+      "difficulty": "Intermediate",
+      "tags": ["depot", "distribution", "nav2", "dock", "logistics", "turtlebot3"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.8
     }
   },
   "models": {
-    "aws_warehouse_rack": {
-      "dimensions": {
-        "x": 2.8,
-        "y": 1.2,
-        "z": 3.6
-      },
-      "mass": 120.0,
-      "is_static": true
+    "tree": {
+      "display_name": "Pine Tree",
+      "description": "Coniferous pine tree with solid trunk and evergreen foliage crown for outdoor robotics benchmarks.",
+      "category": "vegetation",
+      "dimensions": { "x": 1.5, "y": 1.5, "z": 3.5 },
+      "mass": 80.0,
+      "is_static": true,
+      "path": "catalog/models/tree"
     },
-    "workbench": {
-      "dimensions": {
-        "x": 2.0,
-        "y": 1.0,
-        "z": 0.9
-      },
-      "mass": 45.0,
-      "is_static": true
+    "brick_wall": {
+      "display_name": "Brick Wall Section",
+      "description": "Modular structural brick barrier section (2m x 0.3m x 1.5m) for indoor/outdoor enclosure mapping.",
+      "category": "architecture",
+      "dimensions": { "x": 2.0, "y": 0.3, "z": 1.5 },
+      "mass": 350.0,
+      "is_static": true,
+      "path": "catalog/models/brick_wall"
     },
-    "wooden_crate": {
-      "dimensions": {
-        "x": 0.8,
-        "y": 0.8,
-        "z": 0.8
-      },
-      "mass": 15.0,
-      "is_static": false
+    "warehouse_rack": {
+      "display_name": "Industrial Pallet Rack",
+      "description": "Heavy-duty industrial pallet rack (2.8m x 1.2m x 3.6m) with crossbeams and upright support frame.",
+      "category": "logistics",
+      "dimensions": { "x": 2.8, "y": 1.2, "z": 3.6 },
+      "mass": 180.0,
+      "is_static": true,
+      "path": "catalog/models/warehouse_rack"
+    },
+    "wooden_pallet": {
+      "display_name": "Wooden EUR-Pallet",
+      "description": "Standard industrial EUR-pallet (1.2m x 0.8m x 0.15m) for logistics navigation testing.",
+      "category": "logistics",
+      "dimensions": { "x": 1.2, "y": 0.8, "z": 0.15 },
+      "mass": 25.0,
+      "is_static": true,
+      "path": "catalog/models/wooden_pallet"
+    },
+    "cardboard_box": {
+      "display_name": "Cardboard Box / Crate",
+      "description": "Stackable corrugated cardboard shipping box (0.8m x 0.8m x 0.8m) for obstacle avoidance testing.",
+      "category": "logistics",
+      "dimensions": { "x": 0.8, "y": 0.8, "z": 0.8 },
+      "mass": 12.0,
+      "is_static": false,
+      "path": "catalog/models/cardboard_box"
     },
     "barrel": {
-      "dimensions": {
-        "x": 0.6,
-        "y": 0.6,
-        "z": 1.0
-      },
-      "mass": 25.0,
-      "is_static": false
+      "display_name": "Steel Oil Drum / Barrel",
+      "description": "Cylindrical industrial 55-gallon steel oil drum (0.6m diameter x 1.0m height).",
+      "category": "industrial",
+      "dimensions": { "x": 0.6, "y": 0.6, "z": 1.0 },
+      "mass": 30.0,
+      "is_static": false,
+      "path": "catalog/models/barrel"
+    },
+    "traffic_cone": {
+      "display_name": "Traffic Safety Cone",
+      "description": "High-visibility fluorescent orange traffic safety cone with white reflective collar (0.3m x 0.3m x 0.7m).",
+      "category": "traffic_safety",
+      "dimensions": { "x": 0.3, "y": 0.3, "z": 0.7 },
+      "mass": 3.5,
+      "is_static": false,
+      "path": "catalog/models/traffic_cone"
+    },
+    "office_desk": {
+      "display_name": "Workstation Computer Desk",
+      "description": "Modular commercial office computer workstation desk (1.6m x 0.8m x 0.75m).",
+      "category": "office_furniture",
+      "dimensions": { "x": 1.6, "y": 0.8, "z": 0.75 },
+      "mass": 40.0,
+      "is_static": true,
+      "path": "catalog/models/office_desk"
+    },
+    "office_chair": {
+      "display_name": "Rolling Office Swivel Chair",
+      "description": "Ergonomic rolling office swivel chair (0.6m x 0.6m x 0.9m) with mesh backrest.",
+      "category": "office_furniture",
+      "dimensions": { "x": 0.6, "y": 0.6, "z": 0.9 },
+      "mass": 16.0,
+      "is_static": false,
+      "path": "catalog/models/office_chair"
+    },
+    "door_frame": {
+      "display_name": "Interior Doorway Opening",
+      "description": "Standard interior office doorway frame (1.0m width opening x 2.1m height x 0.15m depth).",
+      "category": "architecture",
+      "dimensions": { "x": 1.0, "y": 0.15, "z": 2.1 },
+      "mass": 30.0,
+      "is_static": true,
+      "path": "catalog/models/door_frame"
+    },
+    "turtlebot3_world": {
+      "display_name": "TurtleBot3 Benchmark Maze World",
+      "description": "Official ROBOTIS TurtleBot3 benchmark maze model with 9 pillars and hexagonal outer barrier.",
+      "category": "robotics_benchmark",
+      "dimensions": { "x": 8.0, "y": 8.0, "z": 2.0 },
+      "mass": 250.0,
+      "is_static": true,
+      "path": "catalog/models/turtlebot3_world"
+    },
+    "turtlebot3_house": {
+      "display_name": "TurtleBot3 House Model",
+      "description": "Official ROBOTIS TurtleBot3 residential house interior structure with walls, partitions, and doors.",
+      "category": "residential_architecture",
+      "dimensions": { "x": 18.0, "y": 18.0, "z": 2.5 },
+      "mass": 1200.0,
+      "is_static": true,
+      "path": "catalog/models/turtlebot3_house"
+    },
+    "turtlebot3_burger": {
+      "display_name": "TurtleBot3 Burger Mobile Robot",
+      "description": "Compact 2-wheeled differential drive mobile robot platform with 360-degree LiDAR and OpenCR controller.",
+      "category": "robot_platform",
+      "dimensions": { "x": 0.138, "y": 0.178, "z": 0.192 },
+      "mass": 1.0,
+      "is_static": false,
+      "path": "catalog/models/turtlebot3_burger"
+    },
+    "turtlebot3_waffle": {
+      "display_name": "TurtleBot3 Waffle Mobile Robot",
+      "description": "Medium-sized differential drive AMR platform with Intel RealSense RGB-D camera and 360-degree LDS LiDAR.",
+      "category": "robot_platform",
+      "dimensions": { "x": 0.281, "y": 0.306, "z": 0.141 },
+      "mass": 1.8,
+      "is_static": false,
+      "path": "catalog/models/turtlebot3_waffle"
+    },
+    "turtlebot3_waffle_pi": {
+      "display_name": "TurtleBot3 Waffle Pi Mobile Robot",
+      "description": "TurtleBot3 Waffle Pi edition equipped with Raspberry Pi Camera and LDS LiDAR sensor suite.",
+      "category": "robot_platform",
+      "dimensions": { "x": 0.281, "y": 0.306, "z": 0.141 },
+      "mass": 1.8,
+      "is_static": false,
+      "path": "catalog/models/turtlebot3_waffle_pi"
+    },
+    "forklift": {
+      "display_name": "Warehouse Forklift Truck",
+      "description": "Industrial warehouse forklift truck model with safety yellow chassis, vertical mast, and front loading forks.",
+      "category": "logistics_vehicle",
+      "dimensions": { "x": 2.4, "y": 1.1, "z": 2.1 },
+      "mass": 650.0,
+      "is_static": true,
+      "path": "catalog/models/forklift"
     }
   }
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="brick_wall">
+    <static>true</static>
+    <link name="link">
+      <inertial>
+        <mass>350.0</mass>
+        <inertia>
+          <ixx>35.000</ixx>
+          <iyy>35.000</iyy>
+          <izz>35.000</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="wall_vis">
+        <pose>0 0 0.75 0 0 0</pose>
+        <geometry><box><size>2.0 0.3 1.5</size></box></geometry>
+        <material><diffuse>0.72 0.32 0.22 1.0</diffuse><ambient>0.6 0.25 0.18 1.0</ambient></material>
+      </visual>
+      <collision name="wall_col">
+        <pose>0 0 0.75 0 0 0</pose>
+        <geometry><box><size>2.0 0.3 1.5</size></box></geometry>
+        <surface><friction><ode><mu>0.9</mu><mu2>0.9</mu2></ode></friction></surface>
+      </collision>
+
+    </link>
+  </model>
+</sdf>

@@ -1,0 +1,45 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="door_frame">
+    <static>true</static>
+    <link name="link">
+      <inertial>
+        <mass>30.0</mass>
+        <inertia>
+          <ixx>3.000</ixx>
+          <iyy>3.000</iyy>
+          <izz>3.000</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="left_post">
+        <pose>-0.5 0 1.05 0 0 0</pose>
+        <geometry><box><size>0.1 0.15 2.1</size></box></geometry>
+        <material><diffuse>0.8 0.8 0.8 1.0</diffuse><ambient>0.6 0.6 0.6 1.0</ambient></material>
+      </visual>
+      <collision name="left_post_col">
+        <pose>-0.5 0 1.05 0 0 0</pose>
+        <geometry><box><size>0.1 0.15 2.1</size></box></geometry>
+      </collision>
+      <visual name="right_post">
+        <pose>0.5 0 1.05 0 0 0</pose>
+        <geometry><box><size>0.1 0.15 2.1</size></box></geometry>
+        <material><diffuse>0.8 0.8 0.8 1.0</diffuse><ambient>0.6 0.6 0.6 1.0</ambient></material>
+      </visual>
+      <collision name="right_post_col">
+        <pose>0.5 0 1.05 0 0 0</pose>
+        <geometry><box><size>0.1 0.15 2.1</size></box></geometry>
+      </collision>
+      <visual name="header">
+        <pose>0 0 2.05 0 0 0</pose>
+        <geometry><box><size>1.1 0.15 0.1</size></box></geometry>
+        <material><diffuse>0.8 0.8 0.8 1.0</diffuse><ambient>0.6 0.6 0.6 1.0</ambient></material>
+      </visual>
+      <collision name="header_col">
+        <pose>0 0 2.05 0 0 0</pose>
+        <geometry><box><size>1.1 0.15 0.1</size></box></geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>
