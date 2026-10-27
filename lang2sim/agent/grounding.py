@@ -90,9 +90,9 @@ def format_context(health: Optional[Dict[str, Any]], live: Optional[Dict[str, An
             lines.append(f"Mission success tolerance {sc.get('goal_tolerance_m')} m ({sc.get('goal_tolerance_source')}); "
                          "clearance measured from the TurtleBot3 Waffle chassis rectangle.")
         lines.append(NQI_FORMULA)
-    lines.append("Answer with these numbers when relevant and say when something was not measured. To change the "
-                 "simulation the user types /stress, /mission [stress], /benchmark or /report (or a plain request "
-                 "like 'drop the lights to 10% and spawn a crate ahead'); you cannot act on the simulation yourself.")
+    lines.append("Answer with these numbers when relevant and say when something was not measured. The app carries out "
+                 "plain-English requests itself (e.g. 'start a stress run', 'drop the lights to 10% and spawn a crate "
+                 "ahead', 'go to rack 2', 'show me the score'); suggest such sentences, never slash commands.")
     return "\n".join(lines)
 
 

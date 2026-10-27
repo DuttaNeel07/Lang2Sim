@@ -43,7 +43,7 @@ def test_stress_intents(text, light, model):
     c = parse_stress_intent(text)
     assert c is not None and c.name == "stress" and c.natural
     assert c.opts.get("light") == light and c.opts.get("model") == model
-    assert c.note.startswith("Interpreted as /stress")
+    assert c.note.startswith("Understood: ")
 
 
 def test_blur_is_reported_as_unsupported():
@@ -116,6 +116,8 @@ async def test_tui_runs_demo_commands_against_the_api(replay_api, monkeypatch, t
 
     monkeypatch.setenv("LANG2SIM_CONTROL_API", replay_api)
     monkeypatch.setenv("HOME", str(tmp_path))
+    for k in ("NVIDIA_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.setenv(k, "")                                            # the offline parser path
     from lang2sim.cli.app import Lang2SimApp
     from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
 
@@ -135,14 +137,16 @@ async def test_tui_runs_demo_commands_against_the_api(replay_api, monkeypatch, t
                     break
             return list(screen.query(".demo-line, .demo-table"))[before:]
 
-        out = await ask("/report")
+        out = await ask("show me the score")                                   # plain English, no LLM key
         assert any("demo-table" in w.classes for w in out)                    # the NQI table
         assert any("81.6" in str(w.render()) for w in out if "demo-line" in w.classes)
-        out = await ask("/status")
-        assert "REPLAY" in str(out[0].render())
+        out = await ask("where is the robot?")
+        assert "REPLAY" in " ".join(str(w.render()) for w in out)
         out = await ask("drop the lights to 10% and spawn a crate in front of the robot")
         text = " ".join(str(w.render()) for w in out)
-        assert "Interpreted as /stress" in text and "replay" in text.lower()   # read-only, clearly said
+        assert "Understood" in text and "replay" in text.lower()               # read-only, clearly said
+        out = await ask("/report")                                              # shortcuts still work
+        assert any("demo-table" in w.classes for w in out)
         assert not screen.is_streaming                                         # the LLM was never called
 
 

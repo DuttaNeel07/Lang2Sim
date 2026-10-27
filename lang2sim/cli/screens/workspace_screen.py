@@ -23,7 +23,9 @@ SYSTEM_PROMPT = (
     "simulations, SDF scene layouts, Nav2 navigation stacks, and robot sensor telemetry. "
     "Be concise, technically precise, conversational, and direct. Format your answers with clean Markdown. "
     "When a system message carries Lang2Sim simulation context, base answers about the robot, the run and the "
-    "NQI score on those measured numbers."
+    "NQI score on those measured numbers. The app itself carries out simulation requests the user types in plain "
+    "English (build a world, start a stress run, dim the lights, drop a crate, go to rack 2, stop the robot); when "
+    "suggesting a next step, phrase it as such a sentence, never as a slash command."
 )
 
 
@@ -87,7 +89,7 @@ class WorkspaceScreen(Screen):
                 with VerticalScroll(id="chat-scroll"):
                     yield Static("", id="scroll-anchor")
                 yield PromptCard(
-                    placeholder='lang2sim > Ask, or /mission · /stress · /benchmark · /report · /help',
+                    placeholder='lang2sim > Describe a world to simulate, or tell the robot what to do',
                     card_id="sticky-prompt-input",
                     id="sticky-input-card",
                 )
@@ -196,74 +198,105 @@ class WorkspaceScreen(Screen):
         self.handle_user_prompt(message.value)
 
     def handle_user_prompt(self, prompt: str) -> None:
-        """Route a prompt: build/stop a simulation, act on the running one, or ask the LLM.
+        """Every sentence is understood by the copilot (LLM, offline parser as fallback) and acted on.
 
-        Order: /sim and /stop (simulations this app starts) -> slash demo commands ->
-        while a simulation is reachable: "stop the robot", stress requests (spawn/dim),
-        "detour to rack 3" -> "build a warehouse with ..." starts a new simulation ->
-        everything else (and every question) goes to the grounded LLM chat.
+        The user never needs a command syntax: "build a warehouse with 3 racks", "start a stress
+        run", "dim the lights and drop a crate in its path", "stop the robot", "go to rack 2",
+        "show me the score", "why did the score drop?" all go through intent.interpret().
+        Slash commands (/sim, /stop, /mission, /stress, ...) still work as silent shortcuts.
         """
-        from ..demo_commands import (
-            Command,
-            is_goto,
-            is_halt,
-            is_sim_request,
-            is_stop_sim,
-            parse_command,
-            parse_stress_intent,
-        )
+        from ..demo_commands import parse_command
 
         cleaned_prompt = prompt.strip()
         if not cleaned_prompt:
             return
         lowered = cleaned_prompt.lower()
 
-        if lowered.startswith("/sim") or (not self._sim_active() and is_sim_request(cleaned_prompt)):
-            scenario = cleaned_prompt[4:].strip() if lowered.startswith("/sim") else cleaned_prompt
+        if lowered.startswith("/sim"):
             widget = self._start_turn(cleaned_prompt, "● *Building your simulation...*")
-            self.run_simulation(widget, scenario or "a warehouse with 4 racks and 1 crate")
+            self.run_simulation(widget, cleaned_prompt[4:].strip() or "a warehouse with 4 racks and 1 crate")
             return
-        if is_stop_sim(cleaned_prompt):
+        if lowered in ("/stop", "/quit-sim"):
             self.stop_simulation(self._start_turn(cleaned_prompt, "● *Stopping...*"))
             return
-
         command = parse_command(cleaned_prompt)
-        if command is None and self._sim_active():
-            if is_halt(cleaned_prompt):
-                command = Command("halt")
-            else:
-                command = parse_stress_intent(cleaned_prompt)
-                if command is None and is_goto(cleaned_prompt):
-                    command = Command("goto", opts={"text": cleaned_prompt})
-        elif command is None:
-            command = parse_stress_intent(cleaned_prompt)   # answers "no simulation running" clearly
         if command is not None:
-            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
-            chat_scroll.mount(Static(f"[bold #ffffff]{escape(cleaned_prompt)}[/]", classes="user-prompt-card"))
-            chat_scroll.scroll_end(animate=False)
-            self.session.messages.append(ChatMessage(role="user", content=cleaned_prompt,
-                                                     tokens=max(1, len(cleaned_prompt) // 4)))
-            session_manager.save_session(self.session)
+            self._mount_user(cleaned_prompt)
             self.run_demo_command(command)
             return
+        self._mount_user(cleaned_prompt)
+        self.understand_and_act(cleaned_prompt)
 
-        response_widget = self._start_turn(cleaned_prompt, "● *Thinking...*")
-        self.conversation_history.append({"role": "user", "content": cleaned_prompt})
-        self.stream_response(response_widget, cleaned_prompt)
+    @work(exclusive=False, group="intent")
+    async def understand_and_act(self, text: str) -> None:
+        """Natural language -> one action (intent.interpret) -> run it, saying what was understood."""
+        from ..intent import interpret, situation
+
+        line = Static("[#8b98a8]● understanding…[/]", classes="demo-line")
+        self._mount_chat(line)
+        mission_running = self.demo.mission_lock.locked()
+        racks: List[str] = []
+        spec = getattr(self, "current_spec", None)
+        if spec is not None:
+            racks = [o.id for o in spec.objects if "rack" in o.id]
+        it = await interpret(text, self.client, sim_active=self._sim_active(), mission_running=mission_running,
+                             context=situation(self._sim_active(), mission_running, racks))
+
+        if it.action == "chat":
+            line.remove()
+            widget = self._start_turn(text, "● *Thinking...*", mount_prompt=False)
+            self.conversation_history.append({"role": "user", "content": text})
+            self.stream_response(widget, text)
+            return
+        line.update(f"[#8b98a8]Understood ({escape(it.source)}): {escape(it.summary)}[/]")
+        if it.action == "new_sim":
+            widget = self._start_turn(text, "● *Building your simulation...*", mount_prompt=False)
+            self.run_simulation(widget, it.scenario or text)
+            return
+        if it.action == "stop_sim":
+            self.stop_simulation(self._start_turn(text, "● *Stopping...*", mount_prompt=False))
+            return
+        if it.needs_sim and not self._sim_active():
+            self._demo_say("[#f39c12]No simulation is running yet.[/] Describe a world first, e.g. "
+                           "[italic]\"build a warehouse with 3 racks and 2 crates\"[/].")
+            return
+        command = it.command
+        if command is None:
+            return
+        if command.name == "mission" and mission_running:
+            if command.args:      # "make it harder" mid-run: stress the run that is already driving
+                from ..demo_commands import Command
+
+                command = Command("stress")
+                self._demo_say("[#8b98a8]A mission is already driving, so I'm stressing it now: dim the lights "
+                               "to 10% and drop a wooden crate in the robot's path.[/]")
+        elif command.name == "stress" and not mission_running:
+            # Nothing is being recorded: start a stress run and apply the change once the robot is moving,
+            # so the request is measured against the normal run.
+            from ..demo_commands import Command
+
+            command = Command("mission", args=["stress"], then=command)
+        self.run_demo_command(command)
+
+    def _mount_user(self, text: str) -> None:
+        chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+        chat_scroll.mount(Static(f"[bold #ffffff]{escape(text)}[/]", classes="user-prompt-card"))
+        chat_scroll.scroll_end(animate=False)
+        if self.session.title == "New Session":
+            self.session.title = text[:40]
+            self.query_one("#workspace-header", Static).update(f"S2L | {self.session.title} — lang2sim")
+        self.session.messages.append(ChatMessage(role="user", content=text, tokens=max(1, len(text) // 4)))
+        session_manager.save_session(self.session)
 
     def _sim_active(self) -> bool:
         """A simulation this app started, or any control API answering (run_sim.py, replay)."""
         return self.sim_session is not None or self._sim_reachable
 
-    def _start_turn(self, prompt: str, placeholder: str) -> Markdown:
-        """Mount the user's prompt and an assistant reply widget; persist the user message."""
+    def _start_turn(self, prompt: str, placeholder: str, mount_prompt: bool = True) -> Markdown:
+        """Mount the user's prompt (unless already shown) and an assistant reply widget."""
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
-        if self.session.title == "New Session":
-            self.session.title = prompt[:40]
-            self.query_one("#workspace-header", Static).update(f"S2L | {self.session.title} — lang2sim")
-        chat_scroll.mount(Static(f"[bold #ffffff]{escape(prompt)}[/]", classes="user-prompt-card"))
-        self.session.messages.append(ChatMessage(role="user", content=prompt, tokens=max(1, len(prompt) // 4)))
-        session_manager.save_session(self.session)
+        if mount_prompt:
+            self._mount_user(prompt)
         widget = Markdown(placeholder, classes="assistant-response")
         chat_scroll.mount(widget)
         chat_scroll.scroll_end(animate=False)
@@ -324,8 +357,9 @@ class WorkspaceScreen(Screen):
             if report and "nqi" in report:
                 import json as _json
                 self.demo.show_report(_json.loads(Path(report["report_path"]).read_text()))
-            await add(f"\nSimulation is still running: `/mission stress` + say *\"drop a crate in front of the robot\"*, "
-                      f"`/benchmark`, `/dashboard`, *\"go to rack 2\"*, *\"stop the robot\"*, or `/stop`. Logs: `{run / 'logs'}`")
+            await add("\nThe simulation is still running. Try: *\"stress-test it: dim the lights to 10% and drop a crate "
+                      "in the robot's path\"*, *\"go to rack 2\"*, *\"stop the robot\"*, *\"run the full benchmark\"*, "
+                      f"*\"why did the score change?\"*, or *\"stop the simulation\"*. Logs: `{run / 'logs'}`")
         except Exception as e:  # noqa: BLE001 - show the failure in the chat, keep the app alive
             status[0] = ""
             await add(f"\n**⚠ Simulation error:** `{type(e).__name__}: {e}`")
@@ -407,8 +441,10 @@ class WorkspaceScreen(Screen):
 
         if not self.client.is_configured():
             await response_widget.update(
-                "**● API Key Required**\n\n"
-                "Please configure your API key to chat with Sim2Lang:\n"
+                "**● Questions need an API key**\n\n"
+                "I couldn't match that to a simulation action, and free-form answers need the LLM. "
+                "Requests like *\"drop a crate in front of the robot\"* or *\"show me the score\"* work without one.\n\n"
+                "To enable the copilot (it also understands any phrasing of a request):\n"
                 "- Run: `export NVIDIA_API_KEY='nvapi-...'`\n"
                 "- Or set `OPENAI_API_KEY='sk-...'`\n"
                 "- Or add `NVIDIA_API_KEY=...` to `.env` in the project root."

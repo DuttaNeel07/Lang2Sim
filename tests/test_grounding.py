@@ -32,7 +32,7 @@ def test_context_carries_the_numbers_that_explain_the_score():
     assert "clearance 40.0" in text                                           # nominal clearance term saturated
     assert "C_min 0.06 m" in text and "NQI = 100*" in text
     assert "dropped at (2.686, 0.05)" in text and "sun dimmed to 10%" in text
-    assert "/stress" in text                                                  # it can't act, the user can
+    assert "start a stress run" in text and "slash" in text                    # it suggests plain sentences
 
 
 def test_no_simulation_means_no_context(monkeypatch):

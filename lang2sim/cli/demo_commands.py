@@ -44,19 +44,16 @@ DEMO_RUN = Path(__file__).resolve().parents[2] / "catalog" / "demo_runs" / "empt
 CRATE_HALF = {"wooden_crate": (0.3, 0.3), "cargo_box": (0.5, 0.3), "barrel": (0.3, 0.3), "rack": (1.4, 0.6)}
 KEEP_CLEAR_OF_TARGETS_M = 1.2
 
-HELP = """[bold #38bdf8]Demo commands[/] (they act on the running simulation, or a replay):
-  [bold]/mission[/] [#8b98a8]\\[stress][/]        drive the mission with telemetry recording and score it
-  [bold]/stress[/] [#8b98a8]\\[light=0.1] \\[model=wooden_crate|cargo_box|barrel|rack] \\[x= y=] \\[across=1][/]
-                           dim the lights and drop an obstacle in front of the moving robot
-  [bold]/benchmark[/] [#8b98a8]\\[light=0.1][/]   nominal run, back to start, stress run, NQI comparison
-  [bold]/report[/]                 show the latest NQI table
-  [bold]/status[/]                 simulation, robot and recording state
-  [bold]/dashboard[/]              open the live dashboard in the browser
-  [bold]/replay[/] [#8b98a8]\\[run_dir|demo][/]  serve a recorded run if the live sim is down
-  [bold]/sim[/] [#8b98a8]<scenario>[/]          build a world from a sentence and run it (e.g. /sim a dark warehouse with 3 racks)
-  [bold]/stop[/]                   stop the simulation this app started
-Or just say it: [italic]"drop the lights to 10% and spawn a crate in front of the robot"[/],
-[italic]"put a rack across the aisle at 1.5, 0"[/], [italic]"stop the robot"[/], [italic]"detour and reach rack 3"[/]."""
+HELP = """[bold #38bdf8]Just say what you want[/] — the copilot works out the action:
+  [italic]"build a warehouse with 3 racks and 2 crates"[/]          a new world, driven and scored
+  [italic]"start a stress run"[/]                                  record a run you will perturb
+  [italic]"drop the lights to 10% and spawn a crate in its path"[/]  stress the robot while it drives
+  [italic]"put a rack across the aisle"[/], [italic]"drop a barrel at 1.5, 0"[/]
+  [italic]"stop the robot"[/], [italic]"resume"[/], [italic]"detour and reach rack 3"[/]
+  [italic]"run the full benchmark"[/]                              normal vs stress, automatically
+  [italic]"show me the score"[/], [italic]"where is the robot?"[/], [italic]"open the dashboard"[/]
+  [italic]"why did the score drop?"[/]                             answered from the measured numbers
+  [italic]"stop the simulation"[/]                                 shut it down"""
 
 
 # --------------------------------------------------------------------------- parsing
@@ -67,6 +64,7 @@ class Command:
     opts: Dict[str, str] = field(default_factory=dict)
     note: str = ""                     # shown to the user (e.g. how a sentence was interpreted)
     natural: bool = False              # parsed from a sentence: do only what it asked for
+    then: Optional["Command"] = None   # mission: stress to apply once the robot is under way
 
 
 def parse_command(text: str) -> Optional[Command]:
@@ -148,13 +146,9 @@ def parse_stress_intent(text: str) -> Optional[Command]:
         return None
     if re.search(r"\b(blur|noise|fog)\b", t):
         notes.append("camera blur/noise injection is not available yet, skipped")
-    said = []
-    if "light" in opts:
-        said.append(f"light={opts['light']}")
-    if "model" in opts:
-        said.append(f"model={opts['model']}")
-    said += [f"{k}={opts[k]}" for k in ("x", "y", "across") if k in opts]
-    note = f"Interpreted as /stress {' '.join(said)}" + (f" ({'; '.join(notes)})" if notes else "")
+    from .intent import describe_stress
+
+    note = f"Understood: {describe_stress(opts)}" + (f" ({'; '.join(notes)})" if notes else "")
     return Command("stress", opts=opts, note=note, natural=True)
 
 
@@ -359,6 +353,12 @@ Say = Callable[[str], None]
 Show = Callable[[Any], None]
 
 
+def _describe_stress(opts: Dict[str, str]) -> str:
+    from .intent import describe_stress
+
+    return describe_stress(opts)
+
+
 def _f(v: Any, d: int = 2, unit: str = "") -> str:
     return "–" if v is None else f"{float(v):.{d}f}{unit}"
 
@@ -407,13 +407,17 @@ class DemoRunner:
             from lang2sim.runtime.control_api.client import ControlAPIError, ControlAPIUnavailable
 
             if isinstance(e, ControlAPIUnavailable):
-                self.say(f"[#ef4444]✗ No simulation reachable at {self.base_url}.[/] Start one with "
-                         "[bold]python scripts/run_sim.py --fixture empty_room[/], or [bold]/replay demo[/].")
+                self.say(f"[#ef4444]✗ No simulation is running yet[/] ({self.base_url}). Describe a world to build, "
+                         "e.g. [italic]\"build a warehouse with 3 racks and 2 crates\"[/], or say "
+                         "[italic]\"replay the demo run\"[/].")
             elif isinstance(e, ControlAPIError) and e.status_code == 409 and "replay" in str(e):
                 self.say("[#f39c12]This is a replay of a recorded run: it can't be driven or changed.[/] "
-                         "Use [bold]/report[/] or the dashboard.")
+                         "Ask for the score, or open the dashboard.")
             else:
-                self.say(f"[#ef4444]✗ /{cmd.name} failed:[/] {e}")
+                what = {"stress": "change the world", "mission": "run the mission", "benchmark": "run the benchmark",
+                        "goto": "send the robot there", "halt": "stop the robot", "report": "show the score",
+                        "status": "read the status"}.get(cmd.name, cmd.name)
+                self.say(f"[#ef4444]✗ Couldn't {what}:[/] {e}")
 
     # --- commands ----------------------------------------------------------
     async def cmd_help(self, cmd: Command) -> None:
@@ -531,7 +535,8 @@ class DemoRunner:
                 self.say(f"[#ef4444]■[/] Spawned [bold]{name}[/]{' across the path' if across else ''} at "
                          f"({spot[0]:.2f}, {spot[1]:.2f}), {where}")
                 if not live.recording:
-                    self.say("[#8b98a8]Not recording: start [bold]/mission stress[/] first to score this run.[/]")
+                    self.say("[#8b98a8]Not recording, so this won't be scored. Say [italic]\"start a stress run\"[/] "
+                             "first, then the change while the robot drives (or give both in one sentence).[/]")
         finally:
             await s.stop()
 
@@ -569,7 +574,17 @@ class DemoRunner:
                 objects = json.loads((run_dir / "spec.json").read_text()).get("objects") or []
             except Exception:  # noqa: BLE001 - racks are optional (the mission goal still works)
                 pass
-            goal, desc = resolve_goal(text, objects, (info.get("mission") or {}).get("goal_pose"), map_info)
+            if "x" in cmd.opts and "y" in cmd.opts:
+                gx, gy = float(cmd.opts["x"]), float(cmd.opts["y"])
+                live0 = await s.api.telemetry_live()
+                yaw = math.atan2(gy - live0.pose.y, gx - live0.pose.x) if live0.pose else 0.0
+                goal, desc = (gx, gy, round(yaw, 4)), f"({gx:.1f}, {gy:.1f})"
+                if not _free(map_info, gx, gy, (0.2, 0.2)):
+                    goal, desc = None, f"({gx:.1f}, {gy:.1f}) is inside a wall or an object on the map"
+            else:
+                if cmd.opts.get("rack"):
+                    text = f"rack {cmd.opts['rack']}"
+                goal, desc = resolve_goal(text, objects, (info.get("mission") or {}).get("goal_pose"), map_info)
             if goal is None:
                 self.say(f"[#f39c12]Can't navigate: {desc}.[/]")
                 return
@@ -601,7 +616,8 @@ class DemoRunner:
     async def cmd_mission(self, cmd: Command) -> None:
         label = "adversarial" if any(a.lower() in ("stress", "adversarial") for a in cmd.args) else "nominal"
         if not self.mission_lock.acquire(blocking=False):
-            self.say("[#f39c12]A mission is already running.[/] Use [bold]/stress[/] to perturb it.")
+            self.say("[#f39c12]A mission is already running.[/] Tell me what to change while it drives, e.g. "
+                     "[italic]\"drop a crate in front of the robot\"[/].")
             return
         s = self._session()
         try:
@@ -609,15 +625,23 @@ class DemoRunner:
             s.run_dir = run_dir
             if label == "adversarial":
                 await self._back_to_start(s, run_dir)
-                self.say("[bold]Stress run[/] recording. Type [bold]/stress[/] (or say it) while the robot drives.")
+                self.say("[bold]Stress run[/] recording." + (
+                    f" I'll {_describe_stress(cmd.then.opts)} once the robot is under way." if cmd.then else
+                    " Say what to change while the robot drives, e.g. [italic]\"dim the lights and drop a crate "
+                    "in its path\"[/]."))
             else:
                 self.say("[bold]Nominal run[/] recording: driving the mission from spec.json…")
-            run = await s.run_recorded_mission(run_dir, label=label, on_progress=self._nav_progress)
+            pending = asyncio.ensure_future(self._stress_when_moving(cmd.then)) if cmd.then else None
+            try:
+                run = await s.run_recorded_mission(run_dir, label=label, on_progress=self._nav_progress)
+            finally:
+                if pending is not None and not pending.done():
+                    pending.cancel()
             self.progress(None)
             if label == "adversarial" and not any(e.get("during_run", True) for e in run.result.spawned_entities):
                 self.say("[#f39c12]No obstacle was dropped during this stress run, so the comparison is "
-                         "lap-to-lap variation, not stress. Drop one with /stress (or say it) mid-leg next time, "
-                         "or use /benchmark.[/]")
+                         "lap-to-lap variation, not stress. Next time say the change while the robot drives, "
+                         "or ask for the full benchmark.[/]")
             self.say(f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
                      f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions")
             import json
@@ -686,9 +710,33 @@ class DemoRunner:
         self._replay_server = server
         runs = ", ".join(f"{r.label} ({r.duration:.0f} s)" for r in app.state.clock.runs)
         self.say(f"[#f39c12]▶ Replay[/] of [bold]{target.name}[/] on {self.base_url}: {runs}, looping. "
-                 "The sidebar, dashboard and /report now use it.")
+                 "The sidebar, dashboard and score table now use it.")
 
     # --- helpers -------------------------------------------------------------
+    async def _stress_when_moving(self, stress: "Command", min_travel_m: float = 1.5,
+                                  max_wait_s: float = 120.0) -> None:
+        """Apply a stress request once the recorded robot has driven min_travel_m (it is mid-leg)."""
+        s = self._session()
+        try:
+            start = None
+            loop = asyncio.get_running_loop()
+            t_end = loop.time() + max_wait_s
+            while loop.time() < t_end:
+                await asyncio.sleep(0.5)
+                try:
+                    live = await s.api.telemetry_live()
+                except Exception:  # noqa: BLE001 - transient
+                    continue
+                if not live.recording or live.pose is None:
+                    continue
+                if start is None:
+                    start = (live.pose.x, live.pose.y)
+                elif math.hypot(live.pose.x - start[0], live.pose.y - start[1]) >= min_travel_m:
+                    break
+        finally:
+            await s.stop()
+        await self.run(stress)
+
     async def _recorded_path(self, s) -> List[Tuple[float, float]]:
         """The nominal run's path in this run folder (the robot's real lane), or []."""
         import json
