@@ -107,6 +107,11 @@ class GazeboBridge(abc.ABC):
     def list_spawned_entities(self) -> list[str]:
         return list(self.spawned_entities)
 
+    async def remove_entity(self, name: str) -> BridgeResult:
+        """Delete a spawned entity from the live world (default: not supported by this backend)."""
+        return BridgeResult(ok=False, backend=type(self).__name__, tool="remove_entity",
+                            message="removing entities is not supported by this backend")
+
     def _next_entity_name(self, model_name: str, requested_name: Optional[str]) -> str:
         if requested_name:
             return requested_name
@@ -117,6 +122,14 @@ class GazeboBridge(abc.ABC):
 # --------------------------------------------------------------------------- DryRun Bridge
 class DryRunBridge(GazeboBridge):
     """Safe, zero-dependency bridge used on development machines and in unit tests."""
+
+    async def remove_entity(self, name: str) -> BridgeResult:
+        ok = name in self.spawned_entities
+        if ok:
+            self.spawned_entities.remove(name)
+        return BridgeResult(ok=ok, backend="dryrun", tool="remove_entity",
+                            message=f"Removed {name}" if ok else f"No spawned entity {name}",
+                            data={"entity_name": name})
 
     def __init__(
         self,
@@ -277,6 +290,19 @@ async def _run_command(cmd_str: str, timeout_s: float = 3.0) -> tuple[int, str, 
 
 # --------------------------------------------------------------------------- Harmonic Bridge
 class HarmonicBridge(GazeboBridge):
+    async def remove_entity(self, name: str) -> BridgeResult:
+        t0 = time.perf_counter()
+        req = f"name: '{name}', type: MODEL"
+        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/remove --reqtype gz.msgs.Entity {GZ_REPLY} --req \"{req}\"".strip()
+        rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
+        ok = _gz_ok(rc, out)
+        if ok and name in self.spawned_entities:
+            self.spawned_entities.remove(name)
+        return BridgeResult(ok=ok, backend="harmonic", tool="remove_entity", command=cmd, stdout=out, stderr=err,
+                            latency_ms=(time.perf_counter() - t0) * 1000.0,
+                            message=f"Removed {name}" if ok else f"Failed to remove {name}: {err or out}",
+                            data={"entity_name": name})
+
     """Bridge for Gazebo Harmonic (GZ Sim 8+) via `gz service` CLI / Docker pass-through."""
 
     async def spawn_entity(

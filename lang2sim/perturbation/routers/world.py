@@ -76,6 +76,19 @@ def spawned_since(wall_time: float) -> List[Dict[str, Any]]:
         return [dict(e) for e in _SPAWN_LOG if e["wall_time"] >= wall_time]
 
 
+def record_removal(name: str) -> None:
+    """Forget a removed entity (scoring and placement checks) and note the removal in spawns.jsonl."""
+    with _SPAWN_LOCK:
+        _SPAWN_LOG[:] = [e for e in _SPAWN_LOG if e["name"] != name]
+        if _SPAWN_FILE["path"]:
+            try:
+                import json
+                with open(_SPAWN_FILE["path"], "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"type": "removed", "name": name, "wall_time": time.time()}) + "\n")
+            except OSError:
+                pass
+
+
 def clear_spawn_log() -> None:
     with _SPAWN_LOCK:
         _SPAWN_LOG.clear()
@@ -90,6 +103,10 @@ class SpawnRequest(BaseModel):
     linear_velocity: Optional[List[float]] = Field(None, description="Initial [vx, vy, vz]")
     angular_velocity: Optional[List[float]] = Field(None, description="Initial [wx, wy, wz]")
     entity_name: Optional[str] = Field(None, description="Optional custom entity name")
+
+
+class RemoveRequest(BaseModel):
+    name: Optional[str] = Field(None, description="Entity to remove; omitted = every entity spawned in this sim")
 
 
 class LightRequest(BaseModel):
@@ -125,6 +142,23 @@ async def spawn_entity(req: SpawnRequest) -> dict[str, Any]:
     out = res.to_dict()
     out["footprint"] = record_spawn(name, req.model_name, req.x, req.y, req.yaw)
     return out
+
+
+@router.post("/remove")
+async def remove_entities(req: Optional[RemoveRequest] = None) -> dict[str, Any]:
+    bridge: GazeboBridge = get_bridge()
+    names = [req.name] if req and req.name else bridge.list_spawned_entities()
+    removed, failed = [], []
+    for name in names:
+        res = await bridge.remove_entity(name)
+        if res.ok:
+            record_removal(name)
+            removed.append(name)
+        else:
+            failed.append({"name": name, "message": res.message})
+    if failed and not removed and names:
+        raise HTTPException(status_code=500, detail={"removed": removed, "failed": failed})
+    return {"ok": not failed, "removed": removed, "failed": failed}
 
 
 @router.post("/light")

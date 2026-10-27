@@ -32,9 +32,9 @@ from .demo_commands import (
 )
 
 LLM_TIMEOUT_S = 8.0         # then the offline parser answers, so a slow model never stalls the demo
-ACTIONS = ("new_sim", "stop_sim", "stress", "start_mission", "benchmark", "halt", "goto", "report", "status",
+ACTIONS = ("new_sim", "stop_sim", "stress", "clear_obstacles", "start_mission", "benchmark", "halt", "goto", "report", "status",
            "dashboard", "replay", "help", "chat")
-SIM_ACTIONS = ("stress", "start_mission", "benchmark", "halt", "goto")      # need a running simulation
+SIM_ACTIONS = ("stress", "clear_obstacles", "start_mission", "benchmark", "halt", "goto")      # need a running simulation
 
 INTENT_SYSTEM_PROMPT = """/no_think
 You are the command interpreter of Lang2Sim, a robot simulation copilot. A TurtleBot3
@@ -53,6 +53,8 @@ Actions and fields:
   cargo box/carton -> "cargo_box", barrel/drum -> "barrel", rack/shelf/shelving/wall -> "rack".
   x/y only when they give coordinates. across=true for "across the aisle/path", "sideways", "blocking".
   Use this for "stress-test the robot", "make it harder", "throw something in its way", "drop a crate".
+- "clear_obstacles": remove the obstacles that were dropped in ("remove the crate", "clear the path",
+  "reset the obstacles"). The world's own racks and crates stay.
 - "start_mission": drive the mission and score it. {"stress": true|false}. stress=true for a stress /
   adversarial run they will perturb ("start a stress run", "run it again under stress").
 - "benchmark": the full automatic comparison: normal run, then a stress run with a crate and dim light,
@@ -114,6 +116,8 @@ def describe(it: Interpretation) -> str:
         return "shut the simulation down"
     if it.action == "stress" and c:
         return describe_stress(c.opts)
+    if it.action == "clear_obstacles":
+        return "remove the dropped obstacles"
     if it.action == "start_mission" and c:
         return "start a stress run (recorded and scored)" if c.args else "drive the mission and score it"
     if it.action == "benchmark":
@@ -166,6 +170,8 @@ def from_action(data: Dict[str, Any], text: str) -> Optional[Interpretation]:
         if not opts:
             return None
         it.command = Command("stress", opts=opts, natural=True)
+    elif action == "clear_obstacles":
+        it.command = Command("clear")
     elif action == "start_mission":
         it.command = Command("mission", args=["stress"] if data.get("stress") in (True, "true", 1) else [])
     elif action == "benchmark":
@@ -235,6 +241,9 @@ def rule_interpret(text: str, sim_active: bool, llm_available: bool = False) -> 
     if not asked:
         if is_halt(t) or re.fullmatch(r"(stop|wait|pause|freeze|hold on|hold)( (it|there|now|please))?", t):
             return done(Interpretation("halt", Command("halt")))
+        if re.search(r"\b(remove|clear|delete|take away|get rid of|despawn)\b.*\b(obstacles?|crates?|barrels?|boxes|"
+                     r"racks?|path|way|everything|it|them)\b", t):
+            return done(Interpretation("clear_obstacles", Command("clear")))
         stress = parse_stress_intent(t)
         if stress is None and _OBSTACLE_ANY.search(t) and re.search(r"\b(drop|throw|put|place|spawn|add)\b", t):
             stress = parse_stress_intent(t + " crate")

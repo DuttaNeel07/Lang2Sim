@@ -119,3 +119,11 @@ def test_offline_parser_takes_over_when_the_llm_cannot(client, monkeypatch):
         assert asyncio.run(llm_interpret("x", client, timeout=0.2)) is None
     it = asyncio.run(run())
     assert it.action == "halt" and it.source.startswith("offline parser")
+
+
+@pytest.mark.parametrize("text", ["remove the crate", "clear the path", "get rid of the obstacles",
+                                  "delete them"])
+def test_clearing_obstacles(text):
+    it = rule_interpret(text, sim_active=True)
+    assert it.action == "clear_obstacles" and it.command.name == "clear"
+    assert from_action({"action": "clear_obstacles"}, text).command.name == "clear"

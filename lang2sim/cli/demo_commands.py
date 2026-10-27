@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
-COMMANDS = ("mission", "stress", "benchmark", "report", "status", "dashboard", "replay", "help")
+COMMANDS = ("mission", "stress", "clear", "benchmark", "report", "status", "dashboard", "replay", "help")
 DEMO_RUN = Path(__file__).resolve().parents[2] / "catalog" / "demo_runs" / "empty_room_benchmark"
 # Half extents (along the model's x, along its y) of each spawnable model (perturbation/sdf_snippets.py).
 CRATE_HALF = {"wooden_crate": (0.3, 0.3), "cargo_box": (0.5, 0.3), "barrel": (0.3, 0.3), "rack": (1.4, 0.6)}
@@ -48,7 +48,7 @@ HELP = """[bold #38bdf8]Just say what you want[/] — the copilot works out the 
   [italic]"start a stress run"[/]                                  record a run you will perturb
   [italic]"drop the lights to 10% and spawn a crate in its path"[/]  stress the robot while it drives
   [italic]"put a rack across the aisle"[/], [italic]"drop a barrel at 1.5, 0"[/]
-  [italic]"stop the robot"[/], [italic]"resume"[/], [italic]"detour and reach rack 3"[/]
+  [italic]"stop the robot"[/], [italic]"resume"[/], [italic]"detour and reach rack 3"[/], [italic]"remove the obstacles"[/]
   [italic]"run the full benchmark"[/]                              normal vs stress, automatically
   [italic]"show me the score"[/], [italic]"where is the robot?"[/], [italic]"open the dashboard"[/]
   [italic]"why did the score drop?"[/]                             answered from the measured numbers
@@ -192,10 +192,109 @@ def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[fl
     return True
 
 
+ROBOT_CLEARANCE_M = 0.2      # half the Waffle's width plus a margin: gaps narrower than 2x this are closed
+
+
+def _grid(map_info: Dict[str, Any]):
+    """Map cells as a numpy bool array (True = blocked: occupied or unknown), row 0 = bottom (world y up)."""
+    import numpy as np
+
+    cached = map_info.get("_np")
+    if cached is None:
+        cells = map_info.get("_cells")
+        if cells is None:
+            cells = map_info["_cells"] = base64.b64decode(map_info["cells_b64"])
+        g = np.frombuffer(cells, dtype=np.uint8).reshape(map_info["height"], map_info["width"])[::-1] != 0
+        cached = map_info["_np"] = g
+    return cached
+
+
+def _dilate(blocked, r_cells: int):
+    import numpy as np
+
+    out = blocked.copy()
+    h, w = blocked.shape
+    for dy in range(-r_cells, r_cells + 1):
+        for dx in range(-r_cells, r_cells + 1):
+            if dx * dx + dy * dy > r_cells * r_cells or (dx == 0 and dy == 0):
+                continue
+            src = blocked[max(0, -dy):h - max(0, dy), max(0, -dx):w - max(0, dx)]
+            out[max(0, dy):h - max(0, -dy), max(0, dx):w - max(0, -dx)] |= src
+    return out
+
+
+def route_exists(map_info: Optional[Dict[str, Any]], start: Tuple[float, float],
+                 targets: Sequence[Tuple[float, float]],
+                 obstacles: Sequence[Tuple[float, float, float, Tuple[float, float]]] = (),
+                 clearance: float = ROBOT_CLEARANCE_M) -> bool:
+    """Can the robot still get from `start` to every target once `obstacles` (x, y, yaw, half extents) are added?
+
+    Free space is shrunk by the robot's clearance, so a gap the TurtleBot3 can't fit through counts as closed.
+    Start and targets snap to the nearest open cell within 0.4 m (they sit near walls/racks by design).
+    True when there is no map to check against.
+    """
+    if not map_info or not targets:
+        return True
+    import numpy as np
+
+    res, (ox, oy) = map_info["resolution"], map_info["origin"]
+    key = ("_closed", round(clearance, 3))
+    if key not in map_info:                     # the static map shrunk by the robot's clearance, once per map
+        map_info[key] = _dilate(_grid(map_info), max(1, int(round(clearance / res))))
+    closed = map_info[key].copy()
+    h, w = closed.shape
+    for x, y, yaw, half in obstacles:           # each obstacle grown by the clearance (square corners: conservative)
+        hx, hy = half[0] + clearance, half[1] + clearance
+        c, s_ = math.cos(yaw), math.sin(yaw)
+        reach = math.hypot(hx, hy)
+        x0, x1 = int((x - reach - ox) / res), int((x + reach - ox) / res) + 1
+        y0, y1 = int((y - reach - oy) / res), int((y + reach - oy) / res) + 1
+        for row in range(max(0, y0), min(h, y1)):
+            for col in range(max(0, x0), min(w, x1)):
+                px, py = ox + (col + 0.5) * res - x, oy + (row + 0.5) * res - y
+                if abs(c * px + s_ * py) <= hx and abs(-s_ * px + c * py) <= hy:
+                    closed[row, col] = True
+
+    def cell(pt):
+        col, row = int((pt[0] - ox) / res), int((pt[1] - oy) / res)
+        best, r = None, int(0.4 / res)
+        for dr in range(-r, r + 1):
+            for dc in range(-r, r + 1):
+                rr, cc = row + dr, col + dc
+                if 0 <= rr < h and 0 <= cc < w and not closed[rr, cc]:
+                    d = dr * dr + dc * dc
+                    if best is None or d < best[0]:
+                        best = (d, rr, cc)
+        return None if best is None else best[1:]
+
+    s0 = cell(start)
+    if s0 is None:
+        return False
+    goals = [cell(t) for t in targets]
+    if any(g is None for g in goals):
+        return False
+    free = ~closed
+    seen = np.zeros_like(closed)
+    seen[s0] = True
+    while True:                                  # flood fill, one ring of cells per step (vectorised)
+        grown = seen.copy()
+        grown[1:, :] |= seen[:-1, :]
+        grown[:-1, :] |= seen[1:, :]
+        grown[:, 1:] |= seen[:, :-1]
+        grown[:, :-1] |= seen[:, 1:]
+        grown &= free
+        if all(grown[g] for g in goals):
+            return True
+        if (grown == seen).all():
+            return False
+        seen = grown
+
+
 def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, float]],
                     avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
                     model: str = "wooden_crate", ahead: float = 1.5,
-                    across: bool = False) -> Optional[Tuple[float, float, float]]:
+                    across: bool = False, accept: Optional[Callable[[float, float, float], bool]] = None
+                    ) -> Optional[Tuple[float, float, float]]:
     """(x, y, yaw) for a crate in front of the robot, across its way, or None if nowhere fits.
 
     'In front' is toward the robot's current target when known (its planned direction),
@@ -220,7 +319,7 @@ def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, fl
         cx, cy = x + d * math.cos(yaw), y + d * math.sin(yaw)
         if any(math.hypot(cx - a, cy - b) < KEEP_CLEAR_OF_TARGETS_M + max(half) - 0.3 for a, b in avoid):
             continue
-        if _free(map_info, cx, cy, half, obj_yaw):
+        if _free(map_info, cx, cy, half, obj_yaw) and (accept is None or accept(cx, cy, obj_yaw)):
             return round(cx, 3), round(cy, 3), round(math.atan2(math.sin(obj_yaw), math.cos(obj_yaw)), 4)
     return None
 
@@ -228,7 +327,8 @@ def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, fl
 def pick_spot_on_path(pose: Dict[str, float], path: Sequence[Tuple[float, float]],
                       avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
                       model: str = "wooden_crate", across: bool = False,
-                      ahead: Tuple[float, float] = (1.2, 3.2)) -> Optional[Tuple[float, float, float]]:
+                      ahead: Tuple[float, float] = (1.2, 3.2),
+                      accept: Optional[Callable[[float, float, float], bool]] = None) -> Optional[Tuple[float, float, float]]:
     """(x, y, yaw) on a recorded path (the robot's real lane), `ahead` metres of path beyond the
     robot, or None. Same rules as pick_crate_spot: free map cells, clear of waypoints."""
     if len(path) < 2:
@@ -255,7 +355,7 @@ def pick_spot_on_path(pose: Dict[str, float], path: Sequence[Tuple[float, float]
             continue
         if any(math.hypot(cx - a, cy - b) < keep for a, b in avoid):
             continue
-        if _free(map_info, cx, cy, half, yaw):
+        if _free(map_info, cx, cy, half, yaw) and (accept is None or accept(cx, cy, yaw)):
             return round(cx, 3), round(cy, 3), round(math.atan2(math.sin(yaw), math.cos(yaw)), 4)
     return None
 
@@ -263,10 +363,11 @@ def pick_spot_on_path(pose: Dict[str, float], path: Sequence[Tuple[float, float]
 def pick_spot_fan(pose: Dict[str, float], heading_to: Optional[Tuple[float, float]],
                   avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
                   model: str = "wooden_crate", ahead: float = 1.5,
-                  across: bool = False) -> Optional[Tuple[float, float, float]]:
+                  across: bool = False, accept: Optional[Callable[[float, float, float], bool]] = None
+                  ) -> Optional[Tuple[float, float, float]]:
     """pick_crate_spot, widened to ±35° around the heading when straight ahead is blocked
     (the straight line to a waypoint often cuts a shelf corner the robot drives around)."""
-    spot = pick_crate_spot(pose, heading_to, avoid, map_info, model, ahead, across)
+    spot = pick_crate_spot(pose, heading_to, avoid, map_info, model, ahead, across, accept)
     if spot is not None:
         return spot
     x, y = pose["x"], pose["y"]
@@ -274,7 +375,7 @@ def pick_spot_fan(pose: Dict[str, float], heading_to: Optional[Tuple[float, floa
         math.hypot(heading_to[0] - x, heading_to[1] - y) > 0.3 else pose.get("yaw", 0.0)
     for deg in (10, -10, 20, -20, 35, -35):
         turned = dict(pose, yaw=base + math.radians(deg))
-        spot = pick_crate_spot(turned, None, avoid, map_info, model, ahead, across)
+        spot = pick_crate_spot(turned, None, avoid, map_info, model, ahead, across, accept)
         if spot is not None:
             return spot
     return None
@@ -497,6 +598,15 @@ class DemoRunner:
                 mission = info.get("mission") or {}
                 avoid = [(p["x"], p["y"]) for p in [*mission.get("waypoints", []), mission.get("goal_pose")] if p]
                 target = (nav.target_pose.x, nav.target_pose.y) if nav.is_active and nav.target_pose else None
+                # Where the robot still has to go: the current target, then the rest of the mission.
+                ahead_targets = ([target] if target else []) + (
+                    avoid[nav.waypoint_index + 1:] if nav.is_active and nav.waypoints_total == len(avoid) else
+                    ([] if target else avoid))
+                others = await self._spawned_footprints(s)
+                here = (live.pose.x, live.pose.y)
+
+                def passable(x: float, y: float, yaw: float) -> bool:
+                    return route_exists(map_info, here, ahead_targets, [*others, (x, y, yaw, CRATE_HALF[model])])
                 across = cmd.opts.get("across", "0").lower() in ("1", "true", "yes")
                 if "x" in cmd.opts and "y" in cmd.opts:          # explicit coordinates win
                     px, py = float(cmd.opts["x"]), float(cmd.opts["y"])
@@ -505,14 +615,18 @@ class DemoRunner:
                     spot = (px, py, round(math.atan2(math.sin(yaw), math.cos(yaw)), 4))
                     if not _free(map_info, px, py, CRATE_HALF[model], spot[2]):
                         self.say("[#f39c12]That spot overlaps a wall or another object on the map; spawning anyway.[/]")
+                    elif not passable(*spot):
+                        self.say("[#f39c12]Heads-up: that closes every route to the robot's next waypoint, so Nav2 "
+                                 "can't get around it and this run will be scored as failed. Spawning as asked.[/]")
                     where = "at the requested position"
                 else:
                     path = await self._recorded_path(s)
                     pose = live.pose.model_dump()
 
                     def place(acr: bool):
-                        on_path = pick_spot_on_path(pose, path, avoid, map_info, model, acr) if path else None
-                        return on_path or pick_spot_fan(pose, target, avoid, map_info, model, ahead, acr)
+                        on_path = pick_spot_on_path(pose, path, avoid, map_info, model, acr, accept=passable) \
+                            if path else None
+                        return on_path or pick_spot_fan(pose, target, avoid, map_info, model, ahead, acr, passable)
 
                     spot = place(across)
                     if spot is None and across:
@@ -523,9 +637,9 @@ class DemoRunner:
                             self.say(f"[#f39c12]A {model.replace('_', ' ')} doesn't fit across the aisle here; "
                                      "placing it along the robot's path instead.[/]")
                     if spot is None:
-                        raise RuntimeError(f"no free spot ahead of the robot for a {model.replace('_', ' ')} that keeps "
-                                           "waypoints reachable; try again in a few seconds, or a smaller obstacle "
-                                           "(\"drop a crate in front of the robot\")")
+                        raise RuntimeError(f"no spot ahead of the robot where a {model.replace('_', ' ')} still leaves "
+                                           "the robot a way around it; try again in a few seconds, or a smaller "
+                                           "obstacle (\"drop a crate in front of the robot\")")
                     d = math.hypot(spot[0] - live.pose.x, spot[1] - live.pose.y)
                     where = f"{d:.1f} m ahead of the robot" + ("" if nav.is_active else
                                                                 " [#8b98a8](robot not navigating: placed along its heading)[/]")
@@ -538,6 +652,21 @@ class DemoRunner:
                              "first, then the change while the robot drives (or give both in one sentence).[/]")
         finally:
             await s.stop()
+
+    async def cmd_clear(self, cmd: Command) -> None:
+        """Remove the obstacles dropped into this simulation (the world's own racks and crates stay)."""
+        s = self._session()
+        try:
+            res = await s.api.world_remove(cmd.opts.get("name"))
+        finally:
+            await s.stop()
+        removed = res.get("removed") or []
+        if not removed:
+            self.say("[#8b98a8]There are no dropped obstacles to remove.[/]")
+            return
+        self.say(f"[#2ed573]✓ Removed[/] {', '.join(removed)}. The robot's way is clear again.")
+        for f in res.get("failed") or []:
+            self.say(f"[#f39c12]Couldn't remove {f.get('name')}: {f.get('message')}[/]")
 
     async def cmd_halt(self, cmd: Command) -> None:
         """Stop the robot where it is (cancel the Nav2 task); the simulation keeps running."""
@@ -645,6 +774,10 @@ class DemoRunner:
                          "or ask for the full benchmark.[/]")
             self.say(f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
                      f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions")
+            if run.nav.status == "failed":
+                self.say(await self._explain_failure(s, run.nav))
+            elif run.nav.message and "retry" in run.nav.message:
+                self.say(f"[#8b98a8]Recovered: {run.nav.message}.[/]")
             import json
 
             from lang2sim.telemetry.benchmark import score_run_folder
@@ -714,6 +847,58 @@ class DemoRunner:
                  "The sidebar, dashboard and score table now use it.")
 
     # --- helpers -------------------------------------------------------------
+    async def _explain_failure(self, s, nav) -> str:
+        """Why the mission failed, in one line: the route was physically closed, or Nav2 got stuck."""
+        leg = nav.waypoint_index + 1
+        reason = nav.message or "Nav2 gave up"
+        try:
+            info = await self._run_info(s)
+            map_info = await s.api._request("GET", "/run/map")
+            live = await s.api.telemetry_live()
+            mission = info.get("mission") or {}
+            poses = [(p["x"], p["y"]) for p in [*mission.get("waypoints", []), mission.get("goal_pose")] if p]
+            others = await self._spawned_footprints(s)
+            if live.pose is not None and poses and others and \
+                    not route_exists(map_info, (live.pose.x, live.pose.y), poses[nav.waypoint_index:], others):
+                return (f"[#ef4444]✗ Waypoint {leg} was unreachable:[/] the dropped obstacles closed every route the "
+                        "TurtleBot3 fits through, so no planner could get past ([#8b98a8]Nav2: {reason}[/]). "
+                        "That is a real failure of the scenario, not of the robot.").replace("{reason}", reason)
+        except Exception:  # noqa: BLE001 - the explanation is best effort
+            pass
+        return (f"[#ef4444]✗ Failed on waypoint {leg}:[/] a route existed, but Nav2 stopped trying "
+                f"([#8b98a8]{reason}[/]). Typical cause: the robot was boxed in at the obstacle and its recoveries "
+                "(back up, spin, wait) ran out.")
+
+    async def _spawned_footprints(self, s) -> List[Tuple[float, float, float, Tuple[float, float]]]:
+        """Obstacles dropped since the simulation started (logs/spawns.jsonl; they are not on the static map)."""
+        import json
+
+        try:
+            lines = (await self._host_run_dir(s) / "logs" / "spawns.jsonl").read_text().splitlines()
+        except Exception:  # noqa: BLE001 - no log yet: nothing dropped
+            return []
+        out: List[Tuple[float, float, float, Tuple[float, float]]] = []
+        names: List[str] = []
+        for line in lines:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if e.get("type") == "session_start":
+                out = []                                   # a new simulation: earlier drops are gone
+                names = []
+                continue
+            if e.get("type") == "removed":
+                keep = [i for i, n in enumerate(names) if n != e.get("name")]
+                out, names = [out[i] for i in keep], [names[i] for i in keep]
+                continue
+            size = e.get("size") or [0.6, 0.6]
+            if "x" in e and "y" in e:
+                out.append((float(e["x"]), float(e["y"]), float(e.get("yaw", 0.0)),
+                            (float(size[0]) / 2, float(size[-1]) / 2)))
+                names.append(e.get("name", ""))
+        return out
+
     async def _stress_when_moving(self, stress: "Command", min_travel_m: float = 1.5,
                                   max_wait_s: float = 120.0) -> None:
         """Apply a stress request once the recorded robot has driven min_travel_m (it is mid-leg)."""

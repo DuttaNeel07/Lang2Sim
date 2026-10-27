@@ -111,6 +111,10 @@ class ControlClient:
     async def world_spawn(self, req: Dict[str, Any]) -> Dict[str, Any]:
         return await self._request("POST", "/world/spawn", json=req)
 
+    async def world_remove(self, name: Optional[str] = None) -> Dict[str, Any]:
+        """Remove one spawned obstacle, or all of them."""
+        return await self._request("POST", "/world/remove", json={"name": name})
+
     async def world_light(self, req: Dict[str, Any]) -> Dict[str, Any]:
         return await self._request("POST", "/world/light", json=req)
 

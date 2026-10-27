@@ -224,3 +224,39 @@ def test_obstacle_goes_on_the_recorded_lane_when_straight_ahead_is_blocked():
     # Fan search turns away from a wall dead ahead.
     fan = pick_spot_fan({"x": 2.0, "y": 0.0, "yaw": 0.6}, None, [], m)
     assert fan is not None
+
+
+# --- obstacles must leave the robot a way around (route_exists) --------------------------------
+def test_route_exists_closes_only_when_the_gap_is_too_narrow():
+    from lang2sim.cli.demo_commands import route_exists
+
+    m = read_map(FIXTURES / "empty_room")
+    start, goal = (-2.5, -1.5), (2.5, -1.5)
+    assert route_exists(m, start, [goal])
+    assert route_exists(m, start, [goal], [(0.0, -1.5, 0.0, (0.3, 0.3))])          # a crate: drive around it
+    # a wall of racks across the whole room: no way past
+    wall = [(0.0, y, math.pi / 2, (1.4, 0.6)) for y in (-3.0, -0.5, 2.0, 4.5)]
+    assert not route_exists(m, start, [goal], wall)
+    # leave a 0.3 m slot (narrower than the TurtleBot3): still closed; a 0.8 m slot: open
+    def wall_with_gap(gap):
+        y0, y1 = -3.6, 3.6                                                           # room interior
+        mid = -1.5
+        return [(0.0, (y0 + mid - gap / 2) / 2, 0.0, (0.1, (mid - gap / 2 - y0) / 2)),
+                (0.0, (mid + gap / 2 + y1) / 2, 0.0, (0.1, (y1 - mid - gap / 2) / 2))]
+    assert not route_exists(m, start, [goal], wall_with_gap(0.3))
+    assert route_exists(m, start, [goal], wall_with_gap(0.8))
+    assert route_exists(None, start, [goal], wall)                                  # no map: can't tell, allow
+
+
+def test_auto_placement_skips_spots_that_seal_the_robot_in():
+    from lang2sim.cli.demo_commands import pick_spot_on_path
+
+    m = read_map(FIXTURES / "empty_room")
+    lane = [(-2.5 + 0.05 * i, -1.5) for i in range(101)]
+    calls = []
+
+    def never(x, y, yaw):
+        calls.append((x, y))
+        return False
+    assert pick_spot_on_path({"x": -1.0, "y": -1.5, "yaw": 0.0}, lane, [], m, accept=never) is None
+    assert calls                                                                     # it asked for each candidate
