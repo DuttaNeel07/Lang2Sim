@@ -26,8 +26,8 @@ for every step that can fail on stage. Telemetry internals: [telemetry.md](telem
 4. Browser: open `http://localhost:9090/dashboard`, full screen on the projector.
    The badge should read **LIVE SIM**.
 
-   Alternative without the TUI: `bash pitch_demo.sh "a dark warehouse with 3 racks and 2 crates"`
-   (Ubuntu; builds the image if needed), or `python scripts/run_sim.py --fixture empty_room`
+   Alternative without the TUI: `bash pitch_demo.sh` (warehouse with 3 racks, 2 crates), `bash pitch_demo.sh --status` to check the robot, `bash pitch_demo.sh --fixture` for the known-good warehouse
+   (Ubuntu; builds the image if needed). Or `python scripts/run_sim.py --fixture empty_room`
    and then `lang2sim` (the app attaches to any running sim).
 
 ## On stage
