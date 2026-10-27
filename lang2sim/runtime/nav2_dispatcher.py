@@ -9,6 +9,9 @@ lock-protected NavStatus.
 
 Waypoint missions are driven leg by leg with goToPose, so every leg reports
 distance remaining, ETA and recoveries. A new goal preempts the current task.
+When Nav2's behaviour tree gives up on a leg (no path, no progress), the leg is
+retried up to LEG_RETRIES times after clearing the costmaps and backing up, so
+one boxed-in moment near a dropped obstacle doesn't end the mission.
 
 BasicNavigator.waitUntilNav2Active() is deliberately not used: until AMCL
 answers, it republishes its default (0, 0) pose, which would teleport the
@@ -31,6 +34,8 @@ from typing import Any, Callable, List, Optional, Sequence
 from lang2sim.core.models import NavStatus, Pose2D
 
 POLL_S = 0.1
+LEG_RETRIES = 2          # after Nav2's own recoveries give up on a leg: clear costmaps, back up, try again
+BACKUP_M = 0.2
 
 
 def _ros_navigator() -> Any:
@@ -183,6 +188,16 @@ class NavDispatcher:
                       waypoint_index=i, waypoints_total=total, distance_remaining=0.0,
                       navigation_time=0.0, eta_seconds=None, recoveries=0, message=None)
             outcome, msg = self._leg(pose, task.timeout_s)
+            tries = 0
+            while outcome == "failed" and tries < LEG_RETRIES and self._retryable(msg) and self._queue.empty():
+                tries += 1
+                self._set(message=f"leg {i + 1}: {msg}; retry {tries}/{LEG_RETRIES} after clearing costmaps "
+                                  "and backing up")
+                self._unstick()
+                outcome, retry_msg = self._leg(pose, task.timeout_s)
+                msg = retry_msg if outcome != "succeeded" else f"leg {i + 1} reached on retry {tries}"
+            if outcome == "succeeded" and tries:
+                self._set(message=msg)
             if outcome != "succeeded":
                 if outcome == "canceled" and not self._queue.empty():
                     return  # preempted: the next task's status is already showing
@@ -190,6 +205,36 @@ class NavDispatcher:
                 return
         self._set(is_active=False, status="succeeded", distance_remaining=0.0, eta_seconds=0.0,
                   message=None)
+
+    @staticmethod
+    def _retryable(msg: Optional[str]) -> bool:
+        """Nav2 gave up (no path / no progress); not a rejected goal or a time-out."""
+        return bool(msg) and "rejected" not in msg and "timed out" not in msg
+
+    def _unstick(self) -> None:
+        """Forget stale obstacles and inflation, and give the planner room: back up a little."""
+        nav = self._nav
+        try:
+            nav.clearAllCostmaps()
+        except Exception:  # noqa: BLE001
+            pass
+        backup = getattr(nav, "backup", None)
+        if backup is None:
+            return
+        try:
+            if backup(backup_dist=BACKUP_M, backup_speed=0.1, time_allowance=10):
+                t_end = time.monotonic() + 15.0
+                while not nav.isTaskComplete() and time.monotonic() < t_end:
+                    if self._cancel.is_set():
+                        nav.cancelTask()
+                        return
+                    time.sleep(POLL_S)
+        except Exception:  # noqa: BLE001 - backing up is best effort (blocked behind, too)
+            pass
+        try:
+            nav.clearAllCostmaps()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _leg(self, pose: Pose2D, timeout_s: float):
         nav = self._nav
