@@ -31,12 +31,13 @@ from .demo_commands import (
     rack_number,
 )
 
-LLM_TIMEOUT_S = 10.0
+LLM_TIMEOUT_S = 8.0         # then the offline parser answers, so a slow model never stalls the demo
 ACTIONS = ("new_sim", "stop_sim", "stress", "start_mission", "benchmark", "halt", "goto", "report", "status",
            "dashboard", "replay", "help", "chat")
 SIM_ACTIONS = ("stress", "start_mission", "benchmark", "halt", "goto")      # need a running simulation
 
-INTENT_SYSTEM_PROMPT = """You are the command interpreter of Lang2Sim, a robot simulation copilot. A TurtleBot3
+INTENT_SYSTEM_PROMPT = """/no_think
+You are the command interpreter of Lang2Sim, a robot simulation copilot. A TurtleBot3
 navigates a Gazebo world with Nav2. Turn the operator's sentence into exactly ONE JSON object, no prose:
 
 {"action": "<one of the actions below>", ...fields}

@@ -2,9 +2,10 @@
 Demo commands for the TUI: drive, stress and score the running simulation from the chat.
 File: lang2sim/cli/demo_commands.py
 
-The workspace chat talks to the LLM; these commands talk to the control API
-(the live sim container, or the replay fallback on the same port), so the pitch
-beats are deterministic and never depend on a model choosing the right tool:
+Users never type these: every sentence goes through cli/intent.py (the LLM, or the
+offline parser), which produces one of these Commands. DemoRunner runs them against
+the control API (the live sim container, or the replay fallback on the same port).
+The slash forms below remain as hidden shortcuts:
 
   /mission [stress]        drive spec.json's mission with recording, score it (NQI table)
   /stress [light=0.1] [model=wooden_crate] [ahead=1.5]
@@ -16,9 +17,7 @@ beats are deterministic and never depend on a model choosing the right tool:
   /replay [run_dir|demo]   serve a recorded run on the API port (when the live sim is down)
   /help
 
-A natural-language stress request ("drop the lights to 10% and spawn a crate in front
-of the robot") is recognised by parse_stress_intent and executed as /stress; the reply
-says exactly what was run.
+parse_stress_intent and the other is_* helpers are the offline parser's building blocks.
 
 Pure helpers (parsing, crate placement) are unit-tested; DemoRunner does the I/O and
 reports through callbacks: say(rich markup), show(rich renderable) and progress(rich
@@ -607,6 +606,8 @@ class DemoRunner:
                 pose = f" Robot at ({live.pose.x:.2f}, {live.pose.y:.2f})." if live.pose else ""
                 if st.status == "succeeded":
                     self.say(f"[#2ed573]✓ Reached {desc}.[/]{pose}")
+                elif st.status in ("canceled", "cancelled"):
+                    self.say(f"[#8b98a8]Stopped on the way to {desc}, as asked.[/]{pose}")
                 else:
                     self.say(f"[#ef4444]✗ Navigation {st.status}[/]{': ' + st.message if st.message else ''}.{pose}")
                 return
