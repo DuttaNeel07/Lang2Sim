@@ -21,7 +21,7 @@ def _env(*names: str, default: str) -> str:
 # Root paths. Inside the sim container the entrypoint sets L2S_PROJECTS_DIR /
 # L2S_CATALOG_DIR to the bind-mount targets, so the same code resolves to the
 # host's ~/.lang2sim/projects on both sides.
-DEFAULT_LANG2SIM_ROOT = Path(os.path.expanduser(_env("L2S_ROOT", default="~/.lang2sim")))
+DEFAULT_LANG2SIM_ROOT = Path(_env("L2S_ROOT", default="~/.lang2sim")).expanduser()
 PROJECTS_DIR = Path(_env("L2S_PROJECTS_DIR", default=str(DEFAULT_LANG2SIM_ROOT / "projects")))
 CATALOG_DIR = Path(
     _env("L2S_CATALOG_DIR", default=str(Path(__file__).resolve().parent.parent.parent / "catalog"))

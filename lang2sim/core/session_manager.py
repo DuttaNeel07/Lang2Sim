@@ -116,7 +116,7 @@ class SessionManager:
                 s = ChatSession.model_validate(data)
                 if workspace_name is None or s.workspace_name == workspace_name:
                     sessions.append(s)
-            except Exception:
+            except Exception:  # noqa: S112 - ignore corrupted session files
                 continue
 
         # Sort: pinned first (True > False), then updated_at descending

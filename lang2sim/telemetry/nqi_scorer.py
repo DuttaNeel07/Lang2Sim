@@ -319,7 +319,7 @@ def clearance_series(
     if obs.size == 0:
         return out
     yaw = traj.yaw if traj.yaw is not None else np.zeros(traj.n)
-    for i, (px, py, th) in enumerate(zip(traj.x, traj.y, yaw)):
+    for i, (px, py, th) in enumerate(zip(traj.x, traj.y, yaw, strict=True)):
         near = (np.abs(obs[:, 0] - px) <= search_m) & (np.abs(obs[:, 1] - py) <= search_m)
         if not near.any():
             continue

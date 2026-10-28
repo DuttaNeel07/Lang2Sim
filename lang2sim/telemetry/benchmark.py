@@ -172,7 +172,7 @@ def footprint_points(
     c, s = math.cos(yaw), math.sin(yaw)
     corners = [(-sx / 2, -sy / 2), (sx / 2, -sy / 2), (sx / 2, sy / 2), (-sx / 2, sy / 2)]
     pts: List[Tuple[float, float, float]] = []
-    for (ax, ay), (bx, by) in zip(corners, corners[1:] + corners[:1]):
+    for (ax, ay), (bx, by) in zip(corners, corners[1:] + corners[:1], strict=True):
         n = max(1, int(math.ceil(math.hypot(bx - ax, by - ay) / step)))
         for i in range(n):
             u, v = ax + (bx - ax) * i / n, ay + (by - ay) * i / n
@@ -319,7 +319,7 @@ def default_stress_trigger(
     """
     samples = nominal["samples"]
     pts = [(s["x"], s["y"]) for s in samples]
-    seg = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:])]
+    seg = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(pts, pts[1:], strict=False)]
     avoid = [pts[0], *targets]
     candidates = sorted(
         {

@@ -8,7 +8,6 @@ hardware. `probe()` never raises; missing tools just mean less information.
 
 from __future__ import annotations
 
-import glob
 import os
 import platform as _platform
 import shutil
@@ -112,9 +111,9 @@ def _probe_nvidia() -> List[GpuInfo]:
 
 def _probe_dri() -> List[GpuInfo]:
     gpus: List[GpuInfo] = []
-    for node in sorted(glob.glob("/sys/class/drm/renderD*/device/vendor")):
+    for node in sorted(Path("/sys/class/drm").glob("renderD*/device/vendor")):
         try:
-            vendor = vendor_from_pci_id(Path(node).read_text())
+            vendor = vendor_from_pci_id(node.read_text())
         except OSError:
             continue
         if vendor != "nvidia":  # NVIDIA is covered (with VRAM) by nvidia-smi
@@ -142,6 +141,6 @@ def probe() -> HardwareInfo:
         cpu_count=os.cpu_count() or 1,
         mem_total_mb=_probe_mem_mb(),
         gpus=gpus,
-        dri_render_nodes=sorted(glob.glob("/dev/dri/renderD*")),
-        has_dxg=os.path.exists("/dev/dxg"),
+        dri_render_nodes=sorted(str(p) for p in Path("/dev/dri").glob("renderD*")),
+        has_dxg=Path("/dev/dxg").exists(),
     )

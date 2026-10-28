@@ -53,7 +53,7 @@ class TestSceneCatalog(unittest.TestCase):
 
     def test_precomputed_map_files_exist(self):
         """Verify pre-computed map.yaml and map.pgm exist in catalog/maps/."""
-        scene = catalog.get_scene("aws_small_warehouse")
+        self.assertIsNotNone(catalog.get_scene("aws_small_warehouse"))
         yaml_path = catalog.catalog_dir / "maps" / "aws_small_warehouse.yaml"
         pgm_path = catalog.catalog_dir / "maps" / "aws_small_warehouse.pgm"
 

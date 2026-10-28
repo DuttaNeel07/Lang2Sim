@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-
 import io
 import shutil
 import subprocess
@@ -153,15 +152,14 @@ def _find_window_rect_x11(title_pattern: str) -> Optional[Tuple[int, int, int, i
     if not shutil.which("xdotool"):
         return None
     try:
-        cmd = f"xdotool search --onlyvisible --name '{title_pattern}'"
-        out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
+        cmd = ["xdotool", "search", "--onlyvisible", "--name", title_pattern]
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
         win_ids = [w.strip() for w in out.splitlines() if w.strip()]
         if not win_ids:
             return None
         win_id = win_ids[0]
         geom_out = subprocess.check_output(
-            f"xdotool getwindowgeometry --shell {win_id}",
-            shell=True,
+            ["xdotool", "getwindowgeometry", "--shell", win_id],
             text=True,
             stderr=subprocess.DEVNULL,
         )
@@ -309,7 +307,6 @@ def generate_synthetic_frame(
     img_arr[:horizon, :, :] = [sky_luma * 0.8, sky_luma * 0.9, sky_luma]
     # Ground tiles
     for y in range(horizon, height):
-        row_factor = (y - horizon) / (height - horizon)
         for x in range(width):
             check = ((x // 30) + (y // 30)) % 2
             col = 140.0 if check else 80.0

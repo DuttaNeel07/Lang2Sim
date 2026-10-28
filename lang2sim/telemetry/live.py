@@ -24,9 +24,11 @@ def api_base_url(base_url: Optional[str] = None) -> str:
 
 
 def _get_json(url: str, timeout: float) -> Optional[Dict[str, Any]]:
-    req = urllib.request.Request(url, headers={"User-Agent": "Lang2Sim-Telemetry"})
+    if not url.startswith(("http://", "https://")):
+        return None
+    req = urllib.request.Request(url, headers={"User-Agent": "Lang2Sim-Telemetry"})  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             if resp.status != 200:
                 return None
             data = json.loads(resp.read().decode("utf-8"))

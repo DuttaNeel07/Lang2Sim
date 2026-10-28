@@ -133,7 +133,7 @@ def detect(docker: str = "docker", probe_docker: bool = True) -> HostPlatform:
     host_os = classify_os(
         _platform.system(),
         _platform.release(),
-        wsl_interop=os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop"),
+        wsl_interop=Path("/proc/sys/fs/binfmt_misc/WSLInterop").exists(),
     )
     env = {
         k: os.environ[k]

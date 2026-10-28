@@ -116,8 +116,8 @@ ROBOT_NAME = "waffle"  # TurtleBot3 variant, and the entity name it is spawned u
 def tb3_gazebo_share() -> Optional[Path]:
     """turtlebot3_gazebo's share directory inside the container, or None."""
     try:
-        from ament_index_python.packages import (
-            get_package_share_directory,  # type: ignore[import-not-found]
+        from ament_index_python.packages import (  # type: ignore[import-not-found]
+            get_package_share_directory,
         )
 
         return Path(get_package_share_directory("turtlebot3_gazebo"))
@@ -541,9 +541,9 @@ def create_app(
         try:
             sim.start(req)
         except RuntimeError as e:
-            raise HTTPException(409, str(e))
+            raise HTTPException(409, str(e)) from e
         except FileNotFoundError as e:
-            raise HTTPException(404, f"not found in container: {e}")
+            raise HTTPException(404, f"not found in container: {e}") from e
         except WorldRejected as e:
             raise HTTPException(
                 422,
@@ -551,7 +551,7 @@ def create_app(
                     "message": "world rejected by pre-flight check",
                     "issues": [vars(i) for i in e.report.issues],
                 },
-            )
+            ) from e
         new_healer(req)
         if state["bridge"]:
             state["bridge"].expect_ground_truth = bool(sim.telemetry_setup.get("enabled"))

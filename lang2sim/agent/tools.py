@@ -3,6 +3,7 @@ Typed Tool Registry & Function Schemas for Nemotron 3 ReAct Supervisor
 File: lang2sim/agent/tools.py
 """
 
+import inspect
 from typing import Any, Callable, Dict
 
 # 14 Typed Tool Implementations (With baseline mockable handlers for Dev 2 testing)
@@ -167,8 +168,6 @@ TOOL_REGISTRY: Dict[str, Callable] = {
     "query_robot_telemetry": query_robot_telemetry,
     "auto_repair_tf": auto_repair_tf,
 }
-
-import inspect
 
 
 def execute_tool(name: str, **kwargs) -> Dict[str, Any]:

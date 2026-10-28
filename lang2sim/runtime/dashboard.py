@@ -228,7 +228,7 @@ def make_router(
         try:
             return read_map(run_dir_or_404())
         except (OSError, MapError, KeyError, ValueError) as e:
-            raise HTTPException(404, f"map not readable: {e}")
+            raise HTTPException(404, f"map not readable: {e}") from e
 
     @router.get("/v1/run/trajectories")
     def run_trajectories() -> Dict[str, Any]:

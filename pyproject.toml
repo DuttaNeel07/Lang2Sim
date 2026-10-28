@@ -71,6 +71,10 @@ ignore = [
     "S311",   # Pseudo-random usage is non-cryptographic here
     "S603",   # subprocess calls are intentional (docker/ros runners)
     "S607",   # Allow partial executable paths (docker, ros2)
+    "B008",   # Function call in argument defaults (standard in FastAPI / telemetry params)
+    "S108",   # Allow /tmp paths for X11 sockets and container mounts
+    "S110",   # Allow try-except-pass in teardown, UI unmount, and fallback handlers
+    "S314",   # Internal SDF/XML element tree parsing
     "UP006",  # Typing modernisation deferred to follow-up cleanup
     "UP007",  # Typing modernisation deferred to follow-up cleanup
     "UP035",  # Deprecated import migration deferred to follow-up cleanup
@@ -78,7 +82,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
+"__init__.py" = ["F401", "E402"]
+"scripts/**" = ["E402"]
+"tests/**" = ["S108", "PT027"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["lang2sim", "tests"]
@@ -88,3 +94,4 @@ testpaths = ["tests"]
 
 [tool.codespell]
 skip = "*.pgm,*.json,*.lock,.venv,_ref"
+ignore-words-list = "renderd,unparseable"

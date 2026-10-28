@@ -21,7 +21,7 @@ class HarmonicSdfCompiler:
         self.templates_dir = templates_dir
         self.env = Environment(
             loader=FileSystemLoader(str(self.templates_dir)),
-            autoescape=False,
+            autoescape=False,  # noqa: S701 - generating XML/SDF world files, not HTML
             trim_blocks=True,
             lstrip_blocks=True,
         )

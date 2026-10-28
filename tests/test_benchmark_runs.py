@@ -48,7 +48,7 @@ def recorded(spec, label="nominal", detour=0.0, rate=10.0, speed=0.25, collision
     rec = TelemetryRecorder(ContactMonitor(robot_name="waffle"))
     rec.start(label, goal=(m.goal_pose.x, m.goal_pose.y, m.goal_pose.yaw), rate_hz=rate)
     t = 50.0
-    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:], strict=False):
         n = max(2, int(math.hypot(x1 - x0, y1 - y0) / (speed / rate)))
         yaw = math.atan2(y1 - y0, x1 - x0)
         for i in range(n):
@@ -218,6 +218,7 @@ def test_run_benchmark_writes_nominal_vs_adversarial_report(run_dir):
         )
     )
     assert phases == ["nominal run", "returning to start", "adversarial run"]
+    assert report is not None
     assert [c for c in api.calls if c[0] != "nav_waypoints"] == [
         ("record_start", "nominal"),
         ("record_stop", "nominal"),

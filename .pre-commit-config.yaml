@@ -24,6 +24,7 @@ repos:
     hooks:
       - id: codespell
         description: Check for spelling errors
+        args: ["--ignore-words-list", "renderd,unparseable"]
         additional_dependencies: [tomli]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

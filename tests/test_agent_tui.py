@@ -19,7 +19,7 @@ from lang2sim.cli.widgets.thought_box import ThoughtBox
 async def test_landing_screen_renders_and_has_focus():
     """Verify Screen 1 launches with centered logo, prompt card, and input focus."""
     app = Lang2SimApp()
-    async with app.run_test() as pilot:
+    async with app.run_test():
         assert isinstance(app.screen, LandingScreen)
         prompt_card = app.screen.query_one(PromptCard)
         assert prompt_card is not None
@@ -276,7 +276,7 @@ async def test_sessions_modal_flow():
 
     # Ensure test sessions exist
     s1 = session_manager.create_session(title=title1)
-    s2 = session_manager.create_session(title=title2)
+    session_manager.create_session(title=title2)
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:

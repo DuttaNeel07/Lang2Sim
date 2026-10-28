@@ -90,25 +90,25 @@ def test_killed_nodes_are_restarted_and_logged(runner, tmp_path):
                 cp = runner.exec(["pkill", "-9", "-f", pattern], name=NAME, user="root")
                 assert cp.returncode == 0, f"nothing to kill for {pattern}"
 
-                async def healed():
+                async def healed(tgt=target):
                     log = await session.api._request("GET", "/heal/log")
                     return [
                         e
                         for e in log["events"]
-                        if e["action_taken"] == f"restart_node {target}" and e["success"]
+                        if e["action_taken"] == f"restart_node {tgt}" and e["success"]
                     ]
 
                 events = await wait_for(healed, timeout=60)
                 assert events, f"no restart of {target} logged"
 
-                async def back():
+                async def back(chk=check):
                     st = await session.api.sim_status()
-                    return st.readiness.get(check) and st.ready
+                    return st.readiness.get(chk) and st.ready
 
                 await wait_for(back, timeout=120)
 
-                async def running():
-                    return runner.exec(["pgrep", "-f", pattern], name=NAME).returncode == 0
+                async def running(pat=pattern):
+                    return runner.exec(["pgrep", "-f", pat], name=NAME).returncode == 0
 
                 await wait_for(running, timeout=30)
 
