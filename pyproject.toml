@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lang2sim"
-version = "2.0.0"
+version = "2.0.1"
 description = "Natural Language to Executable Robot Simulation with Dynamic Stress Testing"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,3 +42,19 @@ lang2sim = "lang2sim.cli.app:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lang2sim*"]
+
+[tool.setuptools.package-data]
+"*" = [
+    "*.tcss",
+    "*.jinja",
+    "*.sdf",
+    "*.yaml",
+    "*.json",
+    "*.pgm",
+    "*.world",
+    "*.config",
+    "*.dae",
+    "*.png",
+    "*.jpg",
+    "*.material"
+]

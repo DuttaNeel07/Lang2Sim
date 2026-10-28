@@ -17,12 +17,25 @@ def _env(*names: str, default: str) -> str:
     return default
 
 
-# Root paths. Inside the sim container the entrypoint sets L2S_PROJECTS_DIR /
-# L2S_CATALOG_DIR to the bind-mount targets, so the same code resolves to the
-# host's ~/.lang2sim/projects on both sides.
-DEFAULT_LANG2SIM_ROOT = Path(os.path.expanduser(_env("L2S_ROOT", default="~/.lang2sim")))
-PROJECTS_DIR = Path(_env("L2S_PROJECTS_DIR", default=str(DEFAULT_LANG2SIM_ROOT / "projects")))
-CATALOG_DIR = Path(_env("L2S_CATALOG_DIR", default=str(Path(__file__).resolve().parent.parent.parent / "catalog")))
+def _resolve_catalog_dir() -> Path:
+    env_p = os.getenv("L2S_CATALOG_DIR")
+    if env_p and Path(env_p).is_dir():
+        return Path(env_p)
+    # Check package-bundled catalog inside lang2sim/catalog
+    pkg_cat = Path(__file__).resolve().parent.parent / "catalog"
+    if pkg_cat.is_dir():
+        return pkg_cat
+    # Check repo root
+    repo_cat = Path(__file__).resolve().parent.parent.parent / "catalog"
+    if repo_cat.is_dir():
+        return repo_cat
+    # Check ~/.lang2sim/catalog
+    home_cat = DEFAULT_LANG2SIM_ROOT / "catalog"
+    if home_cat.is_dir():
+        return home_cat
+    return pkg_cat
+
+CATALOG_DIR = _resolve_catalog_dir()
 
 # Container-side mount points (contract with docker/sim/Dockerfile).
 CONTAINER_PROJECTS_DIR = "/lang2sim/projects"
@@ -91,7 +104,8 @@ class Config:
     def __init__(self, workspace_root: Optional[Path] = None):
         self.workspace_root = workspace_root or Path(__file__).resolve().parent.parent.parent
         self.catalog_dir = CATALOG_DIR
-        self.templates_dir = self.workspace_root / "lang2sim" / "compiler" / "templates"
+        pkg_templates = Path(__file__).resolve().parent.parent / "compiler" / "templates"
+        self.templates_dir = pkg_templates if pkg_templates.is_dir() else (self.workspace_root / "lang2sim" / "compiler" / "templates")
         self.base_projects_dir = PROJECTS_DIR
 
         self.sim_image_tag = DEFAULT_SIM_IMAGE

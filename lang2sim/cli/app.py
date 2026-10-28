@@ -14,7 +14,7 @@ class Lang2SimApp(App):
     """Lang2Sim Terminal Copilot Application."""
 
     TITLE = "lang2sim — lang2sim"
-    CSS_PATH = CSS_PATH
+    CSS_PATH = [CSS_PATH] if CSS_PATH.is_file() else []
 
     BINDINGS = [
         Binding("ctrl+a", "select_all", "Select All", show=False),
