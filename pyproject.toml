@@ -58,6 +58,10 @@ extend-exclude = ["p4_out", "_ref"]
 select = ["B", "E", "F", "G", "I", "PT", "PTH", "S", "UP", "W"]
 ignore = [
     "E203",   # Keep Black-compatible whitespace behaviour
+    "E501",   # Line length is handled by ruff format; leftovers (long strings/comments) deferred
+    "PT009",  # unittest-style asserts in tests, to be tightened incrementally
+    "PT011",  # pytest.raises too broad, to be tightened incrementally
+    "PT018",  # composite assertions in tests, to be tightened incrementally
     "PT006",  # Parametrize style to be tightened incrementally
     "PT007",  # Parametrize value style to be tightened incrementally
     "PTH103", # pathlib migration will be done incrementally
