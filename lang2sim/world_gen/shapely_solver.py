@@ -187,7 +187,9 @@ class ShapelySpatialSolver:
                         enforce_corridor=True,
                     ):
                         updated_obj = obj.model_copy(
-                            update={"pose": Pose2D(x=round(curr_x, 2), y=round(y_candidate, 2), yaw=0.0)}
+                            update={
+                                "pose": Pose2D(x=round(curr_x, 2), y=round(y_candidate, 2), yaw=0.0)
+                            }
                         )
                         placed_specs.append(updated_obj)
                         placed_polygons.append(candidate_poly)
@@ -209,7 +211,9 @@ class ShapelySpatialSolver:
                     for y_candidate in [-half_h + dim_y / 2.0, half_h - dim_y / 2.0]:
                         curr_x = min_x
                         while curr_x <= max_x:
-                            candidate_poly = self.create_obb(curr_x, y_candidate, dim_x, dim_y, angle)
+                            candidate_poly = self.create_obb(
+                                curr_x, y_candidate, dim_x, dim_y, angle
+                            )
                             if self.is_valid_placement(
                                 candidate_poly,
                                 placed_polygons,
@@ -218,7 +222,13 @@ class ShapelySpatialSolver:
                                 enforce_corridor=False,
                             ):
                                 updated_obj = obj.model_copy(
-                                    update={"pose": Pose2D(x=round(curr_x, 2), y=round(y_candidate, 2), yaw=round(angle, 4))}
+                                    update={
+                                        "pose": Pose2D(
+                                            x=round(curr_x, 2),
+                                            y=round(y_candidate, 2),
+                                            yaw=round(angle, 4),
+                                        )
+                                    }
                                 )
                                 placed_specs.append(updated_obj)
                                 placed_polygons.append(candidate_poly)

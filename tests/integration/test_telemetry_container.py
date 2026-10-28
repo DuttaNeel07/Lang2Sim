@@ -25,8 +25,10 @@ from lang2sim.runtime.docker_runner import DockerRunner, RunOptions
 from lang2sim.runtime.platform import detect_docker
 from lang2sim.runtime.session import FIXTURES_DIR, SimSession
 
-pytestmark = pytest.mark.skipif(os.getenv("L2S_INTEGRATION") != "1",
-                                reason="set L2S_INTEGRATION=1 to run Docker integration tests")
+pytestmark = pytest.mark.skipif(
+    os.getenv("L2S_INTEGRATION") != "1",
+    reason="set L2S_INTEGRATION=1 to run Docker integration tests",
+)
 
 IMAGE = os.getenv("L2S_TEST_IMAGE", "lang2sim-sim:dev")
 REPO = Path(__file__).resolve().parents[2]
@@ -53,13 +55,23 @@ def _session(runner, tmp_path, fixture, name):
     projects = tmp_path / "projects"
     run = projects / fixture / "runs" / "001"
     shutil.copytree(FIXTURES_DIR / fixture, run)
-    if os.getuid() == 0:  # rootful host: the container keeps its user at 1000, so open the folder up
+    if (
+        os.getuid() == 0
+    ):  # rootful host: the container keeps its user at 1000, so open the folder up
         for p in [tmp_path, *tmp_path.rglob("*")]:
             p.chmod(0o777)
     plan = DisplayPlan("headless", "software", False)
-    opts = RunOptions(image=IMAGE, plan=plan, projects_dir=projects, src_dir=REPO,
-                      host_uid=os.getuid(), host_gid=os.getgid(), name=name,
-                      api_port=_free_port(), extra_env={"L2S_CAMERA": "0"})
+    opts = RunOptions(
+        image=IMAGE,
+        plan=plan,
+        projects_dir=projects,
+        src_dir=REPO,
+        host_uid=os.getuid(),
+        host_gid=os.getgid(),
+        name=name,
+        api_port=_free_port(),
+        extra_env={"L2S_CAMERA": "0"},
+    )
     return SimSession(plan, opts=opts, runner=runner), run, opts
 
 
@@ -91,7 +103,9 @@ def test_instrumented_robot_scored_mission(runner, tmp_path):
     live0 = out["live0"]
     assert live0.pose_source == "ground_truth"
     # Ground truth at the spawn pose, and AMCL agrees with it.
-    assert live0.pose.x == pytest.approx(-2.5, abs=0.1) and live0.pose.y == pytest.approx(-1.5, abs=0.1)
+    assert live0.pose.x == pytest.approx(-2.5, abs=0.1) and live0.pose.y == pytest.approx(
+        -1.5, abs=0.1
+    )
     assert live0.localization_error_m is not None and live0.localization_error_m < 0.3
     nominal = json.loads((run / "benchmark_report.json").read_text())["runs"]["nominal"]
     assert nominal["pose_source"] == "ground_truth" and nominal["time_base"] == "sim"
@@ -113,8 +127,14 @@ def test_bumper_counts_a_crate_dropped_on_the_robot(runner, tmp_path):
             await session.open_run(run, gui=False, rviz=False, timeout=READY_TIMEOUT_S)
             await session.api.record_start("bump")
             live = await session.api.telemetry_live()
-            await session.api.world_spawn({"model_name": "wooden_crate", "x": live.pose.x + 0.25,
-                                           "y": live.pose.y, "yaw": 0.0})
+            await session.api.world_spawn(
+                {
+                    "model_name": "wooden_crate",
+                    "x": live.pose.x + 0.25,
+                    "y": live.pose.y,
+                    "yaw": 0.0,
+                }
+            )
             for _ in range(40):
                 await asyncio.sleep(0.5)
                 if (await session.api.telemetry_live()).collision_count:
@@ -129,4 +149,7 @@ def test_bumper_counts_a_crate_dropped_on_the_robot(runner, tmp_path):
     assert live.collision_count >= 1, live
     assert "crate" in live.last_contact_entity
     assert out["result"].collisions >= 1
-    assert out["result"].spawned_entities and out["result"].spawned_entities[0]["model"] == "wooden_crate"
+    assert (
+        out["result"].spawned_entities
+        and out["result"].spawned_entities[0]["model"] == "wooden_crate"
+    )

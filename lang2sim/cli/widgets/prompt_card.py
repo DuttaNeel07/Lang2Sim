@@ -93,4 +93,3 @@ class PromptCard(Widget):
             inp.focus()
         except Exception:
             pass
-

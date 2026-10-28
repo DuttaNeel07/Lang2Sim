@@ -45,6 +45,7 @@ __all__ = [
 @dataclass
 class VisionResult:
     """Standard envelope for visual perception frames and metadata."""
+
     ok: bool
     stream: str  # "desktop_window" or "robot_camera"
     target: str  # "gazebo", "rviz", "screen", or topic name
@@ -81,7 +82,9 @@ def _to_grayscale_f32(img_arr: np.ndarray) -> np.ndarray:
     if img_arr.ndim == 2:
         return img_arr.astype(np.float32)
     # ITU-R 601-2 luma transform
-    return (0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]).astype(np.float32)
+    return (0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]).astype(
+        np.float32
+    )
 
 
 def compute_optical_metrics(img_arr: np.ndarray) -> dict[str, float]:
@@ -177,6 +180,7 @@ def _find_window_rect_windows(title_pattern: str) -> Optional[Tuple[int, int, in
     """Locate window coordinates on Windows using Win32 API if available."""
     try:
         import win32gui
+
         matched_hwnd = None
 
         def enum_windows_callback(hwnd, extra):
@@ -232,7 +236,12 @@ def capture_desktop_window(
         with mss_cls() as sct:
             if rect is not None:
                 rx, ry, rw, rh = rect
-                monitor = {"top": max(0, ry), "left": max(0, rx), "width": max(10, rw), "height": max(10, rh)}
+                monitor = {
+                    "top": max(0, ry),
+                    "left": max(0, rx),
+                    "width": max(10, rw),
+                    "height": max(10, rh),
+                }
                 sct_img = sct.grab(monitor)
                 msg = f"Captured '{title_pattern}' window ({rw}x{rh})"
             else:
@@ -329,6 +338,7 @@ def generate_synthetic_frame(
     # Apply motion blur if requested
     if motion_blur > 1:
         from PIL import ImageFilter
+
         pil_img = pil_img.filter(ImageFilter.BoxBlur(motion_blur))
 
     return pil_img
@@ -389,7 +399,9 @@ class CameraSampler:
         else:
             # Fallback to realistic synthetic frame
             img = generate_synthetic_frame()
-            msg = f"ROS topic '{self.topic}' not active; generated synthetic camera perception frame"
+            msg = (
+                f"ROS topic '{self.topic}' not active; generated synthetic camera perception frame"
+            )
             fallback = "synthetic_camera"
 
         arr = np.asarray(img)
@@ -448,7 +460,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Capture target (default: screen)",
     )
     parser.add_argument("--out", help="Save captured frame to JPEG path")
-    parser.add_argument("--print-b64-len", action="store_true", help="Print length of base64 JPEG payload")
+    parser.add_argument(
+        "--print-b64-len", action="store_true", help="Print length of base64 JPEG payload"
+    )
     parser.add_argument("--topic", default="/camera/image_raw", help="Robot camera ROS topic")
     args = parser.parse_args(argv)
 
@@ -473,5 +487,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     import warnings
+
     warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*found in sys.modules.*")
     sys.exit(main())

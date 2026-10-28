@@ -23,15 +23,16 @@ Available Tools:
 - query_robot_telemetry()
 """
 
+
 class ReActSupervisor:
     """Manages multi-turn conversation memory and tool execution."""
 
-    def __init__(self, client: Optional[NemotronClient] = None, workspace_root: Optional[Path] = None):
+    def __init__(
+        self, client: Optional[NemotronClient] = None, workspace_root: Optional[Path] = None
+    ):
         self.client = client or NemotronClient()
         self.workspace_root = workspace_root or Path.cwd()
-        self.messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT}
-        ]
+        self.messages: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     def add_user_message(self, content: str) -> None:
         self.messages.append({"role": "user", "content": content})
@@ -43,11 +44,7 @@ class ReActSupervisor:
 
     def run_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         result = execute_tool(tool_name, **kwargs)
-        self.messages.append({
-            "role": "tool",
-            "name": tool_name,
-            "content": json.dumps(result)
-        })
+        self.messages.append({"role": "tool", "name": tool_name, "content": json.dumps(result)})
         self._persist_context()
         return result
 

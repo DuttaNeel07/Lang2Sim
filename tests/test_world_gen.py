@@ -132,14 +132,14 @@ class TestWorldGenAndMapSlicer(unittest.TestCase):
         with open(sdf_path, "r", encoding="utf-8") as f:
             xml = f.read()
 
-        self.assertIn("<sdf version=\"1.9\">", xml)
-        self.assertIn("<world name=\"test_warehouse\">", xml)
+        self.assertIn('<sdf version="1.9">', xml)
+        self.assertIn('<world name="test_warehouse">', xml)
         self.assertIn("gz::sim::systems::Physics", xml)
         self.assertIn("gz::sim::systems::UserCommands", xml)
         self.assertIn("gz::sim::systems::SceneBroadcaster", xml)
         self.assertIn("gz::sim::systems::Contact", xml)
-        self.assertIn("<model name=\"ground_plane\">", xml)
-        self.assertIn("<model name=\"rack_1\">", xml)
+        self.assertIn('<model name="ground_plane">', xml)
+        self.assertIn('<model name="rack_1">', xml)
 
     def test_sir_pipeline_validation(self):
         """Verify SIRGenerator and SIRValidator validate physical feasibility."""

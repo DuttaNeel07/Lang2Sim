@@ -28,17 +28,28 @@ def test_parse_command():
     assert parse_command("/nope") is None and parse_command("stress the robot") is None
 
 
-@pytest.mark.parametrize("text,light,model", [
-    # architecture §8.3 Beat 3 and §8.5 Archetype 4 prompts
-    ("Stress-test navigation: drop ambient lighting to 15%, inject camera motion blur, and spawn a moving "
-     "obstacle directly in the robot's path.", "0.15", "wooden_crate"),
-    ("While AMR is navigating, drop light to 10%, inject camera blur, and drop a dynamic wooden crate across "
-     "the robot's planned path.", "0.10", "wooden_crate"),
-    ("spawn a barrel in front of the robot", None, "barrel"),
-    ("dim the lights", "0.15", None),
-    ("set lighting to 0.3", "0.30", None),
-    ("drop a cargo box ahead", None, "cargo_box"),
-])
+@pytest.mark.parametrize(
+    "text,light,model",
+    [
+        # architecture §8.3 Beat 3 and §8.5 Archetype 4 prompts
+        (
+            "Stress-test navigation: drop ambient lighting to 15%, inject camera motion blur, and spawn a moving "
+            "obstacle directly in the robot's path.",
+            "0.15",
+            "wooden_crate",
+        ),
+        (
+            "While AMR is navigating, drop light to 10%, inject camera blur, and drop a dynamic wooden crate across "
+            "the robot's planned path.",
+            "0.10",
+            "wooden_crate",
+        ),
+        ("spawn a barrel in front of the robot", None, "barrel"),
+        ("dim the lights", "0.15", None),
+        ("set lighting to 0.3", "0.30", None),
+        ("drop a cargo box ahead", None, "cargo_box"),
+    ],
+)
 def test_stress_intents(text, light, model):
     c = parse_stress_intent(text)
     assert c is not None and c.name == "stress" and c.natural
@@ -51,10 +62,17 @@ def test_blur_is_reported_as_unsupported():
     assert "camera blur" in c.note and "not available" in c.note
 
 
-@pytest.mark.parametrize("text", [
-    "why did the robot slow down?", "what is the NQI score", "explain the crate detour",
-    "how do I add a crate?", "build me a warehouse with 8 racks", "drop it",
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "why did the robot slow down?",
+        "what is the NQI score",
+        "explain the crate detour",
+        "how do I add a crate?",
+        "build me a warehouse with 8 racks",
+        "drop it",
+    ],
+)
 def test_questions_and_other_prompts_go_to_the_llm(text):
     assert parse_stress_intent(text) is None
 
@@ -63,7 +81,10 @@ def test_stress_targets():
     assert stress_targets(Command("stress")) == (0.1, "wooden_crate")
     assert stress_targets(Command("stress", opts={"light": "off"})) == (None, "wooden_crate")
     assert stress_targets(Command("stress", opts={"light": "20%", "model": "none"})) == (0.2, None)
-    assert stress_targets(Command("stress", opts={"model": "barrel"}, natural=True)) == (None, "barrel")
+    assert stress_targets(Command("stress", opts={"model": "barrel"}, natural=True)) == (
+        None,
+        "barrel",
+    )
     with pytest.raises(ValueError):
         stress_targets(Command("stress", opts={"model": "piano"}))
 
@@ -99,8 +120,14 @@ def replay_api(unused_tcp_port_factory=None):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(create_replay_app(DEMO, speed=20, loop=True), host="127.0.0.1",
-                                           port=port, log_level="warning"))
+    server = uvicorn.Server(
+        uvicorn.Config(
+            create_replay_app(DEMO, speed=20, loop=True),
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+        )
+    )
     threading.Thread(target=server.run, daemon=True).start()
     for _ in range(100):
         if server.started:
@@ -130,17 +157,22 @@ async def test_tui_runs_demo_commands_against_the_api(replay_api, monkeypatch, t
             screen.handle_user_prompt(text)
             for _ in range(60):
                 await pilot.pause(0.1)
-                if len(screen.query(".demo-line, .demo-table")) > before and not screen.demo.mission_lock.locked():
+                if (
+                    len(screen.query(".demo-line, .demo-table")) > before
+                    and not screen.demo.mission_lock.locked()
+                ):
                     await app.workers.wait_for_complete()
                     break
             return list(screen.query(".demo-line, .demo-table"))[before:]
 
         out = await ask("/report")
-        assert any("demo-table" in w.classes for w in out)                    # the NQI table
+        assert any("demo-table" in w.classes for w in out)  # the NQI table
         assert any("81.6" in str(w.render()) for w in out if "demo-line" in w.classes)
         out = await ask("/status")
         assert "REPLAY" in str(out[0].render())
         out = await ask("drop the lights to 10% and spawn a crate in front of the robot")
         text = " ".join(str(w.render()) for w in out)
-        assert "Interpreted as /stress" in text and "replay" in text.lower()   # read-only, clearly said
-        assert not screen.is_streaming                                         # the LLM was never called
+        assert (
+            "Interpreted as /stress" in text and "replay" in text.lower()
+        )  # read-only, clearly said
+        assert not screen.is_streaming  # the LLM was never called

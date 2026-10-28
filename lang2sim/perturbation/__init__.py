@@ -14,6 +14,7 @@ from lang2sim.perturbation.gazebo_bridge import (
     get_bridge,
     reset_bridge_instance,
 )
+
 # The FastMCP tool server runs in-process in the host app (architecture §3.10). The sim
 # container imports this package only for the /v1/world router and ships no fastmcp, so a
 # hard import here would silently drop that router from the control API.

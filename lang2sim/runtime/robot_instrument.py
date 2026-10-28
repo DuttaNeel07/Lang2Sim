@@ -50,7 +50,9 @@ class InstrumentError(ValueError):
     pass
 
 
-def default_contact_topic(world: str, robot: str, link: str = CHASSIS_LINK, sensor: str = SENSOR_NAME) -> str:
+def default_contact_topic(
+    world: str, robot: str, link: str = CHASSIS_LINK, sensor: str = SENSOR_NAME
+) -> str:
     """Gazebo's scoped topic for a contact sensor that sets no explicit topic."""
     return f"/world/{world}/model/{robot}/link/{link}/sensor/{sensor}/contact"
 
@@ -62,9 +64,15 @@ def _sub(parent: ET.Element, tag: str, text: Optional[str] = None) -> ET.Element
     return el
 
 
-def instrument_model(sdf_text: str, *, link: str = CHASSIS_LINK, collision: Optional[str] = None,
-                     contact_topic: str = CONTACT_GZ_TOPIC, ground_truth_topic: str = GROUND_TRUTH_TOPIC,
-                     base_frame: str = "base_footprint") -> Tuple[str, str]:
+def instrument_model(
+    sdf_text: str,
+    *,
+    link: str = CHASSIS_LINK,
+    collision: Optional[str] = None,
+    contact_topic: str = CONTACT_GZ_TOPIC,
+    ground_truth_topic: str = GROUND_TRUTH_TOPIC,
+    base_frame: str = "base_footprint",
+) -> Tuple[str, str]:
     """Add the bumper + ground-truth publisher to a robot model SDF.
 
     Returns (new SDF text, chassis collision name used). Idempotent: an SDF that
@@ -83,8 +91,11 @@ def instrument_model(sdf_text: str, *, link: str = CHASSIS_LINK, collision: Opti
     collisions = [c.get("name") for c in chassis.findall("collision") if c.get("name")]
     if not collisions:
         raise InstrumentError(f"link '{link}' has no named <collision> to attach a bumper to")
-    chosen = collision if collision in collisions else (
-        "base_collision" if "base_collision" in collisions else collisions[0])
+    chosen = (
+        collision
+        if collision in collisions
+        else ("base_collision" if "base_collision" in collisions else collisions[0])
+    )
 
     if not any(s.get("name") == SENSOR_NAME for s in chassis.findall("sensor")):
         sensor = ET.SubElement(chassis, "sensor", {"name": SENSOR_NAME, "type": "contact"})
@@ -97,8 +108,9 @@ def instrument_model(sdf_text: str, *, link: str = CHASSIS_LINK, collision: Opti
 
     odom_cls = "gz::sim::systems::OdometryPublisher"
     if not any(p.get("name") == odom_cls for p in model.findall("plugin")):
-        plugin = ET.SubElement(model, "plugin",
-                               {"filename": "gz-sim-odometry-publisher-system", "name": odom_cls})
+        plugin = ET.SubElement(
+            model, "plugin", {"filename": "gz-sim-odometry-publisher-system", "name": odom_cls}
+        )
         _sub(plugin, "odom_frame", "world")
         _sub(plugin, "robot_base_frame", base_frame)
         _sub(plugin, "odom_topic", ground_truth_topic)
@@ -116,21 +128,35 @@ def instrument_model(sdf_text: str, *, link: str = CHASSIS_LINK, collision: Opti
 
 def telemetry_bridge_entries(world: str, robot: str) -> List[Dict[str, str]]:
     """ros_gz_bridge config entries for the instrumented topics."""
-    contact = {"ros_topic_name": CONTACT_ROS_TOPIC, "ros_type_name": "ros_gz_interfaces/msg/Contacts",
-               "gz_type_name": "gz.msgs.Contacts", "direction": "GZ_TO_ROS"}
+    contact = {
+        "ros_topic_name": CONTACT_ROS_TOPIC,
+        "ros_type_name": "ros_gz_interfaces/msg/Contacts",
+        "gz_type_name": "gz.msgs.Contacts",
+        "direction": "GZ_TO_ROS",
+    }
     entries = [dict(contact, gz_topic_name=CONTACT_GZ_TOPIC)]
     scoped = default_contact_topic(world, robot)
     if scoped != CONTACT_GZ_TOPIC:
         entries.append(dict(contact, gz_topic_name=scoped))
-    entries.append({"ros_topic_name": GROUND_TRUTH_TOPIC, "gz_topic_name": GROUND_TRUTH_TOPIC,
-                    "ros_type_name": "nav_msgs/msg/Odometry", "gz_type_name": "gz.msgs.Odometry",
-                    "direction": "GZ_TO_ROS"})
+    entries.append(
+        {
+            "ros_topic_name": GROUND_TRUTH_TOPIC,
+            "gz_topic_name": GROUND_TRUTH_TOPIC,
+            "ros_type_name": "nav_msgs/msg/Odometry",
+            "gz_type_name": "gz.msgs.Odometry",
+            "direction": "GZ_TO_ROS",
+        }
+    )
     return entries
 
 
 def merge_bridge_config(stock: list, extra: List[Dict[str, str]]) -> list:
     """Stock bridge entries + extra ones, skipping any (ros_topic, gz_topic) pair already present."""
-    seen = {(e.get("ros_topic_name"), e.get("gz_topic_name")) for e in stock or [] if isinstance(e, dict)}
+    seen = {
+        (e.get("ros_topic_name"), e.get("gz_topic_name"))
+        for e in stock or []
+        if isinstance(e, dict)
+    }
     out = list(stock or [])
     for e in extra:
         if (e["ros_topic_name"], e["gz_topic_name"]) not in seen:
@@ -138,8 +164,9 @@ def merge_bridge_config(stock: list, extra: List[Dict[str, str]]) -> list:
     return out
 
 
-def write_instrumented(run_dir: Path, stock_model: Path, stock_bridge: Path, *, world: str,
-                       robot: str) -> Tuple[Path, Path, str]:
+def write_instrumented(
+    run_dir: Path, stock_model: Path, stock_bridge: Path, *, world: str, robot: str
+) -> Tuple[Path, Path, str]:
     """Write robot.l2s.sdf and bridge.l2s.yaml into run_dir. Returns (sdf, yaml, collision name)."""
     import yaml  # the sim image ships PyYAML (launch files use it); imported lazily for clarity
 
@@ -151,5 +178,7 @@ def write_instrumented(run_dir: Path, stock_model: Path, stock_bridge: Path, *, 
     yaml_out = Path(run_dir) / BRIDGE_YAML_NAME
     yaml_out.write_text(
         "# Generated by lang2sim (runtime/robot_instrument.py): TurtleBot3 bridge + telemetry topics.\n"
-        + yaml.safe_dump(merged, sort_keys=False), encoding="utf-8")
+        + yaml.safe_dump(merged, sort_keys=False),
+        encoding="utf-8",
+    )
     return sdf_out, yaml_out, collision

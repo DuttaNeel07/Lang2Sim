@@ -56,12 +56,16 @@ class SIRValidator:
 
             # Check inside room
             if not room_poly.contains(poly):
-                errors.append(f"Object '{obj.id}' is outside room boundaries at ({obj.pose.x}, {obj.pose.y})")
+                errors.append(
+                    f"Object '{obj.id}' is outside room boundaries at ({obj.pose.x}, {obj.pose.y})"
+                )
 
             # Check overlap with existing objects
             for idx, existing in enumerate(placed_polygons):
                 if poly.intersects(existing):
-                    errors.append(f"Collision detected: Object '{obj.id}' overlaps with object '{sim_spec.objects[idx].id}'")
+                    errors.append(
+                        f"Collision detected: Object '{obj.id}' overlaps with object '{sim_spec.objects[idx].id}'"
+                    )
 
             placed_polygons.append(poly)
 

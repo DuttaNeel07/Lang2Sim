@@ -34,8 +34,10 @@ class NoDocker:
         raise AssertionError("not called in these tests")
 
 
-@pytest.mark.parametrize("mode,hint", [("vnc", "localhost:6080"), ("headless", "ws://localhost:8765"),
-                                       ("x11", "windows")])
+@pytest.mark.parametrize(
+    "mode,hint",
+    [("vnc", "localhost:6080"), ("headless", "ws://localhost:8765"), ("x11", "windows")],
+)
 def test_view_hint_and_image(projects, mode, hint):
     plan = DisplayPlan(mode, "software", mode == "headless")
     s = SimSession(plan, image="lang2sim-sim:dev", runner=NoDocker(), extra_env={"L2S_CAMERA": "0"})
@@ -63,9 +65,16 @@ def test_run_mission_sends_waypoints_then_goal(projects):
         async def nav_status(self):
             self.polls += 1
             if self.polls < 3:
-                return NavStatus(is_active=True, status="navigating", waypoint_index=self.polls,
-                                 waypoints_total=4, distance_remaining=3.0 / self.polls)
-            return NavStatus(is_active=False, status="succeeded", waypoint_index=3, waypoints_total=4)
+                return NavStatus(
+                    is_active=True,
+                    status="navigating",
+                    waypoint_index=self.polls,
+                    waypoints_total=4,
+                    distance_remaining=3.0 / self.polls,
+                )
+            return NavStatus(
+                is_active=False, status="succeeded", waypoint_index=3, waypoints_total=4
+            )
 
     s = SimSession(DisplayPlan("headless", "software", True), runner=NoDocker())
     s.api = FakeAPI()

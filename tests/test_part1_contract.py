@@ -23,14 +23,18 @@ def _pgm(path):
 
 def _pixel(pix, w, h, x, y, origin, res=0.05):
     c = int((x - origin[0]) / res)
-    r = h - 1 - int((y - origin[1]) / res)   # row 0 = top = max y (Nav2 convention)
+    r = h - 1 - int((y - origin[1]) / res)  # row 0 = top = max y (Nav2 convention)
     return pix[r * w + c]
 
 
 @pytest.mark.parametrize("ox,oy", [(2.5, 2.0), (-3.0, -1.5), (3.0, -2.5)])
 def test_obstacle_lands_where_the_world_has_it(tmp_path, ox, oy):
-    box = ObjectSpec(id="b", model_name="wooden_crate", dimensions=Vector3D(x=0.8, y=0.8, z=0.8),
-                     pose=Pose2D(x=ox, y=oy))
+    box = ObjectSpec(
+        id="b",
+        model_name="wooden_crate",
+        dimensions=Vector3D(x=0.8, y=0.8, z=0.8),
+        pose=Pose2D(x=ox, y=oy),
+    )
     _, yaml_path = slice_map_from_layout(Vector3D(x=10, y=8, z=3), [box], tmp_path)
     pix, w, h = _pgm(tmp_path / "map.pgm")
     origin = (-5.0, -4.0)

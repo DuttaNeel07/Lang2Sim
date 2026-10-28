@@ -38,6 +38,7 @@ __all__ = [
 @dataclass
 class BridgeResult:
     """Result envelope returned by all mutation bridge operations."""
+
     ok: bool
     backend: str
     tool: str
@@ -95,7 +96,9 @@ class GazeboBridge(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def apply_perturbation(self, velocity_bias: Pose2D, duration_s: float = 1.0) -> BridgeResult:
+    async def apply_perturbation(
+        self, velocity_bias: Pose2D, duration_s: float = 1.0
+    ) -> BridgeResult:
         """Apply force impulse or chassis velocity bias to the robot."""
         ...
 
@@ -141,13 +144,13 @@ class DryRunBridge(GazeboBridge):
             cmd = (
                 f"{self.exec_prefix} gz service -s /world/{self.world_name}/create "
                 f"--reqtype gz.msgs.EntityFactory "
-                f'--req "sdf_filename: \'model://{model_name}\', name: \'{name}\', '
-                f'pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.3}}, orientation: {{z: {pose.yaw}}}}}\"'
+                f"--req \"sdf_filename: 'model://{model_name}', name: '{name}', "
+                f'pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.3}}, orientation: {{z: {pose.yaw}}}}}"'
             ).strip()
         else:
             cmd = (
                 f"{self.exec_prefix} ros2 service call /spawn_entity gazebo_msgs/srv/SpawnEntity "
-                f'"{{name: \'{name}\', initial_pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.3}}}}}}"'
+                f"\"{{name: '{name}', initial_pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.3}}}}}}\""
             ).strip()
 
         latency = (time.perf_counter() - t0) * 1000.0 + 0.1
@@ -177,12 +180,12 @@ class DryRunBridge(GazeboBridge):
             cmd = (
                 f"{self.exec_prefix} gz service -s /world/{self.world_name}/light_config "
                 f"--reqtype gz.msgs.Light "
-                f'--req "name: \'{light}\', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}"'
+                f"--req \"name: '{light}', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}\""
             ).strip()
         else:
             cmd = (
                 f"{self.exec_prefix} ros2 service call /set_light_properties gazebo_msgs/srv/SetLightProperties "
-                f'"{{light_name: \'{light}\', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}}}"'
+                f"\"{{light_name: '{light}', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}}}\""
             ).strip()
 
         latency = (time.perf_counter() - t0) * 1000.0 + 0.1
@@ -219,7 +222,9 @@ class DryRunBridge(GazeboBridge):
             data={"mode": mode, "reset_ms": latency},
         )
 
-    async def apply_perturbation(self, velocity_bias: Pose2D, duration_s: float = 1.0) -> BridgeResult:
+    async def apply_perturbation(
+        self, velocity_bias: Pose2D, duration_s: float = 1.0
+    ) -> BridgeResult:
         t0 = time.perf_counter()
         robot = os.environ.get("LANG2SIM_ROBOT_NAME") or "turtlebot3_waffle"
         cmd = (
@@ -235,7 +240,11 @@ class DryRunBridge(GazeboBridge):
             stdout="[DryRun] Chassis perturbation velocity injected",
             latency_ms=latency,
             message=f"Applied velocity impulse (vx={velocity_bias.x}, vy={velocity_bias.y}) for {duration_s}s",
-            data={"velocity_bias": velocity_bias.model_dump(), "duration_s": duration_s, "robot": robot},
+            data={
+                "velocity_bias": velocity_bias.model_dump(),
+                "duration_s": duration_s,
+                "robot": robot,
+            },
         )
 
     def health(self) -> dict[str, Any]:
@@ -268,7 +277,11 @@ async def _run_command(cmd_str: str, timeout_s: float = 3.0) -> tuple[int, str, 
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
-        return proc.returncode or 0, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+        return (
+            proc.returncode or 0,
+            stdout.decode(errors="replace"),
+            stderr.decode(errors="replace"),
+        )
     except asyncio.TimeoutError:
         return -1, "", f"Command timed out after {timeout_s}s"
     except Exception as exc:
@@ -298,7 +311,7 @@ class HarmonicBridge(GazeboBridge):
             f"pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.35}}, "
             f"orientation: {{z: {math.sin(pose.yaw / 2):.6f}, w: {math.cos(pose.yaw / 2):.6f}}}}}"
         )
-        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/create --reqtype gz.msgs.EntityFactory {GZ_REPLY} --req \"{req}\"".strip()
+        cmd = f'{self.exec_prefix} gz service -s /world/{self.world_name}/create --reqtype gz.msgs.EntityFactory {GZ_REPLY} --req "{req}"'.strip()
 
         rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
         latency = (time.perf_counter() - t0) * 1000.0
@@ -313,17 +326,24 @@ class HarmonicBridge(GazeboBridge):
             stdout=out,
             stderr=err,
             latency_ms=latency,
-            message=f"Spawned {name} into {self.world_name}" if rc == 0 else f"Failed to spawn: {err or out}",
+            message=f"Spawned {name} into {self.world_name}"
+            if rc == 0
+            else f"Failed to spawn: {err or out}",
             data={"entity_name": name, "model_name": model_name, "pose": pose.model_dump()},
         )
 
     async def set_light(self, luminance: float, light_name: Optional[str] = None) -> BridgeResult:
         t0 = time.perf_counter()
         if not (0.0 <= luminance <= 1.0):
-            return BridgeResult(ok=False, backend="harmonic", tool="set_ambient_lighting", message="Luminance must be in [0, 1]")
+            return BridgeResult(
+                ok=False,
+                backend="harmonic",
+                tool="set_ambient_lighting",
+                message="Luminance must be in [0, 1]",
+            )
         light = light_name or os.environ.get("LANG2SIM_SUN_LIGHT") or "sun"
         req = f"name: '{light}', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}"
-        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/light_config --reqtype gz.msgs.Light {GZ_REPLY} --req \"{req}\"".strip()
+        cmd = f'{self.exec_prefix} gz service -s /world/{self.world_name}/light_config --reqtype gz.msgs.Light {GZ_REPLY} --req "{req}"'.strip()
 
         rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
         latency = (time.perf_counter() - t0) * 1000.0
@@ -345,7 +365,7 @@ class HarmonicBridge(GazeboBridge):
     async def reset(self, mode: str = "world") -> BridgeResult:
         t0 = time.perf_counter()
         req = "reset: {all: true}" if mode == "world" else "reset: {model_only: true}"
-        cmd = f"{self.exec_prefix} gz service -s /world/{self.world_name}/control --reqtype gz.msgs.WorldControl {GZ_REPLY} --req \"{req}\"".strip()
+        cmd = f'{self.exec_prefix} gz service -s /world/{self.world_name}/control --reqtype gz.msgs.WorldControl {GZ_REPLY} --req "{req}"'.strip()
 
         rc, out, err = await _run_command(cmd, GZ_CMD_TIMEOUT_S)
         latency = (time.perf_counter() - t0) * 1000.0
@@ -361,7 +381,9 @@ class HarmonicBridge(GazeboBridge):
             data={"mode": mode, "reset_ms": latency},
         )
 
-    async def apply_perturbation(self, velocity_bias: Pose2D, duration_s: float = 1.0) -> BridgeResult:
+    async def apply_perturbation(
+        self, velocity_bias: Pose2D, duration_s: float = 1.0
+    ) -> BridgeResult:
         t0 = time.perf_counter()
         cmd = (
             f"{self.exec_prefix} ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "
@@ -410,7 +432,7 @@ class ClassicBridge(GazeboBridge):
             f"{{name: '{name}', xml: '{sdf_data.replace(chr(10), ' ')}', "
             f"initial_pose: {{position: {{x: {pose.x}, y: {pose.y}, z: 0.35}}}}}}"
         )
-        cmd = f"{self.exec_prefix} ros2 service call /spawn_entity gazebo_msgs/srv/SpawnEntity \"{req}\"".strip()
+        cmd = f'{self.exec_prefix} ros2 service call /spawn_entity gazebo_msgs/srv/SpawnEntity "{req}"'.strip()
         rc, out, err = await _run_command(cmd)
         latency = (time.perf_counter() - t0) * 1000.0
         if rc == 0:
@@ -423,17 +445,24 @@ class ClassicBridge(GazeboBridge):
             stdout=out,
             stderr=err,
             latency_ms=latency,
-            message=f"Spawned {name} in Gazebo Classic" if rc == 0 else f"Spawn failed: {err or out}",
+            message=f"Spawned {name} in Gazebo Classic"
+            if rc == 0
+            else f"Spawn failed: {err or out}",
             data={"entity_name": name, "model_name": model_name, "pose": pose.model_dump()},
         )
 
     async def set_light(self, luminance: float, light_name: Optional[str] = None) -> BridgeResult:
         t0 = time.perf_counter()
         if not (0.0 <= luminance <= 1.0):
-            return BridgeResult(ok=False, backend="classic", tool="set_ambient_lighting", message="Luminance must be in [0, 1]")
+            return BridgeResult(
+                ok=False,
+                backend="classic",
+                tool="set_ambient_lighting",
+                message="Luminance must be in [0, 1]",
+            )
         light = light_name or os.environ.get("LANG2SIM_SUN_LIGHT") or "sun"
         req = f"{{light_name: '{light}', diffuse: {{r: {luminance:.2f}, g: {luminance:.2f}, b: {luminance:.2f}, a: 1.0}}}}"
-        cmd = f"{self.exec_prefix} ros2 service call /set_light_properties gazebo_msgs/srv/SetLightProperties \"{req}\"".strip()
+        cmd = f'{self.exec_prefix} ros2 service call /set_light_properties gazebo_msgs/srv/SetLightProperties "{req}"'.strip()
         rc, out, err = await _run_command(cmd)
         latency = (time.perf_counter() - t0) * 1000.0
         self.current_luminance = luminance
@@ -466,7 +495,9 @@ class ClassicBridge(GazeboBridge):
             data={"mode": mode, "reset_ms": latency},
         )
 
-    async def apply_perturbation(self, velocity_bias: Pose2D, duration_s: float = 1.0) -> BridgeResult:
+    async def apply_perturbation(
+        self, velocity_bias: Pose2D, duration_s: float = 1.0
+    ) -> BridgeResult:
         t0 = time.perf_counter()
         cmd = (
             f"{self.exec_prefix} ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist "

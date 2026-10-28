@@ -61,13 +61,17 @@ class SceneCatalog:
         """List all physical object blueprints in the catalog."""
         return list(self._data.get("models", {}).keys())
 
-    def get_model_spec(self, model_id: str, object_id: str, pose: Optional[Pose2D] = None) -> ObjectSpec:
+    def get_model_spec(
+        self, model_id: str, object_id: str, pose: Optional[Pose2D] = None
+    ) -> ObjectSpec:
         """
         Builds a typed ObjectSpec from catalog blueprints, ensuring exact physical dimensions and mass.
         """
         models = self._data.get("models", {})
         if model_id not in models:
-            raise KeyError(f"Model '{model_id}' not found in catalog. Available: {self.list_models()}")
+            raise KeyError(
+                f"Model '{model_id}' not found in catalog. Available: {self.list_models()}"
+            )
         m = models[model_id]
         dims = m["dimensions"]
         return ObjectSpec(

@@ -32,7 +32,7 @@ def test_read_map_matches_the_scorer(fixture):
     m = db.read_map(FIXTURES / fixture)
     cells = base64.b64decode(m["cells_b64"])
     assert len(cells) == m["width"] * m["height"]
-    grid = OccupancyGrid.from_yaml(FIXTURES / fixture / "map.yaml")      # tb3_world's PGM has a comment
+    grid = OccupancyGrid.from_yaml(FIXTURES / fixture / "map.yaml")  # tb3_world's PGM has a comment
     assert grid.occupied.shape == (m["height"], m["width"])
     assert sum(1 for c in cells if c == 1) == int(grid.occupied.sum())
     assert m["resolution"] == grid.resolution and tuple(m["origin"]) == grid.origin
@@ -81,8 +81,12 @@ def test_dashboard_routes_on_the_control_api(run_dir, monkeypatch):
     monkeypatch.setenv("L2S_PROJECTS_DIR", str(run_dir.parents[2]))
     sim = FakeSim()
     app = create_app(sim, use_ros=False)
-    req = SimStartRequest(run_dir=str(run_dir), world_sdf_path=str(run_dir / "world.sdf"),
-                          map_yaml_path=str(run_dir / "map.yaml"), initial_pose=Pose2D(x=-2.5, y=-1.5))
+    req = SimStartRequest(
+        run_dir=str(run_dir),
+        world_sdf_path=str(run_dir / "world.sdf"),
+        map_yaml_path=str(run_dir / "map.yaml"),
+        initial_pose=Pose2D(x=-2.5, y=-1.5),
+    )
     try:
         with TestClient(app) as c:
             page = c.get("/dashboard")
@@ -95,8 +99,11 @@ def test_dashboard_routes_on_the_control_api(run_dir, monkeypatch):
             assert info["project_path"] == "empty_room/runs/001" and not info["has_report"]
             assert c.get("/v1/run/map").json()["width"] == 160
             assert c.get("/v1/run/report").status_code == 404
-            (run_dir / "benchmark_report.json").write_text(json.dumps({"runs": {"nominal": {"nqi": 80.0}},
-                                                                        "generated_at": "2026-10-27T00:00:00Z"}))
+            (run_dir / "benchmark_report.json").write_text(
+                json.dumps(
+                    {"runs": {"nominal": {"nqi": 80.0}}, "generated_at": "2026-10-27T00:00:00Z"}
+                )
+            )
             assert c.get("/v1/run").json()["has_report"]
             assert c.get("/v1/run/report").json()["runs"]["nominal"]["nqi"] == 80.0
             assert c.get("/v1/run/trajectories").json() == {"runs": {}}

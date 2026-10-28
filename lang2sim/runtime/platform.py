@@ -31,7 +31,7 @@ class DockerInfo:
     operating_system: Optional[str] = None  # "Docker Desktop", "Ubuntu 24.04 LTS", ...
     arch: Arch = "unknown"
     runtimes: List[str] = field(default_factory=list)
-    mem_total_mb: Optional[int] = None   # memory the daemon's VM/host gives containers
+    mem_total_mb: Optional[int] = None  # memory the daemon's VM/host gives containers
     cpus: Optional[int] = None
     error: Optional[str] = None
 
@@ -65,6 +65,7 @@ class HostPlatform:
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
+
 
 def normalize_arch(machine: str) -> Arch:
     return _ARCH_ALIASES.get(machine.lower(), "unknown")  # type: ignore[return-value]
@@ -105,13 +106,19 @@ def parse_docker_info(info_json: str, cli_path: Optional[str] = None) -> DockerI
 # Probes
 # ---------------------------------------------------------------------------
 
+
 def detect_docker(docker: str = "docker", timeout: float = 10.0) -> DockerInfo:
     cli = shutil.which(docker)
     if not cli:
         return DockerInfo(error="docker CLI not found on PATH")
     try:
-        out = subprocess.run([cli, "info", "--format", "{{json .}}"],
-                             capture_output=True, text=True, timeout=timeout, check=False)
+        out = subprocess.run(
+            [cli, "info", "--format", "{{json .}}"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
     except subprocess.TimeoutExpired:
         return DockerInfo(cli_path=cli, error="`docker info` timed out (daemon starting?)")
     except OSError as e:
@@ -123,10 +130,16 @@ def detect_docker(docker: str = "docker", timeout: float = 10.0) -> DockerInfo:
 
 
 def detect(docker: str = "docker", probe_docker: bool = True) -> HostPlatform:
-    host_os = classify_os(_platform.system(), _platform.release(),
-                          wsl_interop=os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop"))
-    env = {k: os.environ[k] for k in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR")
-           if os.environ.get(k)}
+    host_os = classify_os(
+        _platform.system(),
+        _platform.release(),
+        wsl_interop=os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop"),
+    )
+    env = {
+        k: os.environ[k]
+        for k in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR")
+        if os.environ.get(k)
+    }
     return HostPlatform(
         os=host_os,
         arch=normalize_arch(_platform.machine()),

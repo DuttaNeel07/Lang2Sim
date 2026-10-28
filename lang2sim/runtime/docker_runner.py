@@ -50,7 +50,7 @@ class RunOptions:
     plan: DisplayPlan
     projects_dir: Path
     catalog_dir: Optional[Path] = None
-    src_dir: Optional[Path] = None          # dev: bind-mount the repo over the baked-in package
+    src_dir: Optional[Path] = None  # dev: bind-mount the repo over the baked-in package
     host_uid: Optional[int] = None
     host_gid: Optional[int] = None
     api_port: int = CONTAINER_API_PORT
@@ -67,6 +67,7 @@ class RunOptions:
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------
+
 
 def image_for(base_image: str, plan: DisplayPlan) -> str:
     """Pick the `-vnc` tag variant when the plan needs it.
@@ -90,8 +91,7 @@ def host_to_container_path(host_path: Path, projects_dir: Path) -> str:
 def build_run_args(opts: RunOptions) -> List[str]:
     """argv after `docker` for starting the sim container (detached)."""
     plan = opts.plan
-    a: List[str] = ["run", "-d", "--name", opts.name, "--label", LABEL,
-                    "--shm-size", opts.shm_size]
+    a: List[str] = ["run", "-d", "--name", opts.name, "--label", LABEL, "--shm-size", opts.shm_size]
 
     def env(k: str, v: object) -> None:
         a.extend(["-e", f"{k}={v}"])
@@ -156,10 +156,14 @@ def build_run_args(opts: RunOptions) -> List[str]:
     return a
 
 
-def default_run_options(plan: DisplayPlan, *, image: Optional[str] = None,
-                        project_src: Optional[Path] = None,
-                        host_env: Optional[Dict[str, str]] = None,
-                        has_dxg: bool = False) -> RunOptions:
+def default_run_options(
+    plan: DisplayPlan,
+    *,
+    image: Optional[str] = None,
+    project_src: Optional[Path] = None,
+    host_env: Optional[Dict[str, str]] = None,
+    has_dxg: bool = False,
+) -> RunOptions:
     """RunOptions from core.config for this user (paths, ports, uid)."""
     projects = cfg.get_projects_dir()
     catalog = cfg.get_catalog_dir()
@@ -193,8 +197,12 @@ def allow_local_x11_clients() -> bool:
     if not os.environ.get("DISPLAY") or not shutil.which("xhost"):
         return False
     try:
-        subprocess.run(["xhost", f"+SI:localuser:{getpass.getuser()}"],
-                       capture_output=True, timeout=5, check=False)
+        subprocess.run(
+            ["xhost", f"+SI:localuser:{getpass.getuser()}"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError):
         return False
     return True
@@ -204,16 +212,22 @@ def allow_local_x11_clients() -> bool:
 # Docker CLI wrapper
 # ---------------------------------------------------------------------------
 
+
 class DockerRunner:
     def __init__(self, docker: str = "docker", run: RunFn = subprocess.run):
         self.docker = docker
         self._run = run
 
-    def _call(self, args: Sequence[str], check: bool = True, timeout: Optional[float] = 60,
-              ) -> "subprocess.CompletedProcess[str]":
+    def _call(
+        self,
+        args: Sequence[str],
+        check: bool = True,
+        timeout: Optional[float] = 60,
+    ) -> "subprocess.CompletedProcess[str]":
         try:
-            cp = self._run([self.docker, *args], capture_output=True, text=True,
-                           timeout=timeout, check=False)
+            cp = self._run(
+                [self.docker, *args], capture_output=True, text=True, timeout=timeout, check=False
+            )
         except FileNotFoundError as e:
             raise DockerError("docker CLI not found") from e
         except subprocess.TimeoutExpired as e:
@@ -274,9 +288,13 @@ class DockerRunner:
         cp = self._call(["logs", "--tail", str(tail), name], check=False)
         return (cp.stdout or "") + (cp.stderr or "")
 
-    def exec(self, cmd: Sequence[str], name: str = CONTAINER_NAME,
-             timeout: Optional[float] = 60, user: str = SIM_USER,
-             ) -> "subprocess.CompletedProcess[str]":
+    def exec(
+        self,
+        cmd: Sequence[str],
+        name: str = CONTAINER_NAME,
+        timeout: Optional[float] = 60,
+        user: str = SIM_USER,
+    ) -> "subprocess.CompletedProcess[str]":
         """Run a command in the container as the sim user.
 
         Must match the user the sim runs as: ROS 2's default (Fast DDS) shared

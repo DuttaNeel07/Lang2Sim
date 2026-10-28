@@ -73,7 +73,10 @@ def sidebar_fields(live: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         return {"sim_state": "No simulation"}
     pose = live.get("pose")
     if pose is None:
-        return {"sim_state": "Starting", "sim_time": _fmt_sim_time(float(live.get("sim_time") or 0.0))}
+        return {
+            "sim_state": "Starting",
+            "sim_time": _fmt_sim_time(float(live.get("sim_time") or 0.0)),
+        }
     clearance = live.get("obstacle_clearance_m")
     return {
         "sim_state": "Active (recording)" if live.get("recording") else "Active",
@@ -91,7 +94,10 @@ def sidebar_fields(live: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 def agent_view(live: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """query_robot_telemetry() result (architecture §3.5: speed, distance to goal, bumper forces)."""
     if live is None:
-        return {"status": "unavailable", "reason": "no simulation running (control API not reachable)"}
+        return {
+            "status": "unavailable",
+            "reason": "no simulation running (control API not reachable)",
+        }
     pose = live.get("pose") or {}
     return {
         "status": "ok",

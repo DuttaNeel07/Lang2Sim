@@ -109,7 +109,9 @@ class OccupancyGrid:
 
         img = np.asarray(Image.open(image_path).convert("L"), dtype=float)
         p = img / 255.0 if negate else (255.0 - img) / 255.0
-        return cls(occupied=p > occ_thresh, resolution=resolution, origin=(origin_vals[0], origin_vals[1]))
+        return cls(
+            occupied=p > occ_thresh, resolution=resolution, origin=(origin_vals[0], origin_vals[1])
+        )
 
     # world <-> grid (row, col)
     def world_to_cell(self, x: float, y: float) -> tuple[int, int]:
@@ -153,7 +155,9 @@ def path_length(traj: Trajectory) -> float:
     return float(np.sum(np.hypot(d[:, 0], d[:, 1])))
 
 
-def _astar_length(grid: np.ndarray, start: tuple[int, int], goal: tuple[int, int], res: float) -> Optional[float]:
+def _astar_length(
+    grid: np.ndarray, start: tuple[int, int], goal: tuple[int, int], res: float
+) -> Optional[float]:
     """8-connected A* on a boolean blocked-grid; returns path length in meters or None."""
     h, w = grid.shape
     if not (0 <= start[0] < h and 0 <= start[1] < w and 0 <= goal[0] < h and 0 <= goal[1] < w):
@@ -161,8 +165,16 @@ def _astar_length(grid: np.ndarray, start: tuple[int, int], goal: tuple[int, int
     if grid[start] or grid[goal]:
         return None
     sq2 = math.sqrt(2.0)
-    moves = [(-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
-             (-1, -1, sq2), (-1, 1, sq2), (1, -1, sq2), (1, 1, sq2)]
+    moves = [
+        (-1, 0, 1.0),
+        (1, 0, 1.0),
+        (0, -1, 1.0),
+        (0, 1, 1.0),
+        (-1, -1, sq2),
+        (-1, 1, sq2),
+        (1, -1, sq2),
+        (1, 1, sq2),
+    ]
 
     def heur(r: int, c: int) -> float:  # octile distance (admissible)
         dr, dc = abs(r - goal[0]), abs(c - goal[1])
@@ -314,7 +326,7 @@ def clearance_series(
         o = obs[near]
         c, s = math.cos(th), math.sin(th)
         dx, dy = o[:, 0] - px, o[:, 1] - py
-        lx, ly = c * dx + s * dy, -s * dx + c * dy           # obstacle in the robot frame
+        lx, ly = c * dx + s * dy, -s * dx + c * dy  # obstacle in the robot frame
         ex = np.maximum(np.abs(lx - cx) - hx, 0.0)
         ey = np.maximum(np.abs(ly - cy) - hy, 0.0)
         out[i] = float(np.min(np.hypot(ex, ey) - o[:, 2]))
@@ -354,7 +366,10 @@ def min_clearance(
     best = math.inf
     obs = _normalize_obstacles(obstacles)
     if obs.size:
-        d = np.hypot(pts[:, None, 0] - obs[None, :, 0], pts[:, None, 1] - obs[None, :, 1]) - obs[None, :, 2]
+        d = (
+            np.hypot(pts[:, None, 0] - obs[None, :, 0], pts[:, None, 1] - obs[None, :, 1])
+            - obs[None, :, 2]
+        )
         best = min(best, float(d.min()))
     if occupancy is not None:
         best = min(best, _grid_clearance(pts, occupancy))
@@ -467,7 +482,9 @@ def score_trajectory(
     }
 
 
-def _clearance_source(obstacles: Optional[Iterable[Any]], occupancy: Optional[OccupancyGrid]) -> str:
+def _clearance_source(
+    obstacles: Optional[Iterable[Any]], occupancy: Optional[OccupancyGrid]
+) -> str:
     has_obs = _normalize_obstacles(obstacles).size > 0
     if has_obs and occupancy is not None:
         return "obstacles+map"
@@ -507,7 +524,9 @@ def build_report(
     if adversarial is not None:
         runs["adversarial"] = dict(adversarial)
         deltas = {k: _pct(adversarial.get(src), nominal.get(src)) for k, src in _DELTA_KEYS.items()}
-        deltas["C_force_delta"] = int(adversarial.get("C_force", 0)) - int(nominal.get("C_force", 0))
+        deltas["C_force_delta"] = int(adversarial.get("C_force", 0)) - int(
+            nominal.get("C_force", 0)
+        )
     return {
         "schema_version": REPORT_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -517,15 +536,20 @@ def build_report(
     }
 
 
-def default_report_path(project_name: str = "active_project", timestamp: Optional[str] = None) -> Path:
+def default_report_path(
+    project_name: str = "active_project", timestamp: Optional[str] = None
+) -> Path:
     run_dir = os.environ.get("LANG2SIM_RUN_DIR")
     if run_dir:
         return Path(run_dir).expanduser() / "benchmark_report.json"
     try:
         from lang2sim.core.config import get_run_dir
+
         return get_run_dir(project_name=project_name, timestamp=timestamp) / "benchmark_report.json"
     except Exception:
-        base = os.environ.get("LANG2SIM_PROJECT_DIR") or str(Path.home() / ".lang2sim" / "projects" / project_name)
+        base = os.environ.get("LANG2SIM_PROJECT_DIR") or str(
+            Path.home() / ".lang2sim" / "projects" / project_name
+        )
         return Path(base).expanduser() / "benchmark_report.json"
 
 
@@ -567,7 +591,9 @@ def render_comparison_table(report: Mapping[str, Any]):
     adv = runs.get("adversarial")
     deltas = report.get("deltas") or {}
 
-    table = Table(title="Lang2Sim Navigation Benchmark (NQI)", header_style="bold cyan", title_style="bold")
+    table = Table(
+        title="Lang2Sim Navigation Benchmark (NQI)", header_style="bold cyan", title_style="bold"
+    )
     table.add_column("Evaluation Metric", style="bold")
     table.add_column("Nominal Run", justify="right")
     if adv is not None:
@@ -583,44 +609,85 @@ def render_comparison_table(report: Mapping[str, Any]):
     a = adv or {}
     mission_delta = ""
     if adv is not None:
-        mission_delta = "Baseline maintained" if a.get("S_mission") == nom.get("S_mission") else "[red]Changed[/]"
+        mission_delta = (
+            "Baseline maintained"
+            if a.get("S_mission") == nom.get("S_mission")
+            else "[red]Changed[/]"
+        )
+
     def mission(run: Mapping[str, Any]) -> str:
         if run.get("nav_status") == "interrupted":
             return "[yellow]Interrupted (partial)[/]"
         return _mission_str(run.get("S_mission"))
 
-    row("Mission Completion Status", mission(nom), mission(a) if adv is not None else "", mission_delta)
-    row("Mission Duration (T)", _fmt(nom.get("duration_s"), " s", 1), _fmt(a.get("duration_s"), " s", 1),
-        _delta_str(deltas.get("duration_pct"), False))
-    row("Traversed Path Length (L)", _fmt(nom.get("path_length_m"), " m"), _fmt(a.get("path_length_m"), " m"),
-        _delta_str(deltas.get("path_length_pct"), False))
-    row("Path Traversal Efficiency (E_p)", _fmt(nom.get("E_p")), _fmt(a.get("E_p")),
-        _delta_str(deltas.get("E_p_pct"), True))
-    row("Trajectory Smoothness (S_tau)", _fmt(nom.get("S_tau")), _fmt(a.get("S_tau")),
-        _delta_str(deltas.get("S_tau_pct"), False))
-    row("Minimum Obstacle Margin (C_min)", _fmt(nom.get("C_min_m"), " m"), _fmt(a.get("C_min_m"), " m"),
-        _delta_str(deltas.get("C_min_pct"), True))
+    row(
+        "Mission Completion Status",
+        mission(nom),
+        mission(a) if adv is not None else "",
+        mission_delta,
+    )
+    row(
+        "Mission Duration (T)",
+        _fmt(nom.get("duration_s"), " s", 1),
+        _fmt(a.get("duration_s"), " s", 1),
+        _delta_str(deltas.get("duration_pct"), False),
+    )
+    row(
+        "Traversed Path Length (L)",
+        _fmt(nom.get("path_length_m"), " m"),
+        _fmt(a.get("path_length_m"), " m"),
+        _delta_str(deltas.get("path_length_pct"), False),
+    )
+    row(
+        "Path Traversal Efficiency (E_p)",
+        _fmt(nom.get("E_p")),
+        _fmt(a.get("E_p")),
+        _delta_str(deltas.get("E_p_pct"), True),
+    )
+    row(
+        "Trajectory Smoothness (S_tau)",
+        _fmt(nom.get("S_tau")),
+        _fmt(a.get("S_tau")),
+        _delta_str(deltas.get("S_tau_pct"), False),
+    )
+    row(
+        "Minimum Obstacle Margin (C_min)",
+        _fmt(nom.get("C_min_m"), " m"),
+        _fmt(a.get("C_min_m"), " m"),
+        _delta_str(deltas.get("C_min_pct"), True),
+    )
     c_delta = deltas.get("C_force_delta")
-    row("Physical Collision Count (C_force)", str(nom.get("C_force", 0)), str(a.get("C_force", "")),
-        "" if c_delta is None else ("[green]0[/]" if c_delta == 0 else f"[red]{c_delta:+d}[/]"))
-    row("Navigation Quality Index (NQI)", f"[bold]{_fmt(nom.get('nqi'), ' / 100', 1)}[/]",
+    row(
+        "Physical Collision Count (C_force)",
+        str(nom.get("C_force", 0)),
+        str(a.get("C_force", "")),
+        "" if c_delta is None else ("[green]0[/]" if c_delta == 0 else f"[red]{c_delta:+d}[/]"),
+    )
+    row(
+        "Navigation Quality Index (NQI)",
+        f"[bold]{_fmt(nom.get('nqi'), ' / 100', 1)}[/]",
         f"[bold]{_fmt(a.get('nqi'), ' / 100', 1)}[/]" if adv is not None else "",
-        _delta_str(deltas.get("nqi_pct"), True))
+        _delta_str(deltas.get("nqi_pct"), True),
+    )
 
     if nom.get("ate_mean_m") is not None or (adv and adv.get("ate_mean_m") is not None):
         # Recorded runs (telemetry/benchmark.py) carry AMCL-vs-ground-truth error in these columns;
         # synthetic/SLAM runs carry SLAM drift. Label the row for what it actually measures.
-        localization = "localization_error_mean_m" in nom or (adv is not None and "localization_error_mean_m" in adv)
+        localization = "localization_error_mean_m" in nom or (
+            adv is not None and "localization_error_mean_m" in adv
+        )
         row(
             "Localization Error (AMCL vs truth)" if localization else "SLAM Drift (ATE Mean)",
             _fmt(nom.get("ate_mean_m"), " m"),
             _fmt(a.get("ate_mean_m"), " m"),
             _delta_str(deltas.get("ate_mean_pct"), False),
         )
+
         def _health_str(div: Any) -> str:
             if div is None:
                 return "n/a"
             return "[red]Diverged (>0.35 m)[/]" if div else "[green]Healthy (≤0.35 m)[/]"
+
         row(
             "Localization Health" if localization else "SLAM Tracking Health",
             _health_str(nom.get("slam_diverged")),
@@ -653,7 +720,9 @@ def demo_trajectories(adversarial_collisions: int = 0, seed: int = 7) -> dict[st
     y_a += rng.normal(0.0, 0.005, size=y_a.shape)
     y_a[0] = 0.0
     y_a[-1] = 0.0
-    adversarial = Trajectory(t=t_a, x=x_a, y=y_a, goal=goal, collisions=adversarial_collisions, label="adversarial")
+    adversarial = Trajectory(
+        t=t_a, x=x_a, y=y_a, goal=goal, collisions=adversarial_collisions, label="adversarial"
+    )
 
     static_obstacles = [(5.0, 1.6, 0.3)]  # rack beside the corridor
     return {
@@ -667,7 +736,9 @@ def demo_trajectories(adversarial_collisions: int = 0, seed: int = 7) -> dict[st
 
 # --------------------------------------------------------------------------- CLI
 def _load_traj(path: str) -> Trajectory:
-    return Trajectory.from_csv(path) if path.lower().endswith(".csv") else Trajectory.from_json(path)
+    return (
+        Trajectory.from_csv(path) if path.lower().endswith(".csv") else Trajectory.from_json(path)
+    )
 
 
 def _load_obstacles(path: Optional[str]) -> Optional[list[Any]]:
@@ -678,17 +749,31 @@ def _load_obstacles(path: Optional[str]) -> Optional[list[Any]]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(prog="python -m lang2sim.telemetry.nqi_scorer", description=__doc__.splitlines()[0])
-    ap.add_argument("--nominal", help="nominal run trajectory (.json from ros_subscribers --record, or .csv)")
+    ap = argparse.ArgumentParser(
+        prog="python -m lang2sim.telemetry.nqi_scorer", description=__doc__.splitlines()[0]
+    )
+    ap.add_argument(
+        "--nominal", help="nominal run trajectory (.json from ros_subscribers --record, or .csv)"
+    )
     ap.add_argument("--adversarial", help="adversarial run trajectory (.json or .csv)")
-    ap.add_argument("--goal", nargs=2, type=float, metavar=("X", "Y"), help="mission goal (overrides file)")
-    ap.add_argument("--obstacles", help="JSON file: [[x, y, r], ...] or {\"obstacles\": [...]} ")
+    ap.add_argument(
+        "--goal", nargs=2, type=float, metavar=("X", "Y"), help="mission goal (overrides file)"
+    )
+    ap.add_argument("--obstacles", help='JSON file: [[x, y, r], ...] or {"obstacles": [...]} ')
     ap.add_argument("--map", help="Nav2 map.yaml (enables A* optimal length and map clearance)")
     ap.add_argument("--l-optimal", type=float, help="override optimal path length (m)")
-    ap.add_argument("--out", help="report path (default: $LANG2SIM_PROJECT_DIR/benchmark_report.json)")
-    ap.add_argument("--demo", action="store_true", help="score synthetic nominal vs adversarial runs")
-    ap.add_argument("--demo-collisions", type=int, default=0, help="collisions injected in demo adversarial run")
-    ap.add_argument("--save-demo-trajectories", metavar="DIR", help="also write demo trajectories as JSON")
+    ap.add_argument(
+        "--out", help="report path (default: $LANG2SIM_PROJECT_DIR/benchmark_report.json)"
+    )
+    ap.add_argument(
+        "--demo", action="store_true", help="score synthetic nominal vs adversarial runs"
+    )
+    ap.add_argument(
+        "--demo-collisions", type=int, default=0, help="collisions injected in demo adversarial run"
+    )
+    ap.add_argument(
+        "--save-demo-trajectories", metavar="DIR", help="also write demo trajectories as JSON"
+    )
     ap.add_argument("--quiet", action="store_true", help="don't print the Rich table")
     args = ap.parse_args(argv)
 
@@ -702,14 +787,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             out_dir = Path(args.save_demo_trajectories)
             d["nominal"].to_json(out_dir / "nominal.json")
             d["adversarial"].to_json(out_dir / "adversarial.json")
-            (out_dir / "obstacles.json").write_text(json.dumps({"obstacles": d["obstacles_adversarial"]}), encoding="utf-8")
+            (out_dir / "obstacles.json").write_text(
+                json.dumps({"obstacles": d["obstacles_adversarial"]}), encoding="utf-8"
+            )
         nom = score_trajectory(d["nominal"], obstacles=d["obstacles_nominal"], params=params)
-        adv = score_trajectory(d["adversarial"], obstacles=d["obstacles_adversarial"], params=params)
+        adv = score_trajectory(
+            d["adversarial"], obstacles=d["obstacles_adversarial"], params=params
+        )
     else:
         if not args.nominal:
             ap.error("--nominal is required unless --demo is used")
         obstacles = _load_obstacles(args.obstacles)
-        common = dict(goal=goal, obstacles=obstacles, occupancy=occupancy, l_optimal=args.l_optimal, params=params)
+        common = dict(
+            goal=goal,
+            obstacles=obstacles,
+            occupancy=occupancy,
+            l_optimal=args.l_optimal,
+            params=params,
+        )
         nom = score_trajectory(_load_traj(args.nominal), **common)  # type: ignore[arg-type]
         adv = score_trajectory(_load_traj(args.adversarial), **common) if args.adversarial else None  # type: ignore[arg-type]
 

@@ -17,8 +17,16 @@ GLYPHS = {
     "2": ["######", "....##", "######", "##....", "##....", "######", "......", "......"],
     "s": ["......", "......", "######", "##....", "....##", "######", "......", "......"],
     "i": ["##", "..", "##", "##", "##", "##", "..", ".."],
-    "m": ["..........", "..........", "##########", "##..##..##",
-          "##..##..##", "##..##..##", "..........", ".........."],
+    "m": [
+        "..........",
+        "..........",
+        "##########",
+        "##..##..##",
+        "##..##..##",
+        "##..##..##",
+        "..........",
+        "..........",
+    ],
 }
 
 # Left-to-right fade: dark gray -> white (one shade per letter)
@@ -45,8 +53,7 @@ def build_logo(word: str = "lang2sim", gap: int = 1) -> str:
         for idx, ch in enumerate(word):
             g = GLYPHS[ch]
             seg = "".join(
-                HALF[(int(g[r][x] == "#"), int(g[r + 1][x] == "#"))]
-                for x in range(len(g[0]))
+                HALF[(int(g[r][x] == "#"), int(g[r + 1][x] == "#"))] for x in range(len(g[0]))
             )
             line += f"[{COLORS[ch]}]{seg}[/]"
             if idx < len(word) - 1:
@@ -93,4 +100,5 @@ class LandingScreen(Screen):
     def on_prompt_card_submitted(self, message: PromptCard.Submitted) -> None:
         """When user submits a prompt, transition to WorkspaceScreen."""
         from .workspace_screen import WorkspaceScreen
+
         self.app.switch_screen(WorkspaceScreen(initial_prompt=message.value))

@@ -13,6 +13,7 @@ from lang2sim.cli.widgets.prompt_card import PromptCard
 from lang2sim.cli.widgets.telemetry_sidebar import TelemetrySidebar
 from lang2sim.agent.tools import TOOL_REGISTRY, execute_tool
 
+
 @pytest.mark.asyncio
 async def test_landing_screen_renders_and_has_focus():
     """Verify Screen 1 launches with centered logo, prompt card, and input focus."""
@@ -23,6 +24,7 @@ async def test_landing_screen_renders_and_has_focus():
         assert prompt_card is not None
         input_widget = app.screen.query_one("#landing-prompt-input")
         assert input_widget.has_focus
+
 
 @pytest.mark.asyncio
 async def test_submitting_prompt_switches_to_workspace():
@@ -38,6 +40,7 @@ async def test_submitting_prompt_switches_to_workspace():
         assert app.screen.query_one("#chat-scroll") is not None
         assert app.screen.query_one(TelemetrySidebar) is not None
 
+
 @pytest.mark.asyncio
 async def test_thought_box_collapsible():
     """Verify ThoughtBox expands and collapses properly."""
@@ -48,16 +51,17 @@ async def test_thought_box_collapsible():
         await pilot.pause()
 
         assert thought.is_collapsed is True
-        
+
         # Toggle to expand
         thought.toggle()
         assert thought.is_collapsed is False
         assert thought.query_one("#thought-body").display is True
-        
+
         # Toggle to collapse
         thought.toggle()
         assert thought.is_collapsed is True
         assert thought.query_one("#thought-body").display is False
+
 
 @pytest.mark.asyncio
 async def test_action_pill_status():
@@ -73,6 +77,7 @@ async def test_action_pill_status():
         assert pill.status == "completed"
         assert pill.duration_str == "0.5s"
 
+
 @pytest.mark.asyncio
 async def test_telemetry_sidebar_updates():
     """Verify TelemetrySidebar reflects live coordinates, velocities, and collisions."""
@@ -86,6 +91,7 @@ async def test_telemetry_sidebar_updates():
         assert sidebar.data.robot_x == 7.50
         assert sidebar.data.robot_y == 3.00
         assert sidebar.data.collision_count == 1
+
 
 def test_tool_registry_has_all_14_tools():
     """Verify all 14 tools are registered and return valid typed payloads."""
@@ -124,7 +130,11 @@ def test_tool_registry_has_all_14_tools():
         )
         assert isinstance(res, dict)
         # query_robot_telemetry reads the live control API: "unavailable" when no sim is running.
-        assert res.get("status") in ["success", "healthy", "repaired", "ok", "unavailable"] or "x" in res
+        assert (
+            res.get("status") in ["success", "healthy", "repaired", "ok", "unavailable"]
+            or "x" in res
+        )
+
 
 @pytest.mark.asyncio
 async def test_command_palette_modal_open_and_filter():
@@ -196,8 +206,10 @@ async def test_workspace_screen_conversation_flow():
             for word in ["Gazebo ", "Harmonic ", "is ", "running."]:
                 yield word
 
-        with patch.object(workspace.client, "is_configured", return_value=True), \
-             patch.object(workspace.client, "stream_chat", side_effect=mock_stream):
+        with (
+            patch.object(workspace.client, "is_configured", return_value=True),
+            patch.object(workspace.client, "stream_chat", side_effect=mock_stream),
+        ):
             workspace.handle_user_prompt("What is running?")
             await pilot.pause()
             for _ in range(10):
@@ -254,6 +266,7 @@ async def test_sessions_modal_flow():
     from textual.widgets import Input
 
     import uuid
+
     unique_tag = str(uuid.uuid4())[:6]
     title1 = f"Test SLAM Exploration {unique_tag}"
     title2 = f"Investigate TF discontinuity {unique_tag}"
@@ -285,7 +298,6 @@ async def test_sessions_modal_flow():
 
         assert len(modal.filtered_sessions) == 1
         assert modal.filtered_sessions[0].title == title1
-
 
         # Select with enter
         await pilot.press("enter")
@@ -320,6 +332,3 @@ async def test_command_palette_switch_session_enter_opens_sessions_modal():
 
         # SessionsModal should now be displayed
         assert isinstance(app.screen, SessionsModal)
-
-
-

@@ -130,7 +130,11 @@ class Trajectory:
 
     @property
     def ate_rmse(self) -> float:
-        return float(np.sqrt(np.mean(self.ate ** 2))) if self.ate is not None and len(self.ate) > 0 else 0.0
+        return (
+            float(np.sqrt(np.mean(self.ate**2)))
+            if self.ate is not None and len(self.ate) > 0
+            else 0.0
+        )
 
     @property
     def n(self) -> int:

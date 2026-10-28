@@ -86,9 +86,7 @@ class TestCoreModels(unittest.TestCase):
     def test_complete_sim_spec(self):
         """Test a complete SimSpec containing environment, objects, and mission."""
         spec = SimSpec(
-            environment=EnvironmentSpec(
-                room_dimensions=Vector3D(x=14.0, y=10.0, z=4.0)
-            ),
+            environment=EnvironmentSpec(room_dimensions=Vector3D(x=14.0, y=10.0, z=4.0)),
             objects=[
                 ObjectSpec(
                     id="rack_1",

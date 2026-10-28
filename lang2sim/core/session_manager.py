@@ -26,7 +26,9 @@ class ChatMessage(BaseModel):
 
 class ChatSession(BaseModel):
     id: str = Field(
-        default_factory=lambda: datetime.now().strftime("session_%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:4]
+        default_factory=lambda: (
+            datetime.now().strftime("session_%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:4]
+        )
     )
     title: str = "New Session"
     created_at: float = Field(default_factory=time.time)
@@ -119,9 +121,7 @@ class SessionManager:
         sessions.sort(key=lambda s: (not s.pinned, -s.updated_at))
         return sessions
 
-    def group_sessions_by_date(
-        self, sessions: List[ChatSession]
-    ) -> Dict[str, List[ChatSession]]:
+    def group_sessions_by_date(self, sessions: List[ChatSession]) -> Dict[str, List[ChatSession]]:
         """
         Groups sessions chronologically matching OpenCode:
         - "Today"

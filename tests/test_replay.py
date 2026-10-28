@@ -35,7 +35,11 @@ def test_clock_walks_nominal_pause_adversarial_then_holds(clock):
     i, k, playing = clock.position(at(clock, 0.5))
     assert (i, playing) == (0, True) and k > 0
     span = nominal.duration / clock.speed
-    assert clock.position(at(clock, span + PAUSE_BETWEEN_RUNS_S / 2)) == (0, len(nominal.t) - 1, False)
+    assert clock.position(at(clock, span + PAUSE_BETWEEN_RUNS_S / 2)) == (
+        0,
+        len(nominal.t) - 1,
+        False,
+    )
     i, k, playing = clock.position(at(clock, span + PAUSE_BETWEEN_RUNS_S + 1))
     assert (i, playing) == (1, True)
     assert clock.position(at(clock, 10_000)) == (1, len(adversarial.t) - 1, False)
@@ -58,7 +62,9 @@ def test_crate_appears_when_it_was_dropped(clock):
     start_adv = nominal.duration / clock.speed + PAUSE_BETWEEN_RUNS_S
     drop = (adversarial.crates[0]["appear_t"] - adversarial.t[0]) / clock.speed
     assert snapshot(clock, at(clock, start_adv + drop - 0.5))["crates"] == []
-    assert [c["model"] for c in snapshot(clock, at(clock, start_adv + drop + 0.5))["crates"]] == ["wooden_crate"]
+    assert [c["model"] for c in snapshot(clock, at(clock, start_adv + drop + 0.5))["crates"]] == [
+        "wooden_crate"
+    ]
 
 
 def test_loop_restarts(clock):

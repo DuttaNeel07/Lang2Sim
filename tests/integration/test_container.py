@@ -36,8 +36,10 @@ from lang2sim.runtime.docker_runner import (
 from lang2sim.runtime.platform import detect_docker
 from lang2sim.runtime.session import FIXTURES_DIR, SimSession
 
-pytestmark = pytest.mark.skipif(os.getenv("L2S_INTEGRATION") != "1",
-                                reason="set L2S_INTEGRATION=1 to run Docker integration tests")
+pytestmark = pytest.mark.skipif(
+    os.getenv("L2S_INTEGRATION") != "1",
+    reason="set L2S_INTEGRATION=1 to run Docker integration tests",
+)
 
 IMAGE = os.getenv("L2S_TEST_IMAGE", "lang2sim-sim:dev")
 REPO = Path(__file__).resolve().parents[2]
@@ -75,9 +77,19 @@ def test_container_modes_reject_and_run(runner, tmp_path, mode):
     (bad / "map.yaml").write_text("image: map.pgm\n")
 
     plan = DisplayPlan(mode=mode, gpu="software", foxglove=(mode == "headless"))  # type: ignore[arg-type]
-    opts = RunOptions(image=IMAGE, plan=plan, projects_dir=projects, name=NAME, src_dir=REPO,
-                      host_uid=os.getuid(), host_gid=os.getgid(), api_port=_free_port(),
-                      foxglove_port=_free_port(), novnc_port=_free_port(), extra_env={"L2S_CAMERA": "0"})
+    opts = RunOptions(
+        image=IMAGE,
+        plan=plan,
+        projects_dir=projects,
+        name=NAME,
+        src_dir=REPO,
+        host_uid=os.getuid(),
+        host_gid=os.getgid(),
+        api_port=_free_port(),
+        foxglove_port=_free_port(),
+        novnc_port=_free_port(),
+        extra_env={"L2S_CAMERA": "0"},
+    )
     session = SimSession(plan, opts=opts, runner=runner)
 
     async def go():
@@ -89,15 +101,22 @@ def test_container_modes_reject_and_run(runner, tmp_path, mode):
 
             c_bad = host_to_container_path(bad, projects)
             with pytest.raises(ControlAPIError) as e:
-                await session.api.sim_start(SimStartRequest(
-                    run_dir=c_bad, world_sdf_path=f"{c_bad}/world.sdf", map_yaml_path=f"{c_bad}/map.yaml",
-                    initial_pose=Pose2D(x=0, y=0)))
+                await session.api.sim_start(
+                    SimStartRequest(
+                        run_dir=c_bad,
+                        world_sdf_path=f"{c_bad}/world.sdf",
+                        map_yaml_path=f"{c_bad}/map.yaml",
+                        initial_pose=Pose2D(x=0, y=0),
+                    )
+                )
             assert e.value.status_code == 422 and "pose" in str(e.value)
 
             st = await session.open_run(run, gui=(mode == "vnc"), rviz=(mode == "vnc"), timeout=240)
             assert st.ready
             if mode == "vnc":
-                cp = runner.exec(["bash", "-c", "pgrep -f 'gz sim -g' && pgrep -x rviz2"], name=NAME)
+                cp = runner.exec(
+                    ["bash", "-c", "pgrep -f 'gz sim -g' && pgrep -x rviz2"], name=NAME
+                )
                 assert cp.returncode == 0, "Gazebo GUI and RViz should be running in vnc mode"
             assert (await session.api.sim_stop()).status == "stopped"
         finally:
@@ -111,4 +130,6 @@ def test_container_modes_reject_and_run(runner, tmp_path, mode):
 
     log = run / "logs" / "sim.log"
     assert log.exists(), "sim.log should land in the host's project dir via the bind mount"
-    assert log.stat().st_uid == os.getuid(), "files written in the container should be owned by the host user"
+    assert log.stat().st_uid == os.getuid(), (
+        "files written in the container should be owned by the host user"
+    )

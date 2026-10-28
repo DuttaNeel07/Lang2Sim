@@ -4,5 +4,3 @@ from .command_palette_modal import CommandPaletteModal
 from .sessions_modal import SessionsModal
 
 __all__ = ["LandingScreen", "WorkspaceScreen", "CommandPaletteModal", "SessionsModal"]
-
-

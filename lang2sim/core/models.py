@@ -12,11 +12,15 @@ from pydantic import BaseModel, Field
 # 1. Spatial and Kinematic Primitives
 # ---------------------------------------------------------------------------
 
+
 class Pose2D(BaseModel):
     """2D ground-plane coordinate pose with yaw orientation."""
+
     x: float = Field(..., description="X coordinate in meters relative to world origin")
     y: float = Field(..., description="Y coordinate in meters relative to world origin")
-    yaw: float = Field(0.0, ge=-math.pi, le=math.pi, description="Yaw orientation in radians, [-pi, pi]")
+    yaw: float = Field(
+        0.0, ge=-math.pi, le=math.pi, description="Yaw orientation in radians, [-pi, pi]"
+    )
 
     @classmethod
     def from_anchor(cls, anchor: Any) -> "Pose2D":
@@ -33,6 +37,7 @@ class Pose2D(BaseModel):
 
 class Vector3D(BaseModel):
     """3D bounding dimensions in meters."""
+
     x: float = Field(..., description="Bounding size X (length) in meters")
     y: float = Field(..., description="Bounding size Y (width) in meters")
     z: float = Field(..., description="Bounding size Z (height) in meters")
@@ -42,30 +47,47 @@ class Vector3D(BaseModel):
 # 2. Environmental & Weather Specifications
 # ---------------------------------------------------------------------------
 
+
 class SkyWeatherSpec(BaseModel):
     """Procedural atmospheric sky, sunlight angle, and volumetric fog controls."""
+
     sky_enabled: bool = True
-    clouds_speed: float = Field(10.0, ge=0.0, le=50.0, description="Procedural cloud animation speed")
+    clouds_speed: float = Field(
+        10.0, ge=0.0, le=50.0, description="Procedural cloud animation speed"
+    )
     fog_enabled: bool = False
-    fog_density: float = Field(0.0, ge=0.0, le=0.5, description="Volumetric fog density (0.05 = light, 0.2 = heavy mist)")
-    sun_elevation: float = Field(0.8, ge=0.0, le=1.57, description="Solar elevation angle in radians (0.0 = sunset/dusk)")
+    fog_density: float = Field(
+        0.0, ge=0.0, le=0.5, description="Volumetric fog density (0.05 = light, 0.2 = heavy mist)"
+    )
+    sun_elevation: float = Field(
+        0.8, ge=0.0, le=1.57, description="Solar elevation angle in radians (0.0 = sunset/dusk)"
+    )
 
 
 class EnvironmentSpec(BaseModel):
     """Complete physical room and terrain parameters."""
+
     environment_type: Literal[
         "indoor_warehouse", "indoor_office", "outdoor_field", "outdoor_terrain"
     ] = "indoor_warehouse"
     room_dimensions: Vector3D = Field(..., description="Outer room/field boundaries in meters")
-    wall_height: float = Field(2.5, ge=0.0, le=10.0, description="Wall boundary height (0.0 for open outdoor fields)")
+    wall_height: float = Field(
+        2.5, ge=0.0, le=10.0, description="Wall boundary height (0.0 for open outdoor fields)"
+    )
     ambient_light_luminance: float = Field(
-        1.0, ge=0.0, le=1.0, description="Ambient light factor (1.0 = nominal, 0.15 = degraded night)"
+        1.0,
+        ge=0.0,
+        le=1.0,
+        description="Ambient light factor (1.0 = nominal, 0.15 = degraded night)",
     )
     ground_terrain: Literal[
         "concrete", "grass_soil", "dirt_mud", "asphalt_road", "uneven_heightmap", "tiles"
     ] = "concrete"
     surface_friction: float = Field(
-        0.8, ge=0.05, le=1.5, description="Surface friction coefficient (0.8 = standard, 0.15 = slippery ice/mud)"
+        0.8,
+        ge=0.05,
+        le=1.5,
+        description="Surface friction coefficient (0.8 = standard, 0.15 = slippery ice/mud)",
     )
     sky_weather: SkyWeatherSpec = Field(default_factory=SkyWeatherSpec)
 
@@ -74,10 +96,14 @@ class EnvironmentSpec(BaseModel):
 # 3. Object & Obstacle Specifications
 # ---------------------------------------------------------------------------
 
+
 class ObjectSpec(BaseModel):
     """Physical entity to be placed in the simulation world."""
+
     id: str = Field(..., description="Unique alphanumeric identifier (e.g., 'rack_1')")
-    model_name: str = Field(..., description="Asset identifier matching catalog (e.g., 'aws_warehouse_rack')")
+    model_name: str = Field(
+        ..., description="Asset identifier matching catalog (e.g., 'aws_warehouse_rack')"
+    )
     dimensions: Vector3D = Field(..., description="Bounding dimensions of the object in meters")
     pose: Pose2D = Field(..., description="2D ground plane pose")
     is_static: bool = Field(True, description="Static obstacle vs dynamically mutable entity")
@@ -88,23 +114,35 @@ class ObjectSpec(BaseModel):
 # 4. Sensor Perturbations & Noise Models
 # ---------------------------------------------------------------------------
 
+
 class CameraPerturbation(BaseModel):
     """Optical degradation filters for on-board robot camera."""
+
     enabled: bool = False
-    motion_blur_kernel: int = Field(0, ge=0, le=31, description="Blur kernel size (odd integer, 0 = off)")
-    brightness_attenuation: float = Field(1.0, ge=0.0, le=1.0, description="Illumination multiplier")
-    gaussian_noise_stddev: float = Field(0.0, ge=0.0, le=0.5, description="Additive noise standard deviation")
+    motion_blur_kernel: int = Field(
+        0, ge=0, le=31, description="Blur kernel size (odd integer, 0 = off)"
+    )
+    brightness_attenuation: float = Field(
+        1.0, ge=0.0, le=1.0, description="Illumination multiplier"
+    )
+    gaussian_noise_stddev: float = Field(
+        0.0, ge=0.0, le=0.5, description="Additive noise standard deviation"
+    )
 
 
 class LidarPerturbation(BaseModel):
     """LiDAR beam degradation filters."""
+
     enabled: bool = False
     dropout_probability: float = Field(0.0, ge=0.0, le=0.9, description="Random beam dropout rate")
-    range_noise_stddev: float = Field(0.0, ge=0.0, le=0.2, description="Gaussian noise standard deviation in meters")
+    range_noise_stddev: float = Field(
+        0.0, ge=0.0, le=0.2, description="Gaussian noise standard deviation in meters"
+    )
 
 
 class SensorNoiseSpec(BaseModel):
     """Aggregated sensor degradation models."""
+
     camera: CameraPerturbation = Field(default_factory=CameraPerturbation)
     lidar: LidarPerturbation = Field(default_factory=LidarPerturbation)
 
@@ -113,10 +151,14 @@ class SensorNoiseSpec(BaseModel):
 # 5. Dynamic Perturbations & Adversarial Triggers
 # ---------------------------------------------------------------------------
 
+
 class DynamicObstacleTrigger(BaseModel):
     """Runtime perturbation trigger dispatched via FastMCP."""
+
     trigger_type: Literal["time", "waypoint_distance", "immediate"]
-    trigger_value: float = Field(..., description="Seconds from start or distance in meters to target")
+    trigger_value: float = Field(
+        ..., description="Seconds from start or distance in meters to target"
+    )
     model_name: str = Field("wooden_crate", description="Asset identifier to spawn dynamically")
     spawn_pose: Pose2D = Field(..., description="Spawn coordinate in world reference frame")
     velocity: Optional[Pose2D] = Field(None, description="Linear and angular velocity vector")
@@ -126,16 +168,23 @@ class DynamicObstacleTrigger(BaseModel):
 # 6. Mission & Simulation Specifications
 # ---------------------------------------------------------------------------
 
+
 class MissionSpec(BaseModel):
     """Navigation task definition dispatched via Nav2 Simple Commander."""
+
     initial_pose: Pose2D = Field(..., description="Robot starting coordinate and heading")
-    waypoints: List[Pose2D] = Field(default_factory=list, description="Intermediate navigation waypoints")
+    waypoints: List[Pose2D] = Field(
+        default_factory=list, description="Intermediate navigation waypoints"
+    )
     goal_pose: Pose2D = Field(..., description="Final navigation goal pose")
-    timeout_seconds: float = Field(120.0, ge=10.0, le=600.0, description="Maximum operational allowance")
+    timeout_seconds: float = Field(
+        120.0, ge=10.0, le=600.0, description="Maximum operational allowance"
+    )
 
 
 class SimSpec(BaseModel):
     """Canonical top-level specification emitted by the supervisor agent."""
+
     spec_version: str = "2.0.0"
     environment: EnvironmentSpec
     objects: List[ObjectSpec] = Field(default_factory=list)
@@ -149,8 +198,10 @@ class SimSpec(BaseModel):
 # 7. Simulation Intermediate Representation (SIR)
 # ---------------------------------------------------------------------------
 
+
 class AisleCorridor(BaseModel):
     """Validated navigation corridor between obstacles."""
+
     corridor_id: str
     width: float = Field(..., ge=2.2, description="Aisle width in meters (must be >= 2.2m)")
     start_point: Pose2D
@@ -159,6 +210,7 @@ class AisleCorridor(BaseModel):
 
 class SimulationIR(BaseModel):
     """Validated intermediate representation graph linking entities and corridors."""
+
     spec: SimSpec
     world_sdf_path: Optional[str] = None
     map_yaml_path: Optional[str] = None
@@ -173,23 +225,30 @@ class SimulationIR(BaseModel):
 # 8. Status Models (PR #7 Aligned)
 # ---------------------------------------------------------------------------
 
+
 class NavStatus(BaseModel):
     """Navigation task state streamed via WebSocket or GET /nav/status."""
+
     is_active: bool = False
     current_task: Optional[str] = None
     distance_remaining: float = 0.0
     target_pose: Optional[Pose2D] = None
     status: Literal["idle", "navigating", "succeeded", "failed", "canceled"] = "idle"
     waypoint_index: int = Field(0, description="0-based index of the waypoint being driven to")
-    waypoints_total: int = Field(0, description="Number of poses in the current task (1 for a single goal)")
+    waypoints_total: int = Field(
+        0, description="Number of poses in the current task (1 for a single goal)"
+    )
     navigation_time: float = Field(0.0, description="Sim seconds spent on the current leg")
-    eta_seconds: Optional[float] = Field(None, description="Nav2's estimated time remaining on this leg")
+    eta_seconds: Optional[float] = Field(
+        None, description="Nav2's estimated time remaining on this leg"
+    )
     recoveries: int = Field(0, description="Nav2 recovery behaviours run on this leg")
     message: Optional[str] = Field(None, description="Why a task failed or was canceled")
 
 
 class SimStatus(BaseModel):
     """Simulation state monitor model (PR #7 and HealthMonitor aligned)."""
+
     is_running: bool = False
     sim_time: float = 0.0
     real_time_factor: float = 1.0
@@ -203,16 +262,22 @@ class SimStatus(BaseModel):
 # 9. Control API Contracts (Dev 3 Container Server & Dev 4)
 # ---------------------------------------------------------------------------
 
+
 class SimStartRequest(BaseModel):
     """Request payload sent to POST /sim/start."""
+
     run_dir: str = Field(..., description="Absolute path to active run directory inside container")
     world_sdf_path: str = Field(..., description="Path to world.sdf")
     map_yaml_path: str = Field(..., description="Path to map.yaml")
     robot_model: str = "turtlebot3_waffle"
     initial_pose: Pose2D
     use_gui: bool = True
-    use_rviz: bool = Field(True, description="Open RViz2 with the Nav2 panels (ignored without a display)")
-    world_name: Optional[str] = Field(None, description="World name; read from the SDF when omitted")
+    use_rviz: bool = Field(
+        True, description="Open RViz2 with the Nav2 panels (ignored without a display)"
+    )
+    world_name: Optional[str] = Field(
+        None, description="World name; read from the SDF when omitted"
+    )
     nav2_params_path: Optional[str] = Field(
         None, description="Nav2 params file inside the container; default: TurtleBot3 Waffle params"
     )
@@ -223,25 +288,37 @@ class RunManifest(BaseModel):
 
     Paths are relative to the run folder. Part 1 writes the files, Part 3 only reads them.
     """
+
     manifest_version: Literal["1.0"] = "1.0"
-    world_sdf: str = Field("world.sdf", description="Gazebo Harmonic world (SDF 1.9+), no robot inside")
-    world_name: Optional[str] = Field(None, description="<world name=...>; read from the SDF when omitted")
+    world_sdf: str = Field(
+        "world.sdf", description="Gazebo Harmonic world (SDF 1.9+), no robot inside"
+    )
+    world_name: Optional[str] = Field(
+        None, description="<world name=...>; read from the SDF when omitted"
+    )
     map_yaml: str = Field("map.yaml", description="Nav2 map whose frame equals the world frame")
-    spec_json: Optional[str] = Field("spec.json", description="The SimSpec this run was generated from")
+    spec_json: Optional[str] = Field(
+        "spec.json", description="The SimSpec this run was generated from"
+    )
     robot_model: Literal["turtlebot3_waffle"] = Field(
-        "turtlebot3_waffle", description="Only TurtleBot3 Waffle is supported for the MVP (decision 4)"
+        "turtlebot3_waffle",
+        description="Only TurtleBot3 Waffle is supported for the MVP (decision 4)",
     )
     initial_pose: Pose2D = Field(..., description="Robot spawn pose in the world/map frame")
-    nav2_params: Optional[str] = Field(None, description="Custom Nav2 params; default: TurtleBot3 Waffle params")
+    nav2_params: Optional[str] = Field(
+        None, description="Custom Nav2 params; default: TurtleBot3 Waffle params"
+    )
 
 
 class SimStopRequest(BaseModel):
     """Request payload sent to POST /sim/stop."""
+
     force: bool = False
 
 
 class SimStatusResponse(BaseModel):
     """Response payload returned by GET /sim/status."""
+
     status: Literal["idle", "launching", "running", "degraded", "stopped", "error"]
     rtf: float = Field(0.0, description="Real-Time Factor (Δsim/Δwall)")
     sim_time: float = Field(0.0, description="Current simulation time in seconds")
@@ -249,30 +326,37 @@ class SimStatusResponse(BaseModel):
     active_topics: List[str] = Field(default_factory=list)
     ready: bool = Field(False, description="All readiness checks pass: robot can be given goals")
     readiness: Dict[str, bool] = Field(
-        default_factory=dict, description="gazebo_clock, odometry, laser_scan, nav2_active, localized"
+        default_factory=dict,
+        description="gazebo_clock, odometry, laser_scan, nav2_active, localized",
     )
-    world_report: List[str] = Field(default_factory=list, description="World pre-flight findings for this run")
+    world_report: List[str] = Field(
+        default_factory=list, description="World pre-flight findings for this run"
+    )
 
 
 class NavInitialPoseRequest(BaseModel):
     """Request payload sent to POST /nav/initial_pose."""
+
     pose: Pose2D
 
 
 class NavGoalRequest(BaseModel):
     """Request payload sent to POST /nav/goal."""
+
     goal_pose: Pose2D
     timeout_seconds: float = 120.0
 
 
 class NavWaypointsRequest(BaseModel):
     """Request payload sent to POST /nav/waypoints."""
+
     waypoints: List[Pose2D]
     timeout_seconds: float = 180.0
 
 
 class HealEvent(BaseModel):
     """Log record of self-healing error recovery."""
+
     timestamp: float
     error_signature: str
     action_taken: str
@@ -292,23 +376,36 @@ PoseSource = Literal["ground_truth", "map", "odom", "none"]
 
 class TelemetryLive(BaseModel):
     """Instantaneous robot telemetry: GET /v1/telemetry/live and the WS 'live' key."""
+
     sim_time: float = Field(0.0, description="Simulation seconds (/clock)")
     real_time_factor: float = 0.0
     pose: Optional[Pose2D] = Field(None, description="Best available world-frame pose")
-    pose_source: PoseSource = Field("none", description="ground_truth > map (AMCL) > odom + spawn offset")
+    pose_source: PoseSource = Field(
+        "none", description="ground_truth > map (AMCL) > odom + spawn offset"
+    )
     linear_speed: float = Field(0.0, description="m/s, from /odom twist")
     angular_speed: float = Field(0.0, description="rad/s, from /odom twist")
     localization_error_m: Optional[float] = Field(
-        None, description="|AMCL map pose - ground truth|; needs both sources")
-    min_scan_range_m: Optional[float] = Field(None, description="Closest valid lidar return (obstacle proximity)")
+        None, description="|AMCL map pose - ground truth|; needs both sources"
+    )
+    min_scan_range_m: Optional[float] = Field(
+        None, description="Closest valid lidar return (obstacle proximity)"
+    )
     obstacle_clearance_m: Optional[float] = Field(
-        None, description="min_scan_range minus the lidar-to-chassis offset; approximate chassis clearance")
-    distance_to_goal_m: Optional[float] = Field(None, description="Straight-line distance to the recording goal")
-    collision_count: int = Field(0, description="Contact events on the chassis bumper this recording (C_force)")
+        None,
+        description="min_scan_range minus the lidar-to-chassis offset; approximate chassis clearance",
+    )
+    distance_to_goal_m: Optional[float] = Field(
+        None, description="Straight-line distance to the recording goal"
+    )
+    collision_count: int = Field(
+        0, description="Contact events on the chassis bumper this recording (C_force)"
+    )
     last_contact_force_n: float = 0.0
     last_contact_entity: str = ""
     contact_force_source: Literal["wrench", "geometric", "none"] = Field(
-        "none", description="'geometric' when Gazebo reports contacts without force data")
+        "none", description="'geometric' when Gazebo reports contacts without force data"
+    )
     recording: bool = False
     recording_label: Optional[str] = None
     samples_recorded: int = 0
@@ -316,19 +413,27 @@ class TelemetryLive(BaseModel):
 
 class TelemetryRecordRequest(BaseModel):
     """POST /v1/telemetry/record/start."""
-    label: str = Field("run", pattern=r"^[A-Za-z0-9_.-]{1,64}$", description="Run label, e.g. 'nominal'")
+
+    label: str = Field(
+        "run", pattern=r"^[A-Za-z0-9_.-]{1,64}$", description="Run label, e.g. 'nominal'"
+    )
     goal: Optional[Pose2D] = Field(None, description="Mission goal, stored with the trajectory")
     rate_hz: float = Field(20.0, ge=1.0, le=100.0, description="Sample rate in sim time")
 
 
 class TelemetryRecordResult(BaseModel):
     """POST /v1/telemetry/record/stop: the recorded run, inline and on disk."""
+
     label: str
     samples: int
     duration_s: float = Field(..., description="Sim seconds covered")
     collisions: int
     pose_source: PoseSource
     path: Optional[str] = Field(None, description="Container path of logs/trajectory_<label>.json")
-    trajectory: Dict[str, Any] = Field(..., description="Trajectory.to_dict() format (lang2sim.telemetry)")
+    trajectory: Dict[str, Any] = Field(
+        ..., description="Trajectory.to_dict() format (lang2sim.telemetry)"
+    )
     spawned_entities: List[Dict[str, Any]] = Field(
-        default_factory=list, description="Entities spawned during the recording: name, model, x, y, r")
+        default_factory=list,
+        description="Entities spawned during the recording: name, model, x, y, r",
+    )

@@ -60,8 +60,8 @@ class Command:
     name: str
     args: List[str] = field(default_factory=list)
     opts: Dict[str, str] = field(default_factory=dict)
-    note: str = ""                     # shown to the user (e.g. how a sentence was interpreted)
-    natural: bool = False              # parsed from a sentence: do only what it asked for
+    note: str = ""  # shown to the user (e.g. how a sentence was interpreted)
+    natural: bool = False  # parsed from a sentence: do only what it asked for
 
 
 def parse_command(text: str) -> Optional[Command]:
@@ -86,8 +86,14 @@ def parse_command(text: str) -> Optional[Command]:
 
 
 _LIGHT_WORDS = r"(?:light|lights|lighting|luminance|sun|brightness)"
-_OBSTACLE_WORDS = {"barrel": "barrel", "cargo": "cargo_box", "box": "cargo_box", "crate": "wooden_crate",
-                   "obstacle": "wooden_crate", "pallet": "wooden_crate"}
+_OBSTACLE_WORDS = {
+    "barrel": "barrel",
+    "cargo": "cargo_box",
+    "box": "cargo_box",
+    "crate": "wooden_crate",
+    "obstacle": "wooden_crate",
+    "pallet": "wooden_crate",
+}
 
 
 def parse_stress_intent(text: str) -> Optional[Command]:
@@ -97,24 +103,34 @@ def parse_stress_intent(text: str) -> Optional[Command]:
     obstacle). Questions ("why did the robot slow down?") never match.
     """
     t = text.lower().strip()
-    if not t or t.startswith("/") or t.endswith("?") or re.match(r"^(why|what|how|when|where|is|are|did|does|can)\b", t):
+    if (
+        not t
+        or t.startswith("/")
+        or t.endswith("?")
+        or re.match(r"^(why|what|how|when|where|is|are|did|does|can)\b", t)
+    ):
         return None
-    action = re.search(r"\b(drop|spawn|place|put|add|throw|inject|dim|lower|reduce|darken|set|stress[- ]?test)\b", t)
+    action = re.search(
+        r"\b(drop|spawn|place|put|add|throw|inject|dim|lower|reduce|darken|set|stress[- ]?test)\b",
+        t,
+    )
     if not action:
         return None
     opts: Dict[str, str] = {}
     notes: List[str] = []
     light = None
-    m = re.search(_LIGHT_WORDS + r"[^0-9%]{0,30}?(\d+(?:\.\d+)?)\s*(%|percent)", t) or \
-        re.search(r"(\d+(?:\.\d+)?)\s*(%|percent)[^.]{0,20}?" + _LIGHT_WORDS, t)
+    m = re.search(_LIGHT_WORDS + r"[^0-9%]{0,30}?(\d+(?:\.\d+)?)\s*(%|percent)", t) or re.search(
+        r"(\d+(?:\.\d+)?)\s*(%|percent)[^.]{0,20}?" + _LIGHT_WORDS, t
+    )
     if m:
         light = float(m.group(1)) / 100.0
     else:
         m = re.search(_LIGHT_WORDS + r"[^0-9]{0,20}?\b(0?\.\d+|1(?:\.0+)?)\b", t)
         if m:
             light = float(m.group(1))
-        elif re.search(r"\b(dim|darken|lower|reduce|night|dark)\b[^.]{0,25}" + _LIGHT_WORDS, t) or \
-                re.search(_LIGHT_WORDS + r"[^.]{0,15}\b(dim|low|dark|off)\b", t):
+        elif re.search(
+            r"\b(dim|darken|lower|reduce|night|dark)\b[^.]{0,25}" + _LIGHT_WORDS, t
+        ) or re.search(_LIGHT_WORDS + r"[^.]{0,15}\b(dim|low|dark|off)\b", t):
             light = 0.15
     if light is not None:
         opts["light"] = f"{max(0.0, min(1.0, light)):.2f}"
@@ -146,7 +162,14 @@ def stress_targets(cmd: Command) -> Tuple[Optional[float], Optional[str]]:
     off = ("off", "none", "no", "skip")
     raw_light = cmd.opts.get("light", None if cmd.natural else "0.1")
     raw_model = cmd.opts.get("model", None if cmd.natural else "wooden_crate")
-    light = None if raw_light is None or raw_light.lower() in off else max(0.0, min(1.0, float(raw_light.rstrip("%")) / (100.0 if raw_light.endswith("%") else 1.0)))
+    light = (
+        None
+        if raw_light is None or raw_light.lower() in off
+        else max(
+            0.0,
+            min(1.0, float(raw_light.rstrip("%")) / (100.0 if raw_light.endswith("%") else 1.0)),
+        )
+    )
     model = None if raw_model is None or raw_model.lower() in off else raw_model
     if model is not None and model not in CRATE_HALF:
         raise ValueError(f"unknown model '{model}' (use {', '.join(CRATE_HALF)})")
@@ -154,7 +177,9 @@ def stress_targets(cmd: Command) -> Tuple[Optional[float], Optional[str]]:
 
 
 # --------------------------------------------------------------------------- crate placement
-def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[float, float]) -> bool:
+def _free(
+    map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[float, float]
+) -> bool:
     """True when the crate's footprint (plus 5 cm) is free space on the map (or no map is known)."""
     if not map_info:
         return True
@@ -176,9 +201,14 @@ def _free(map_info: Optional[Dict[str, Any]], x: float, y: float, half: Tuple[fl
     return True
 
 
-def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, float]],
-                    avoid: Sequence[Tuple[float, float]], map_info: Optional[Dict[str, Any]] = None,
-                    model: str = "wooden_crate", ahead: float = 1.5) -> Optional[Tuple[float, float, float]]:
+def pick_crate_spot(
+    pose: Dict[str, float],
+    heading_to: Optional[Tuple[float, float]],
+    avoid: Sequence[Tuple[float, float]],
+    map_info: Optional[Dict[str, Any]] = None,
+    model: str = "wooden_crate",
+    ahead: float = 1.5,
+) -> Optional[Tuple[float, float, float]]:
     """(x, y, yaw) for a crate in front of the robot, across its way, or None if nowhere fits.
 
     'In front' is toward the robot's current target when known (its planned direction),
@@ -194,7 +224,7 @@ def pick_crate_spot(pose: Dict[str, float], heading_to: Optional[Tuple[float, fl
     half = CRATE_HALF.get(model, CRATE_HALF["wooden_crate"])
     distances = [ahead + d for d in (0.0, 0.25, -0.25, 0.5, -0.5, 0.75, 1.0, 1.25)]
     for d in distances:
-        if d < 0.8:                      # never on top of the robot
+        if d < 0.8:  # never on top of the robot
             continue
         cx, cy = x + d * math.cos(yaw), y + d * math.sin(yaw)
         if any(math.hypot(cx - a, cy - b) < KEEP_CLEAR_OF_TARGETS_M for a, b in avoid):
@@ -216,8 +246,13 @@ def _f(v: Any, d: int = 2, unit: str = "") -> str:
 class DemoRunner:
     """Executes demo commands against the control API and reports through say/show."""
 
-    def __init__(self, base_url: Optional[str] = None, say: Say = print, show: Show = print,
-                 progress: Optional[Callable[[Optional[str]], None]] = None) -> None:
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        say: Say = print,
+        show: Show = print,
+        progress: Optional[Callable[[Optional[str]], None]] = None,
+    ) -> None:
         from lang2sim.telemetry.live import api_base_url
 
         self.base_url = api_base_url(base_url)
@@ -235,7 +270,9 @@ class DemoRunner:
     async def _run_info(self, session) -> Dict[str, Any]:
         info = await session.api._request("GET", "/run")
         if not info.get("loaded"):
-            raise RuntimeError("no run is loaded in the simulation (start one with scripts/run_sim.py)")
+            raise RuntimeError(
+                "no run is loaded in the simulation (start one with scripts/run_sim.py)"
+            )
         return info
 
     async def _host_run_dir(self, session) -> Path:
@@ -244,7 +281,9 @@ class DemoRunner:
         info = await self._run_info(session)
         d = host_run_dir(info)
         if d is None:
-            raise RuntimeError(f"run folder {info.get('project_path') or info.get('run_dir')} is not on this machine")
+            raise RuntimeError(
+                f"run folder {info.get('project_path') or info.get('run_dir')} is not on this machine"
+            )
         return d
 
     async def run(self, cmd: Command) -> None:
@@ -257,11 +296,15 @@ class DemoRunner:
             from lang2sim.runtime.control_api.client import ControlAPIError, ControlAPIUnavailable
 
             if isinstance(e, ControlAPIUnavailable):
-                self.say(f"[#ef4444]✗ No simulation reachable at {self.base_url}.[/] Start one with "
-                         "[bold]python scripts/run_sim.py --fixture empty_room[/], or [bold]/replay demo[/].")
+                self.say(
+                    f"[#ef4444]✗ No simulation reachable at {self.base_url}.[/] Start one with "
+                    "[bold]python scripts/run_sim.py --fixture empty_room[/], or [bold]/replay demo[/]."
+                )
             elif isinstance(e, ControlAPIError) and e.status_code == 409 and "replay" in str(e):
-                self.say("[#f39c12]This is a replay of a recorded run: it can't be driven or changed.[/] "
-                         "Use [bold]/report[/] or the dashboard.")
+                self.say(
+                    "[#f39c12]This is a replay of a recorded run: it can't be driven or changed.[/] "
+                    "Use [bold]/report[/] or the dashboard."
+                )
             else:
                 self.say(f"[#ef4444]✗ /{cmd.name} failed:[/] {e}")
 
@@ -280,18 +323,33 @@ class DemoRunner:
         finally:
             await s.stop()
         mode = "REPLAY" if health.get("mode") == "replay" else "LIVE"
-        lines = [f"[bold]{mode}[/] · sim [bold]{st.status}[/]{' · ready' if st.ready else ''} · "
-                 f"sim time {st.sim_time:.1f}s · RTF {st.rtf:.2f}"]
+        lines = [
+            f"[bold]{mode}[/] · sim [bold]{st.status}[/]{' · ready' if st.ready else ''} · "
+            f"sim time {st.sim_time:.1f}s · RTF {st.rtf:.2f}"
+        ]
         if info.get("loaded"):
-            lines.append(f"Run: {info.get('world_name') or ''} [#8b98a8]{info.get('project_path') or info.get('run_dir')}[/]")
+            lines.append(
+                f"Run: {info.get('world_name') or ''} [#8b98a8]{info.get('project_path') or info.get('run_dir')}[/]"
+            )
         if live.pose:
-            lines.append(f"Robot ({live.pose.x:.2f}, {live.pose.y:.2f}) · {abs(live.linear_speed):.2f} m/s · "
-                         f"clearance {_f(live.obstacle_clearance_m, 2, ' m')} · collisions {live.collision_count} · "
-                         f"pose from {live.pose_source.replace('_', ' ')}")
-        lines.append(f"Nav: {nav.status}" + (f" · waypoint {nav.waypoint_index + 1}/{nav.waypoints_total} · "
-                                              f"{nav.distance_remaining:.1f} m to go" if nav.is_active else ""))
+            lines.append(
+                f"Robot ({live.pose.x:.2f}, {live.pose.y:.2f}) · {abs(live.linear_speed):.2f} m/s · "
+                f"clearance {_f(live.obstacle_clearance_m, 2, ' m')} · collisions {live.collision_count} · "
+                f"pose from {live.pose_source.replace('_', ' ')}"
+            )
+        lines.append(
+            f"Nav: {nav.status}"
+            + (
+                f" · waypoint {nav.waypoint_index + 1}/{nav.waypoints_total} · "
+                f"{nav.distance_remaining:.1f} m to go"
+                if nav.is_active
+                else ""
+            )
+        )
         if live.recording:
-            lines.append(f"[#ef4444]● recording[/] {live.recording_label} ({live.samples_recorded} samples)")
+            lines.append(
+                f"[#ef4444]● recording[/] {live.recording_label} ({live.samples_recorded} samples)"
+            )
         self.say("\n".join(lines))
 
     async def cmd_dashboard(self, cmd: Command) -> None:
@@ -300,7 +358,9 @@ class DemoRunner:
             opened = webbrowser.open(url)
         except Exception:  # noqa: BLE001
             opened = False
-        self.say(f"Dashboard: [bold #38bdf8]{url}[/]" + ("" if opened else "  (open it in a browser)"))
+        self.say(
+            f"Dashboard: [bold #38bdf8]{url}[/]" + ("" if opened else "  (open it in a browser)")
+        )
 
     async def cmd_report(self, cmd: Command) -> None:
         s = self._session()
@@ -318,13 +378,21 @@ class DemoRunner:
         nom, adv = runs.get("nominal") or {}, runs.get("adversarial")
         sc = report.get("scoring") or {}
         if adv:
-            self.say(f"NQI [bold]{_f(nom.get('nqi'), 1)}[/] → [bold #ef4444]{_f(adv.get('nqi'), 1)}[/]  "
-                     f"({_f((report.get('deltas') or {}).get('nqi_pct'), 1)}%) · min clearance "
-                     f"{_f(adv.get('C_min_m'), 2, ' m')} · collisions {adv.get('C_force')}"
-                     + (f" · goal tolerance {sc.get('goal_tolerance_m')} m ({sc.get('goal_tolerance_source', '').replace('_', ' ')})" if sc else ""))
+            self.say(
+                f"NQI [bold]{_f(nom.get('nqi'), 1)}[/] → [bold #ef4444]{_f(adv.get('nqi'), 1)}[/]  "
+                f"({_f((report.get('deltas') or {}).get('nqi_pct'), 1)}%) · min clearance "
+                f"{_f(adv.get('C_min_m'), 2, ' m')} · collisions {adv.get('C_force')}"
+                + (
+                    f" · goal tolerance {sc.get('goal_tolerance_m')} m ({sc.get('goal_tolerance_source', '').replace('_', ' ')})"
+                    if sc
+                    else ""
+                )
+            )
         elif nom:
-            self.say(f"NQI [bold]{_f(nom.get('nqi'), 1)}[/] / 100 · mission "
-                     f"{'succeeded' if nom.get('S_mission') == 1 else 'failed'} · collisions {nom.get('C_force')}")
+            self.say(
+                f"NQI [bold]{_f(nom.get('nqi'), 1)}[/] / 100 · mission "
+                f"{'succeeded' if nom.get('S_mission') == 1 else 'failed'} · collisions {nom.get('C_force')}"
+            )
 
     async def cmd_stress(self, cmd: Command) -> None:
         light, model = stress_targets(cmd)
@@ -342,27 +410,55 @@ class DemoRunner:
                 info = await s.api._request("GET", "/run")
                 map_info = await s.api._request("GET", "/run/map")
                 mission = info.get("mission") or {}
-                avoid = [(p["x"], p["y"]) for p in [*mission.get("waypoints", []), mission.get("goal_pose")] if p]
-                target = (nav.target_pose.x, nav.target_pose.y) if nav.is_active and nav.target_pose else None
-                spot = pick_crate_spot(live.pose.model_dump(), target, avoid, map_info, model, ahead)
+                avoid = [
+                    (p["x"], p["y"])
+                    for p in [*mission.get("waypoints", []), mission.get("goal_pose")]
+                    if p
+                ]
+                target = (
+                    (nav.target_pose.x, nav.target_pose.y)
+                    if nav.is_active and nav.target_pose
+                    else None
+                )
+                spot = pick_crate_spot(
+                    live.pose.model_dump(), target, avoid, map_info, model, ahead
+                )
                 if spot is None:
-                    raise RuntimeError("no free spot ahead of the robot that keeps waypoints reachable; "
-                                       "try again once it is mid-leg")
-                res = await s.api.world_spawn({"model_name": model, "x": spot[0], "y": spot[1], "yaw": spot[2]})
+                    raise RuntimeError(
+                        "no free spot ahead of the robot that keeps waypoints reachable; "
+                        "try again once it is mid-leg"
+                    )
+                res = await s.api.world_spawn(
+                    {"model_name": model, "x": spot[0], "y": spot[1], "yaw": spot[2]}
+                )
                 name = (res.get("data") or {}).get("entity_name") or model
                 d = math.hypot(spot[0] - live.pose.x, spot[1] - live.pose.y)
-                self.say(f"[#ef4444]■[/] Spawned [bold]{name}[/] at ({spot[0]:.2f}, {spot[1]:.2f}), "
-                         f"{d:.1f} m ahead of the robot" + ("" if nav.is_active else
-                                                            " [#8b98a8](robot not navigating: placed along its heading)[/]"))
+                self.say(
+                    f"[#ef4444]■[/] Spawned [bold]{name}[/] at ({spot[0]:.2f}, {spot[1]:.2f}), "
+                    f"{d:.1f} m ahead of the robot"
+                    + (
+                        ""
+                        if nav.is_active
+                        else " [#8b98a8](robot not navigating: placed along its heading)[/]"
+                    )
+                )
                 if not live.recording:
-                    self.say("[#8b98a8]Not recording: start [bold]/mission stress[/] first to score this run.[/]")
+                    self.say(
+                        "[#8b98a8]Not recording: start [bold]/mission stress[/] first to score this run.[/]"
+                    )
         finally:
             await s.stop()
 
     async def cmd_mission(self, cmd: Command) -> None:
-        label = "adversarial" if any(a.lower() in ("stress", "adversarial") for a in cmd.args) else "nominal"
+        label = (
+            "adversarial"
+            if any(a.lower() in ("stress", "adversarial") for a in cmd.args)
+            else "nominal"
+        )
         if not self.mission_lock.acquire(blocking=False):
-            self.say("[#f39c12]A mission is already running.[/] Use [bold]/stress[/] to perturb it.")
+            self.say(
+                "[#f39c12]A mission is already running.[/] Use [bold]/stress[/] to perturb it."
+            )
             return
         s = self._session()
         try:
@@ -370,13 +466,17 @@ class DemoRunner:
             s.run_dir = run_dir
             if label == "adversarial":
                 await self._back_to_start(s, run_dir)
-                self.say("[bold]Stress run[/] recording. Type [bold]/stress[/] (or say it) while the robot drives.")
+                self.say(
+                    "[bold]Stress run[/] recording. Type [bold]/stress[/] (or say it) while the robot drives."
+                )
             else:
                 self.say("[bold]Nominal run[/] recording: driving the mission from spec.json…")
             run = await s.run_recorded_mission(run_dir, label=label, on_progress=self._nav_progress)
             self.progress(None)
-            self.say(f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
-                     f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions")
+            self.say(
+                f"Mission [bold]{run.nav.status}[/] · {run.result.samples} samples in "
+                f"{run.result.duration_s:.1f} sim s · {run.result.collisions} collisions"
+            )
             from lang2sim.telemetry.benchmark import score_run_folder
 
             path, report = score_run_folder(run_dir)
@@ -399,15 +499,22 @@ class DemoRunner:
 
             def trig(tr: Dict[str, Any], err: Optional[str]) -> None:
                 p = tr.get("spawn_pose") or {}
-                self.say(f"[#ef4444]■[/] Stress: {tr.get('model_name')} dropped at ({p.get('x')}, {p.get('y')})"
-                         + (f" [#ef4444]failed: {err}[/]" if err else ""))
+                self.say(
+                    f"[#ef4444]■[/] Stress: {tr.get('model_name')} dropped at ({p.get('x')}, {p.get('y')})"
+                    + (f" [#ef4444]failed: {err}[/]" if err else "")
+                )
 
             def phase(m: str) -> None:
                 self.progress(None)
                 self.say(f"[bold #38bdf8]▸ {m}[/]")
 
-            report = await s.run_benchmark(run_dir, light=light, on_progress=self._nav_progress, on_trigger=trig,
-                                           on_phase=phase)
+            report = await s.run_benchmark(
+                run_dir,
+                light=light,
+                on_progress=self._nav_progress,
+                on_trigger=trig,
+                on_phase=phase,
+            )
             self.progress(None)
             self.show_report(report)
             self.say(f"[#8b98a8]Report: {report.get('path')}[/]")
@@ -417,13 +524,19 @@ class DemoRunner:
 
     async def cmd_replay(self, cmd: Command) -> None:
         target = Path(cmd.args[0]).expanduser() if cmd.args and cmd.args[0] != "demo" else DEMO_RUN
-        port = int(self.base_url.rsplit(":", 1)[-1]) if self.base_url.rsplit(":", 1)[-1].isdigit() else 9090
+        port = (
+            int(self.base_url.rsplit(":", 1)[-1])
+            if self.base_url.rsplit(":", 1)[-1].isdigit()
+            else 9090
+        )
         try:
             from lang2sim.telemetry.live import _get_json
 
             if _get_json(f"{self.base_url}/v1/health", 0.5) is not None:
-                self.say(f"[#f39c12]Something already answers on {self.base_url}.[/] Stop the live sim "
-                         "(or the other replay) first.")
+                self.say(
+                    f"[#f39c12]Something already answers on {self.base_url}.[/] Stop the live sim "
+                    "(or the other replay) first."
+                )
                 return
             import uvicorn
 
@@ -432,12 +545,16 @@ class DemoRunner:
             self.say(f"[#ef4444]✗ Replay needs the [sim] extra:[/] pip install -e '.[sim]' ({e})")
             return
         app = create_replay_app(target, loop=True)
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+        server = uvicorn.Server(
+            uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+        )
         threading.Thread(target=server.run, name="l2s-replay", daemon=True).start()
         self._replay_server = server
         runs = ", ".join(f"{r.label} ({r.duration:.0f} s)" for r in app.state.clock.runs)
-        self.say(f"[#f39c12]▶ Replay[/] of [bold]{target.name}[/] on {self.base_url}: {runs}, looping. "
-                 "The sidebar, dashboard and /report now use it.")
+        self.say(
+            f"[#f39c12]▶ Replay[/] of [bold]{target.name}[/] on {self.base_url}: {runs}, looping. "
+            "The sidebar, dashboard and /report now use it."
+        )
 
     # --- helpers -------------------------------------------------------------
     async def _back_to_start(self, s, run_dir: Path) -> None:
@@ -452,7 +569,9 @@ class DemoRunner:
 
     def _nav_progress(self, st) -> None:
         if st.is_active:
-            self.progress(f"[#8b98a8]  ▸ driving · waypoint {st.waypoint_index + 1}/{st.waypoints_total} · "
-                          f"{st.distance_remaining:.1f} m to go[/]")
+            self.progress(
+                f"[#8b98a8]  ▸ driving · waypoint {st.waypoint_index + 1}/{st.waypoints_total} · "
+                f"{st.distance_remaining:.1f} m to go[/]"
+            )
         else:
             self.progress(None)

@@ -55,6 +55,7 @@ class HardwareInfo:
 # Parsers (pure)
 # ---------------------------------------------------------------------------
 
+
 def parse_nvidia_smi(csv_text: str) -> List[GpuInfo]:
     """Parse `nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv,noheader,nounits`."""
     gpus: List[GpuInfo] = []
@@ -91,6 +92,7 @@ def _to_int(s: str) -> Optional[int]:
 # Probes
 # ---------------------------------------------------------------------------
 
+
 def _run(cmd: List[str], timeout: float = 5.0) -> Optional[str]:
     if not shutil.which(cmd[0]):
         return None
@@ -102,8 +104,9 @@ def _run(cmd: List[str], timeout: float = 5.0) -> Optional[str]:
 
 
 def _probe_nvidia() -> List[GpuInfo]:
-    out = _run(["nvidia-smi", "--query-gpu=name,memory.total,memory.free",
-                "--format=csv,noheader,nounits"])
+    out = _run(
+        ["nvidia-smi", "--query-gpu=name,memory.total,memory.free", "--format=csv,noheader,nounits"]
+    )
     return parse_nvidia_smi(out) if out else []
 
 

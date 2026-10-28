@@ -53,7 +53,7 @@ def test_contacts_ignore_ground_self_and_light_touches():
     m = ContactMonitor(robot_name="waffle")
     assert not m.process([("ground_plane::link::collision", 50.0)], t=1.0)
     assert not m.process([("waffle::wheel_left_link::wheel_left_collision", 50.0)], t=1.1)
-    assert not m.process([("rack_2::link::collision", 2.0)], t=1.2)     # below 5 N
+    assert not m.process([("rack_2::link::collision", 2.0)], t=1.2)  # below 5 N
     assert m.count == 0
 
 
@@ -69,8 +69,15 @@ def _drive(rec, t0=100.0, n=50, dt=0.05, gt=True):
     for i in range(n):
         t = t0 + i * dt
         pose = (0.1 * i, 0.0, 0.0)
-        rec.offer(t, pose, "ground_truth" if gt else "map", v=2.0, w=0.0,
-                  estimate=(0.1 * i + 0.02, 0.0, 0.0), scan_min=1.0 - 0.01 * i)
+        rec.offer(
+            t,
+            pose,
+            "ground_truth" if gt else "map",
+            v=2.0,
+            w=0.0,
+            estimate=(0.1 * i + 0.02, 0.0, 0.0),
+            scan_min=1.0 - 0.01 * i,
+        )
 
 
 def test_recorder_throttles_in_sim_time_and_outputs_trajectory_dict():
@@ -78,14 +85,14 @@ def test_recorder_throttles_in_sim_time_and_outputs_trajectory_dict():
 
     rec = TelemetryRecorder(ContactMonitor(robot_name="waffle"))
     rec.start("nominal", goal=(5.0, 0.0, 0.0), rate_hz=10.0, spawn=(0.0, 0.0, 0.0))
-    _drive(rec)                                   # 20 Hz offers over 2.45 s
+    _drive(rec)  # 20 Hz offers over 2.45 s
     data = rec.stop()
     assert not rec.recording
     assert data["label"] == "nominal" and data["goal"] == [5.0, 0.0]
-    assert 24 <= len(data["samples"]) <= 26       # kept at 10 Hz
+    assert 24 <= len(data["samples"]) <= 26  # kept at 10 Hz
     assert data["meta"]["time_base"] == "sim" and data["meta"]["pose_source"] == "ground_truth"
     assert data["meta"]["min_scan_range_m"] == pytest.approx(0.51)
-    traj = Trajectory.from_dict(data)             # host-side scorer can load it unchanged
+    traj = Trajectory.from_dict(data)  # host-side scorer can load it unchanged
     assert traj.t[0] == pytest.approx(100.0)
     assert traj.ate is not None and traj.ate_mean == pytest.approx(0.02)
 
@@ -108,7 +115,7 @@ def test_recorder_drops_estimate_columns_unless_on_every_sample_and_ignores_time
     rec.start("r", rate_hz=100)
     rec.offer(1.0, (0, 0, 0), "ground_truth", 0, 0, estimate=(0, 0, 0))
     rec.offer(1.1, (0.1, 0, 0), "map", 0, 0, estimate=(0.1, 0, 0))
-    assert rec.offer(0.5, (0, 0, 0), "map", 0, 0) is False        # sim time went backwards
+    assert rec.offer(0.5, (0, 0, 0), "map", 0, 0) is False  # sim time went backwards
     data = rec.stop()
     assert all("slam_x" not in s for s in data["samples"])
     assert rec.stop() is None
@@ -117,9 +124,17 @@ def test_recorder_drops_estimate_columns_unless_on_every_sample_and_ignores_time
 def test_build_live_matches_the_pydantic_contract():
     rec = TelemetryRecorder(ContactMonitor(robot_name="waffle"))
     rec.start("nominal", goal=(3.0, 4.0, 0.0))
-    live = build_live(sim_time=12.3456, rtf=0.97, pose=(0.0, 0.0, 0.1), source="ground_truth",
-                      velocity=(0.26, 0.0, 0.1), ground_truth=(0.0, 0.0, 0.1), map_pose=(0.03, 0.04, 0.1),
-                      scan_min=0.5, recorder=rec)
+    live = build_live(
+        sim_time=12.3456,
+        rtf=0.97,
+        pose=(0.0, 0.0, 0.1),
+        source="ground_truth",
+        velocity=(0.26, 0.0, 0.1),
+        ground_truth=(0.0, 0.0, 0.1),
+        map_pose=(0.03, 0.04, 0.1),
+        scan_min=0.5,
+        recorder=rec,
+    )
     model = TelemetryLive(**live)
     assert model.distance_to_goal_m == pytest.approx(5.0)
     assert model.localization_error_m == pytest.approx(0.05)

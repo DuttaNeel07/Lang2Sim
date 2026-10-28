@@ -60,12 +60,7 @@ class ZeroSlamMapSlicer:
         wall_px = max(2, int(0.20 / self.resolution))
         for r in range(rows):
             for c in range(cols):
-                if (
-                    r < wall_px
-                    or r >= rows - wall_px
-                    or c < wall_px
-                    or c >= cols - wall_px
-                ):
+                if r < wall_px or r >= rows - wall_px or c < wall_px or c >= cols - wall_px:
                     set_pixel(c, r, 0)
 
         # 2. Rasterize each obstacle
@@ -78,6 +73,7 @@ class ZeroSlamMapSlicer:
 
             # Create Shapely OBB for precise polygon point-in-polygon containment
             from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
+
             solver = ShapelySpatialSolver()
             poly = solver.create_obb(cx, cy, dx, dy, yaw)
             min_x, min_y, max_x, max_y = poly.bounds
@@ -102,7 +98,7 @@ class ZeroSlamMapSlicer:
             # PGM rows run top to bottom and Nav2's map_server puts the first row at
             # the map's max y; grid row 0 is min y (origin), so write rows in reverse.
             for r in range(rows - 1, -1, -1):
-                f.write(grid[r * cols:(r + 1) * cols])
+                f.write(grid[r * cols : (r + 1) * cols])
 
         # 4. Write Nav2 map.yaml metadata
         yaml_content = f"""image: {map_name}.pgm

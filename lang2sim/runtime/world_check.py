@@ -31,8 +31,18 @@ Level = Literal["error", "warning", "fixed"]
 REQUIRED_SYSTEMS: Tuple[Tuple[str, str, str, str], ...] = (
     ("physics", "gz-sim-physics-system", "gz::sim::systems::Physics", ""),
     ("user-commands", "gz-sim-user-commands-system", "gz::sim::systems::UserCommands", ""),
-    ("scene-broadcaster", "gz-sim-scene-broadcaster-system", "gz::sim::systems::SceneBroadcaster", ""),
-    ("sensors", "gz-sim-sensors-system", "gz::sim::systems::Sensors", "<render_engine>ogre2</render_engine>"),
+    (
+        "scene-broadcaster",
+        "gz-sim-scene-broadcaster-system",
+        "gz::sim::systems::SceneBroadcaster",
+        "",
+    ),
+    (
+        "sensors",
+        "gz-sim-sensors-system",
+        "gz::sim::systems::Sensors",
+        "<render_engine>ogre2</render_engine>",
+    ),
     ("imu", "gz-sim-imu-system", "gz::sim::systems::Imu", ""),
     # The chassis bumper (robot_instrument.py) only publishes when the world runs Contact.
     ("contact", "gz-sim-contact-system", "gz::sim::systems::Contact", ""),
@@ -114,14 +124,21 @@ def check_world(sdf_text: str, model_paths: Optional[Sequence[Path]] = None) -> 
     r.sdf_version = root.get("version")
     try:
         if r.sdf_version and tuple(int(x) for x in r.sdf_version.split(".")[:2]) < (1, 9):
-            r.issues.append(Issue("warning", "sdf-version",
-                                  f"SDF {r.sdf_version}; Gazebo Harmonic expects 1.9+"))
+            r.issues.append(
+                Issue(
+                    "warning", "sdf-version", f"SDF {r.sdf_version}; Gazebo Harmonic expects 1.9+"
+                )
+            )
     except ValueError:
-        r.issues.append(Issue("warning", "sdf-version", f"unreadable SDF version '{r.sdf_version}'"))
+        r.issues.append(
+            Issue("warning", "sdf-version", f"unreadable SDF version '{r.sdf_version}'")
+        )
 
     worlds = root.findall("world")
     if len(worlds) != 1:
-        r.issues.append(Issue("error", "world-count", f"expected exactly one <world>, found {len(worlds)}"))
+        r.issues.append(
+            Issue("error", "world-count", f"expected exactly one <world>, found {len(worlds)}")
+        )
         return r
     world = worlds[0]
     r.world_name = world.get("name")
@@ -132,36 +149,59 @@ def check_world(sdf_text: str, model_paths: Optional[Sequence[Path]] = None) -> 
     for model in world.iter("model"):
         for pose in model.findall("pose"):
             if not _pose_ok(pose):
-                r.issues.append(Issue("error", "pose",
-                                      f"model '{model.get('name')}' has a malformed pose '{(pose.text or '').strip()}'"))
+                r.issues.append(
+                    Issue(
+                        "error",
+                        "pose",
+                        f"model '{model.get('name')}' has a malformed pose '{(pose.text or '').strip()}'",
+                    )
+                )
 
     # Robot must not be part of the world (Part 3 spawns it)
     names = [m.get("name", "") for m in world.findall("model")]
     uris = [(u.text or "").strip() for u in world.iter("uri")]
     for n in names + uris:
         if any(h in n.lower() for h in ROBOT_HINTS) and "turtlebot3_world" not in n.lower():
-            r.issues.append(Issue("error", "robot-in-world",
-                                  f"'{n}' looks like a robot; the world must not contain one (Part 3 spawns it)"))
+            r.issues.append(
+                Issue(
+                    "error",
+                    "robot-in-world",
+                    f"'{n}' looks like a robot; the world must not contain one (Part 3 spawns it)",
+                )
+            )
             break
 
     # Required systems
     present = {_system_key(p) for p in world.findall("plugin")}
     r.missing_systems = [k for k, *_ in REQUIRED_SYSTEMS if k not in present]
     if r.missing_systems:
-        r.issues.append(Issue("fixed", "systems",
-                              "added missing Gazebo systems: " + ", ".join(r.missing_systems)))
+        r.issues.append(
+            Issue(
+                "fixed", "systems", "added missing Gazebo systems: " + ", ".join(r.missing_systems)
+            )
+        )
 
     # model:// resolution
     r.model_uris = sorted({u for u in uris if u.startswith("model://")})
     if model_paths is not None:
         for uri in r.model_uris:
-            name = uri[len("model://"):].split("/")[0]
+            name = uri[len("model://") :].split("/")[0]
             if not any((Path(p) / name).is_dir() for p in model_paths):
-                r.issues.append(Issue("error", "model-missing",
-                                      f"{uri} not found in {', '.join(str(p) for p in model_paths) or 'any model path'}"))
+                r.issues.append(
+                    Issue(
+                        "error",
+                        "model-missing",
+                        f"{uri} not found in {', '.join(str(p) for p in model_paths) or 'any model path'}",
+                    )
+                )
     if any(u.startswith(("http://", "https://")) for u in uris):
-        r.issues.append(Issue("warning", "fuel",
-                              "world downloads models from Gazebo Fuel; it fails offline unless they are cached"))
+        r.issues.append(
+            Issue(
+                "warning",
+                "fuel",
+                "world downloads models from Gazebo Fuel; it fails offline unless they are cached",
+            )
+        )
     return r
 
 
@@ -170,18 +210,25 @@ def normalize_world(sdf_text: str, missing: Iterable[str]) -> str:
     missing = set(missing)
     plugins = "".join(
         f'\n    <plugin filename="{fname}" name="{cls}">{extra}</plugin>'
-        for key, fname, cls, extra in REQUIRED_SYSTEMS if key in missing
+        for key, fname, cls, extra in REQUIRED_SYSTEMS
+        if key in missing
     )
     if not plugins:
         return sdf_text
     m = re.search(r"<world\b[^>]*>", sdf_text)
     if not m:
         return sdf_text
-    return sdf_text[:m.end()] + "\n    <!-- added by lang2sim world_check -->" + plugins + sdf_text[m.end():]
+    return (
+        sdf_text[: m.end()]
+        + "\n    <!-- added by lang2sim world_check -->"
+        + plugins
+        + sdf_text[m.end() :]
+    )
 
 
-def prepare_world(world_path: Path, out_dir: Optional[Path] = None,
-                  model_paths: Optional[Sequence[Path]] = None) -> Tuple[WorldReport, Optional[Path]]:
+def prepare_world(
+    world_path: Path, out_dir: Optional[Path] = None, model_paths: Optional[Sequence[Path]] = None
+) -> Tuple[WorldReport, Optional[Path]]:
     """Check a world file; on success return the path Gazebo should load.
 
     That is the original file when nothing was missing, else a normalized copy

@@ -12,29 +12,76 @@ from textual.binding import Binding
 
 COMMANDS: List[Dict[str, str]] = [
     # Suggested
-    {"id": "switch_session", "category": "Suggested", "title": "Switch session", "shortcut": "ctrl+x l"},
-    {"id": "switch_model", "category": "Suggested", "title": "Switch model", "shortcut": "ctrl+x m"},
-    {"id": "run_doctor", "category": "Suggested", "title": "Run simulation doctor", "shortcut": "ctrl+x d"},
-
+    {
+        "id": "switch_session",
+        "category": "Suggested",
+        "title": "Switch session",
+        "shortcut": "ctrl+x l",
+    },
+    {
+        "id": "switch_model",
+        "category": "Suggested",
+        "title": "Switch model",
+        "shortcut": "ctrl+x m",
+    },
+    {
+        "id": "run_doctor",
+        "category": "Suggested",
+        "title": "Run simulation doctor",
+        "shortcut": "ctrl+x d",
+    },
     # Session
-    {"id": "switch_session_all", "category": "Session", "title": "Switch session", "shortcut": "ctrl+x l"},
+    {
+        "id": "switch_session_all",
+        "category": "Session",
+        "title": "Switch session",
+        "shortcut": "ctrl+x l",
+    },
     {"id": "new_session", "category": "Session", "title": "New session", "shortcut": "ctrl+x n"},
     {"id": "open_editor", "category": "Session", "title": "Open editor", "shortcut": "ctrl+x e"},
-    {"id": "move_session", "category": "Session", "title": "Move session", "description": "Move to another project dir", "shortcut": ""},
-
+    {
+        "id": "move_session",
+        "category": "Session",
+        "title": "Move session",
+        "description": "Move to another project dir",
+        "shortcut": "",
+    },
     # Agent
-    {"id": "switch_model_agent", "category": "Agent", "title": "Switch model", "shortcut": "ctrl+x m"},
+    {
+        "id": "switch_model_agent",
+        "category": "Agent",
+        "title": "Switch model",
+        "shortcut": "ctrl+x m",
+    },
     {"id": "switch_agent", "category": "Agent", "title": "Switch agent", "shortcut": "ctrl+x a"},
     {"id": "toggle_mcps", "category": "Agent", "title": "Toggle MCPs", "shortcut": ""},
     {"id": "variant_cycle", "category": "Agent", "title": "Variant cycle", "shortcut": "ctrl+t"},
     {"id": "switch_variant", "category": "Agent", "title": "Switch model variant", "shortcut": ""},
-
     # Runtime & Display
-    {"id": "sim_doctor", "category": "Runtime", "title": "Run doctor diagnostic", "shortcut": "ctrl+x d"},
-    {"id": "toggle_headless", "category": "Runtime", "title": "Toggle headless mode", "shortcut": "ctrl+x h"},
-    {"id": "connect_stream", "category": "Runtime", "title": "Connect Foxglove / noVNC", "shortcut": "ctrl+x f"},
-    {"id": "reset_sim", "category": "Runtime", "title": "Emergency reset world", "shortcut": "ctrl+x r"},
-
+    {
+        "id": "sim_doctor",
+        "category": "Runtime",
+        "title": "Run doctor diagnostic",
+        "shortcut": "ctrl+x d",
+    },
+    {
+        "id": "toggle_headless",
+        "category": "Runtime",
+        "title": "Toggle headless mode",
+        "shortcut": "ctrl+x h",
+    },
+    {
+        "id": "connect_stream",
+        "category": "Runtime",
+        "title": "Connect Foxglove / noVNC",
+        "shortcut": "ctrl+x f",
+    },
+    {
+        "id": "reset_sim",
+        "category": "Runtime",
+        "title": "Emergency reset world",
+        "shortcut": "ctrl+x r",
+    },
     # Provider
     {"id": "connect_provider", "category": "Provider", "title": "Connect provider", "shortcut": ""},
 ]
@@ -74,7 +121,8 @@ class CommandPaletteModal(ModalScreen[Optional[str]]):
             self.filtered_commands = list(COMMANDS)
         else:
             self.filtered_commands = [
-                cmd for cmd in COMMANDS
+                cmd
+                for cmd in COMMANDS
                 if query in cmd["title"].lower()
                 or query in cmd["category"].lower()
                 or query in cmd.get("description", "").lower()
@@ -90,7 +138,9 @@ class CommandPaletteModal(ModalScreen[Optional[str]]):
         await list_container.remove_children()
 
         if not self.filtered_commands:
-            await list_container.mount(Static("[#6b7280]No matching commands[/]", classes="palette-empty"))
+            await list_container.mount(
+                Static("[#6b7280]No matching commands[/]", classes="palette-empty")
+            )
             return
 
         current_category = None
@@ -102,7 +152,7 @@ class CommandPaletteModal(ModalScreen[Optional[str]]):
                 current_category = cat
                 await list_container.mount(Static(cat, classes="palette-category"))
 
-            is_selected = (current_item_idx == self.selected_index)
+            is_selected = current_item_idx == self.selected_index
             item_classes = "palette-item -selected" if is_selected else "palette-item"
 
             title_text = cmd["title"]

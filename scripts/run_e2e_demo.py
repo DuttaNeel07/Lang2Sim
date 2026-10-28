@@ -52,13 +52,13 @@ def run_pipeline():
 
     # 2. Query Catalog for Object Models
     print(f"\n[Step 2] Querying Physical Object Blueprints from Catalog:")
-    objects = [
-        catalog.get_model_spec("aws_warehouse_rack", f"rack_{i}") for i in range(1, 5)
-    ] + [
+    objects = [catalog.get_model_spec("aws_warehouse_rack", f"rack_{i}") for i in range(1, 5)] + [
         catalog.get_model_spec("wooden_crate", f"crate_{j}") for j in range(1, 3)
     ]
     for obj in objects:
-        print(f"  - Added {obj.id} ({obj.model_name}): {obj.dimensions.x}m x {obj.dimensions.y}m, static={obj.is_static}")
+        print(
+            f"  - Added {obj.id} ({obj.model_name}): {obj.dimensions.x}m x {obj.dimensions.y}m, static={obj.is_static}"
+        )
 
     # 3. Procedural Spatial Solver (Shapely OBB)
     print(f"\n[Step 3] Running Procedural Geometry Solver:")
@@ -68,8 +68,12 @@ def run_pipeline():
         spawn_pose=dock_pose,
         goal_pose=goal_pose,
     )
-    print(f"  - Successfully placed {len(placed_objects)}/{len(objects)} objects without collision.")
-    print(f"  - Preserved main corridor width: {corridors[0].width:.2f}m (Requires >= 2.2m for TB3)")
+    print(
+        f"  - Successfully placed {len(placed_objects)}/{len(objects)} objects without collision."
+    )
+    print(
+        f"  - Preserved main corridor width: {corridors[0].width:.2f}m (Requires >= 2.2m for TB3)"
+    )
 
     # 4. Zero-SLAM Map Slicer
     output_dir = Path("test_output/e2e")
