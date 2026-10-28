@@ -1,10 +1,33 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.egg-info/
-.pytest_cache/
+
+# Virtual environments
 .venv/
+venv/
+ENV/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+test_output/
+
+# Tooling and caches
+.ruff_cache/
+.mypy_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg
+
+# Local workspaces and runtime artifacts
 .sim2lang.json
-SIM2LANG.md
+p4_out/
+_ref/
 .env
 *.env
-test_output/
+PITCH_DECK_CONTEXT.md
