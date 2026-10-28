@@ -17,9 +17,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lang2sim.world_gen import catalog, solve_spatial_layout, slice_map_from_layout
 from lang2sim.compiler.sdf_compiler import compile_world_sdf
 from lang2sim.core.models import EnvironmentSpec, MissionSpec, SimSpec
+from lang2sim.world_gen import catalog, slice_map_from_layout, solve_spatial_layout
 
 
 def run_pipeline():
@@ -33,7 +33,7 @@ def run_pipeline():
     dock_pose = catalog.resolve_anchor(scene_id, "dock")
     goal_pose = catalog.resolve_anchor(scene_id, "rack_5")
 
-    print(f"\n[Step 1] Catalog Query:")
+    print("\n[Step 1] Catalog Query:")
     print(f"  - Target Scene: {scene_id} ({room_dims.x}m x {room_dims.y}m x {room_dims.z}m)")
     print(f"  - Robot Spawn Anchor ('dock'):   ({dock_pose.x}, {dock_pose.y})")
     print(f"  - Mission Goal Anchor ('rack_5'): ({goal_pose.x}, {goal_pose.y})")
@@ -51,7 +51,7 @@ def run_pipeline():
     )
 
     # 2. Query Catalog for Object Models
-    print(f"\n[Step 2] Querying Physical Object Blueprints from Catalog:")
+    print("\n[Step 2] Querying Physical Object Blueprints from Catalog:")
     objects = [catalog.get_model_spec("aws_warehouse_rack", f"rack_{i}") for i in range(1, 5)] + [
         catalog.get_model_spec("wooden_crate", f"crate_{j}") for j in range(1, 3)
     ]
@@ -61,7 +61,7 @@ def run_pipeline():
         )
 
     # 3. Procedural Spatial Solver (Shapely OBB)
-    print(f"\n[Step 3] Running Procedural Geometry Solver:")
+    print("\n[Step 3] Running Procedural Geometry Solver:")
     placed_objects, corridors = solve_spatial_layout(
         environment=env,
         objects=objects,
@@ -79,7 +79,7 @@ def run_pipeline():
     output_dir = Path("test_output/e2e")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n[Step 4] Slicing 2D Occupancy Grid (Zero-SLAM):")
+    print("\n[Step 4] Slicing 2D Occupancy Grid (Zero-SLAM):")
     pgm_path, yaml_path = slice_map_from_layout(
         room_dim=env.room_dimensions,
         objects=placed_objects,
@@ -90,7 +90,7 @@ def run_pipeline():
     print(f"  - Generated Map YAML: {yaml_path}")
 
     # 5. SDF Compiler for Gazebo Harmonic
-    print(f"\n[Step 5] Compiling Gazebo Harmonic SDF:")
+    print("\n[Step 5] Compiling Gazebo Harmonic SDF:")
     sim_spec = SimSpec(
         environment=env,
         objects=placed_objects,

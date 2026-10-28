@@ -3,12 +3,14 @@ Sessions Modal (ctrl+s / Command Palette)
 File: lang2sim/cli/screens/sessions_modal.py
 """
 
-from typing import List, Dict, Optional
-from textual.screen import ModalScreen
-from textual.widgets import Static, Input
-from textual.containers import Vertical, Horizontal, VerticalScroll
+from typing import List, Optional
+
 from textual.binding import Binding
-from ...core.session_manager import session_manager, ChatSession
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
+from textual.widgets import Input, Static
+
+from ...core.session_manager import ChatSession, session_manager
 
 
 class RenameModal(ModalScreen[Optional[str]]):

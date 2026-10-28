@@ -41,7 +41,7 @@ try:  # module level: with postponed annotations FastAPI resolves `ws: WebSocket
 except ImportError:  # snapshot/clock logic stays importable without the [sim] extra
     APIRouter = FastAPI = HTTPException = WebSocket = WebSocketDisconnect = None  # type: ignore
 
-from lang2sim.runtime.dashboard import read_report, make_router
+from lang2sim.runtime.dashboard import make_router, read_report
 from lang2sim.runtime.telemetry_recorder import load_recorded_runs
 from lang2sim.telemetry.benchmark import (
     WAFFLE_FOOTPRINT,

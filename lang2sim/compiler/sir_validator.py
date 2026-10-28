@@ -4,14 +4,15 @@ File: lang2sim/compiler/sir_validator.py
 """
 
 from typing import List, Tuple
-from shapely.geometry import box, Point
 
-from lang2sim.core.models import SimSpec, SimulationIR
+from shapely.geometry import Point
+
 from lang2sim.core.config import (
-    ROBOT_CIRCUMSCRIBED_RADIUS,
     MIN_AISLE_CORRIDOR_WIDTH,
     MIN_WALL_STANDOFF,
+    ROBOT_CIRCUMSCRIBED_RADIUS,
 )
+from lang2sim.core.models import SimSpec
 from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
 
 

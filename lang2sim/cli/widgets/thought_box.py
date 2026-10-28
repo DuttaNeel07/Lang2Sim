@@ -3,10 +3,10 @@ Collapsible Thought Box Widget
 File: lang2sim/cli/widgets/thought_box.py
 """
 
+from textual.events import Click
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
-from textual.reactive import reactive
-from textual.events import Click
 
 
 class ThoughtBox(Widget):

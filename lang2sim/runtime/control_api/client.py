@@ -67,7 +67,7 @@ class ControlClient:
             base_url=self.base_url + API_PREFIX, timeout=timeout, transport=transport
         )
 
-    async def __aenter__(self) -> "ControlClient":
+    async def __aenter__(self) -> ControlClient:
         return self
 
     async def __aexit__(self, *exc: Any) -> None:

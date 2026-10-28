@@ -116,7 +116,9 @@ ROBOT_NAME = "waffle"  # TurtleBot3 variant, and the entity name it is spawned u
 def tb3_gazebo_share() -> Optional[Path]:
     """turtlebot3_gazebo's share directory inside the container, or None."""
     try:
-        from ament_index_python.packages import get_package_share_directory  # type: ignore[import-not-found]
+        from ament_index_python.packages import (
+            get_package_share_directory,  # type: ignore[import-not-found]
+        )
 
         return Path(get_package_share_directory("turtlebot3_gazebo"))
     except Exception:  # noqa: BLE001 - no ament index (host tests) or package missing

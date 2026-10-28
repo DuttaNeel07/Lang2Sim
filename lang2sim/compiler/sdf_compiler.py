@@ -4,10 +4,11 @@ File: lang2sim/compiler/sdf_compiler.py
 """
 
 from pathlib import Path
+
 from jinja2 import Environment, FileSystemLoader
 
-from lang2sim.core.models import SimSpec
 from lang2sim.core.config import config
+from lang2sim.core.models import SimSpec
 
 
 class HarmonicSdfCompiler:

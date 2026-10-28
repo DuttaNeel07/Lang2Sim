@@ -6,10 +6,12 @@ File: lang2sim/core/session_manager.py
 import json
 import time
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
 from .config import DEFAULT_LANG2SIM_ROOT
 
 SESSIONS_DIR = DEFAULT_LANG2SIM_ROOT / "sessions"

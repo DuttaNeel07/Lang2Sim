@@ -5,20 +5,21 @@ File: lang2sim/world_gen/shapely_solver.py
 
 import math
 from typing import List, Optional, Tuple
-from shapely.geometry import Polygon, Point, box
-from shapely import affinity
 
-from lang2sim.core.models import (
-    Pose2D,
-    Vector3D,
-    EnvironmentSpec,
-    ObjectSpec,
-    AisleCorridor,
-)
+from shapely import affinity
+from shapely.geometry import Point, Polygon, box
+
 from lang2sim.core.config import (
-    ROBOT_CIRCUMSCRIBED_RADIUS,
     MIN_AISLE_CORRIDOR_WIDTH,
     MIN_WALL_STANDOFF,
+    ROBOT_CIRCUMSCRIBED_RADIUS,
+)
+from lang2sim.core.models import (
+    AisleCorridor,
+    EnvironmentSpec,
+    ObjectSpec,
+    Pose2D,
+    Vector3D,
 )
 
 

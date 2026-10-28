@@ -34,7 +34,9 @@ POLL_S = 0.1
 
 
 def _ros_navigator() -> Any:
-    from nav2_simple_commander.robot_navigator import BasicNavigator  # type: ignore[import-not-found]
+    from nav2_simple_commander.robot_navigator import (
+        BasicNavigator,  # type: ignore[import-not-found]
+    )
     from rclpy.parameter import Parameter  # type: ignore[import-not-found]
 
     nav = BasicNavigator("l2s_nav_dispatcher")
@@ -79,7 +81,7 @@ class NavDispatcher:
         self._make_pose = make_pose
         self._lock = threading.Lock()
         self._status = NavStatus()
-        self._queue: "queue.Queue[_Task]" = queue.Queue()
+        self._queue: queue.Queue[_Task] = queue.Queue()
         self._cancel = threading.Event()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None

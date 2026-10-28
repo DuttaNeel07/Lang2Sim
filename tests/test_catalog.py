@@ -4,8 +4,8 @@ File: tests/test_catalog.py
 """
 
 import unittest
-from lang2sim.world_gen.catalog_loader import catalog, SceneCatalog
-from lang2sim.core.models import Pose2D, Vector3D
+
+from lang2sim.world_gen.catalog_loader import catalog
 
 
 class TestSceneCatalog(unittest.TestCase):

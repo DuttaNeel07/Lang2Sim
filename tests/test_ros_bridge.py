@@ -58,11 +58,11 @@ def test_try_create_without_ros_returns_none():
 
 
 # --- telemetry plumbing (no rclpy: drive the callbacks with stand-in messages) ----------------
-import threading  # noqa: E402
 import collections  # noqa: E402
+import threading  # noqa: E402
 from types import SimpleNamespace as NS  # noqa: E402
 
-from lang2sim.runtime.ros_bridge import RosBridge, RosSnapshot, contact_pairs, stamp_s  # noqa: E402
+from lang2sim.runtime.ros_bridge import contact_pairs, stamp_s  # noqa: E402
 from lang2sim.runtime.telemetry_recorder import ContactMonitor, TelemetryRecorder  # noqa: E402
 
 

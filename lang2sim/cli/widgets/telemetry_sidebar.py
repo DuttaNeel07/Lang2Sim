@@ -3,11 +3,12 @@ Telemetry Sidebar Widget (20% Workspace Right Pane)
 File: lang2sim/cli/widgets/telemetry_sidebar.py
 """
 
-from textual.widget import Widget
-from textual.widgets import Static
-from textual.containers import Vertical
 from dataclasses import dataclass
 from typing import Optional
+
+from textual.containers import Vertical
+from textual.widget import Widget
+from textual.widgets import Static
 
 
 @dataclass

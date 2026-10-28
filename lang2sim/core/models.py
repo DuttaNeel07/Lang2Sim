@@ -4,9 +4,9 @@ File: lang2sim/core/models.py
 """
 
 import math
-from typing import List, Optional, Literal, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Any, Dict, List, Literal, Optional
 
+from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # 1. Spatial and Kinematic Primitives

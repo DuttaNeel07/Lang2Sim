@@ -7,10 +7,10 @@ sys.modules.setdefault("sim2lang.perturbation", sys.modules[__name__])
 
 from lang2sim.perturbation.gazebo_bridge import (
     BridgeResult,
-    GazeboBridge,
-    DryRunBridge,
-    HarmonicBridge,
     ClassicBridge,
+    DryRunBridge,
+    GazeboBridge,
+    HarmonicBridge,
     get_bridge,
     reset_bridge_instance,
 )
@@ -20,20 +20,22 @@ from lang2sim.perturbation.gazebo_bridge import (
 # hard import here would silently drop that router from the control API.
 try:
     from lang2sim.perturbation.mcp_server import (
-        mcp,
-        call_tool_inprocess,
-        spawn_dynamic_entity,
-        set_ambient_lighting,
-        reset_simulation,
         apply_chassis_perturbation,
         bridge_health,
+        call_tool_inprocess,
         list_spawned_entities,
+        mcp,
+        reset_simulation,
+        set_ambient_lighting,
+        spawn_dynamic_entity,
     )
 except ImportError:  # no fastmcp (sim container)
     pass
 from lang2sim.perturbation.routers.world import (
-    router as world_router,
     mount_world_router,
+)
+from lang2sim.perturbation.routers.world import (
+    router as world_router,
 )
 
 __all__ = [

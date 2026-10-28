@@ -9,11 +9,12 @@ in < 2 seconds, completely eliminating Cartographer / SLAM overhead.
 
 import math
 from pathlib import Path
-from typing import List, Tuple, Optional
-from shapely.geometry import Polygon, Point
+from typing import List, Tuple
 
-from lang2sim.core.models import Vector3D, ObjectSpec
+from shapely.geometry import Point
+
 from lang2sim.core.config import MAP_RESOLUTION
+from lang2sim.core.models import ObjectSpec, Vector3D
 
 
 class ZeroSlamMapSlicer:

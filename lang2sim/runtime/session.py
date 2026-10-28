@@ -23,7 +23,6 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
 
 from lang2sim.core.models import (
     NavStatus,
-    Pose2D,
     SimSpec,
     SimStatusResponse,
     TelemetryRecordResult,
@@ -145,7 +144,7 @@ class SimSession:
         self.run_dir: Optional[Path] = None
 
     @classmethod
-    def attach(cls, base_url: Optional[str] = None, run_dir: Optional[Path] = None) -> "SimSession":
+    def attach(cls, base_url: Optional[str] = None, run_dir: Optional[Path] = None) -> SimSession:
         """A session bound to an already-running control API (live sim or replay), e.g. from the TUI.
 
         It does not own the container: stop() only closes the client."""
@@ -430,7 +429,7 @@ class SimSession:
         await self.api.aclose()
         self.runner.remove(self.opts.name)
 
-    async def __aenter__(self) -> "SimSession":
+    async def __aenter__(self) -> SimSession:
         await self.start()
         return self
 

@@ -139,7 +139,6 @@ def replay_api(unused_tcp_port_factory=None):
 
 @pytest.mark.asyncio
 async def test_tui_runs_demo_commands_against_the_api(replay_api, monkeypatch, tmp_path):
-    from textual.widgets import Static
 
     monkeypatch.setenv("LANG2SIM_CONTROL_API", replay_api)
     monkeypatch.setenv("HOME", str(tmp_path))

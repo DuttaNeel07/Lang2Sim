@@ -80,14 +80,13 @@ fastapi = pytest.importorskip("fastapi")
 
 
 def test_fetch_context_from_a_replay(monkeypatch):
+    import socket
     import threading
     import time
 
     import uvicorn
 
     from lang2sim.telemetry.replay import create_replay_app
-
-    import socket
 
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))

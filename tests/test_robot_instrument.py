@@ -6,9 +6,10 @@ import xml.etree.ElementTree as ET
 import pytest
 import yaml
 
-from lang2sim.runtime import launch_builder, robot_instrument as ri
-from lang2sim.runtime.control_api.server import SimProcess
 from lang2sim.core.models import Pose2D, SimStartRequest
+from lang2sim.runtime import launch_builder
+from lang2sim.runtime import robot_instrument as ri
+from lang2sim.runtime.control_api.server import SimProcess
 
 # Shape of turtlebot3_gazebo/models/turtlebot3_waffle/model.sdf (Jazzy), trimmed.
 STOCK_MODEL = """<?xml version="1.0" ?>

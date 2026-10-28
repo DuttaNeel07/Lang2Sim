@@ -4,8 +4,10 @@ File: lang2sim/cli/app.py
 """
 
 from pathlib import Path
+
 from textual.app import App
 from textual.binding import Binding
+
 from .screens.landing_screen import LandingScreen
 
 CSS_PATH = Path(__file__).parent / "styles" / "app.tcss"

@@ -14,16 +14,15 @@ from __future__ import annotations
 
 import argparse
 import base64
+
 import io
-import math
-import os
 import shutil
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 import numpy as np
 from PIL import Image
@@ -232,7 +231,7 @@ def capture_desktop_window(
 
     try:
         # Use mss.MSS or mss.mss
-        mss_cls = getattr(mss, "MSS", None) or getattr(mss, "mss")
+        mss_cls = getattr(mss, "MSS", None) or mss.mss
         with mss_cls() as sct:
             if rect is not None:
                 rx, ry, rw, rh = rect

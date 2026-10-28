@@ -35,8 +35,8 @@ import json
 import math
 import threading
 import time
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 Pose = Tuple[float, float, float]  # x, y, yaw
@@ -297,7 +297,7 @@ class TelemetryRecorder:
             )
         self.contacts.on_event = self._stream_event if stream is not None else None
 
-    def _write(self, run: "_Run", record: Dict[str, Any]) -> None:
+    def _write(self, run: _Run, record: Dict[str, Any]) -> None:
         if run.stream is None:
             return
         try:

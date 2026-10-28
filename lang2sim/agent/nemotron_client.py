@@ -5,7 +5,8 @@ File: lang2sim/agent/nemotron_client.py
 
 import os
 from pathlib import Path
-from typing import List, Dict, Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
 from openai import AsyncOpenAI
 
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"

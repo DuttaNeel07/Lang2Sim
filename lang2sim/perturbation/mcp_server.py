@@ -15,15 +15,14 @@ Can also be launched standalone via HTTP for developer introspection with MCP In
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sys
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from fastmcp import FastMCP
 
 from lang2sim.perturbation._compat import Pose2D
-from lang2sim.perturbation.gazebo_bridge import BridgeResult, get_bridge
+from lang2sim.perturbation.gazebo_bridge import get_bridge
 
 __all__ = [
     "mcp",
@@ -128,7 +127,7 @@ def main() -> int:
         print(
             f"Starting FastMCP HTTP server at http://{args.host}:{args.port}/mcp (Streamable HTTP)"
         )
-        print(f"Connect via MCP Inspector: npx @modelcontextprotocol/inspector")
+        print("Connect via MCP Inspector: npx @modelcontextprotocol/inspector")
         mcp.run(transport="http", host=args.host, port=args.port)
     else:
         mcp.run()

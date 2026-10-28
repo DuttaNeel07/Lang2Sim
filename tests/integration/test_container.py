@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from lang2sim.core.models import Pose2D, SimStartRequest
-from lang2sim.runtime.control_api.client import ControlAPIError, ControlClient
+from lang2sim.runtime.control_api.client import ControlAPIError
 from lang2sim.runtime.display import DisplayPlan
 from lang2sim.runtime.docker_runner import (
     DockerRunner,

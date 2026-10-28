@@ -3,12 +3,12 @@ Custom Command Palette Modal (ctrl+p)
 File: lang2sim/cli/screens/command_palette_modal.py
 """
 
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
+
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Input, Static
-from textual.containers import Vertical, Horizontal, VerticalScroll
-from textual.binding import Binding
-
 
 COMMANDS: List[Dict[str, str]] = [
     # Suggested

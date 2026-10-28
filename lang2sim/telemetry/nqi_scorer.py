@@ -54,7 +54,7 @@ __all__ = [
 REPORT_SCHEMA_VERSION = "1.0"
 
 # np.trapz was renamed to np.trapezoid in NumPy 2.0.
-_trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+_trapezoid = getattr(np, "trapezoid", None) or np.trapz
 
 
 # --------------------------------------------------------------------------- params
@@ -88,7 +88,7 @@ class OccupancyGrid:
     origin: tuple[float, float]  # world coords of the bottom-left cell corner
 
     @classmethod
-    def from_yaml(cls, yaml_path: str | Path) -> "OccupancyGrid":
+    def from_yaml(cls, yaml_path: str | Path) -> OccupancyGrid:
         """Load a Nav2 map. Uses a tiny ``key: value`` parser to avoid a PyYAML dependency."""
         from PIL import Image  # local import: Pillow only needed for maps
 

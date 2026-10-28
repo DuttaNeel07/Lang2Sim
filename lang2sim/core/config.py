@@ -4,9 +4,9 @@ File: lang2sim/core/config.py
 """
 
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
 
 
 def _env(*names: str, default: str) -> str:

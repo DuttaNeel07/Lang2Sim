@@ -223,7 +223,7 @@ class DockerRunner:
         args: Sequence[str],
         check: bool = True,
         timeout: Optional[float] = 60,
-    ) -> "subprocess.CompletedProcess[str]":
+    ) -> subprocess.CompletedProcess[str]:
         try:
             cp = self._run(
                 [self.docker, *args], capture_output=True, text=True, timeout=timeout, check=False
@@ -294,7 +294,7 @@ class DockerRunner:
         name: str = CONTAINER_NAME,
         timeout: Optional[float] = 60,
         user: str = SIM_USER,
-    ) -> "subprocess.CompletedProcess[str]":
+    ) -> subprocess.CompletedProcess[str]:
         """Run a command in the container as the sim user.
 
         Must match the user the sim runs as: ROS 2's default (Fast DDS) shared

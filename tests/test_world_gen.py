@@ -3,25 +3,24 @@ Unit Tests for Procedural World Generation, Map Slicing, and SDF Compilation.
 File: tests/test_world_gen.py
 """
 
-import os
 import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from lang2sim.core.models import (
-    Pose2D,
-    Vector3D,
-    EnvironmentSpec,
-    ObjectSpec,
-    MissionSpec,
-    SimSpec,
-)
-from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver, solve_spatial_layout
-from lang2sim.world_gen.map_slicer import ZeroSlamMapSlicer, slice_map_from_layout
-from lang2sim.compiler.sdf_compiler import HarmonicSdfCompiler, compile_world_sdf
-from lang2sim.compiler.sir_validator import SIRValidator
+from lang2sim.compiler.sdf_compiler import compile_world_sdf
 from lang2sim.compiler.sir_generator import SIRGenerator
+from lang2sim.compiler.sir_validator import SIRValidator
+from lang2sim.core.models import (
+    EnvironmentSpec,
+    MissionSpec,
+    ObjectSpec,
+    Pose2D,
+    SimSpec,
+    Vector3D,
+)
+from lang2sim.world_gen.map_slicer import slice_map_from_layout
+from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver, solve_spatial_layout
 
 
 class TestWorldGenAndMapSlicer(unittest.TestCase):
@@ -111,7 +110,7 @@ class TestWorldGenAndMapSlicer(unittest.TestCase):
         self.assertEqual(max_val, "255")
 
         # Validate map.yaml content
-        with open(yaml_path, "r") as f:
+        with open(yaml_path) as f:
             yaml_text = f.read()
         self.assertIn("image: test_map.pgm", yaml_text)
         self.assertIn("resolution: 0.05", yaml_text)
@@ -129,7 +128,7 @@ class TestWorldGenAndMapSlicer(unittest.TestCase):
         compile_world_sdf(sim_spec, sdf_path, world_name="test_warehouse")
 
         self.assertTrue(sdf_path.exists())
-        with open(sdf_path, "r", encoding="utf-8") as f:
+        with open(sdf_path, encoding="utf-8") as f:
             xml = f.read()
 
         self.assertIn('<sdf version="1.9">', xml)

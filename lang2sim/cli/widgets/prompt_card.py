@@ -3,10 +3,10 @@ Input Card Widget (Floating & Sticky Docked)
 File: lang2sim/cli/widgets/prompt_card.py
 """
 
-from textual.widget import Widget
-from textual.widgets import Input, Static
 from textual.containers import Vertical
 from textual.message import Message
+from textual.widget import Widget
+from textual.widgets import Input, Static
 
 
 class PromptCard(Widget):

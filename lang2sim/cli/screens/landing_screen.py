@@ -3,9 +3,10 @@ Screen 1: Landing Screen
 File: lang2sim/cli/screens/landing_screen.py
 """
 
+from textual.containers import Center, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Static
-from textual.containers import Vertical, Center, Horizontal
+
 from ..widgets.prompt_card import PromptCard
 
 # ── Logo: pixel-bitmap glyphs rendered with half-blocks (2 pixel rows per text row) ──

@@ -3,17 +3,19 @@ Screen 2: 80/20 Workspace Screen
 File: lang2sim/cli/screens/workspace_screen.py
 """
 
-from typing import List, Dict, Any, Optional
-from textual.screen import Screen
-from textual.widgets import Static, Markdown
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.binding import Binding
-from textual import work
+from typing import Any, Dict, List, Optional
+
 from rich.markup import escape
+from textual import work
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import Screen
+from textual.widgets import Markdown, Static
+
+from ...agent.nemotron_client import NemotronClient
+from ...core.session_manager import ChatMessage, session_manager
 from ..widgets.prompt_card import PromptCard
 from ..widgets.telemetry_sidebar import TelemetrySidebar
-from ...agent.nemotron_client import NemotronClient
-from ...core.session_manager import session_manager, ChatSession, ChatMessage
 
 SYSTEM_PROMPT = (
     "You are Sim2Lang Copilot, an expert AI robotics simulation assistant. "
@@ -321,6 +323,7 @@ class WorkspaceScreen(Screen):
         try:
             # Ground the answer in the running simulation (live telemetry + latest NQI report).
             import asyncio
+
             from ...agent.grounding import fetch_context, with_context
 
             try:

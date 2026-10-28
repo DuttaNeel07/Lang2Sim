@@ -4,14 +4,15 @@ File: tests/test_agent_tui.py
 """
 
 import pytest
+
+from lang2sim.agent.tools import TOOL_REGISTRY, execute_tool
 from lang2sim.cli.app import Lang2SimApp
 from lang2sim.cli.screens.landing_screen import LandingScreen
 from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
-from lang2sim.cli.widgets.thought_box import ThoughtBox
 from lang2sim.cli.widgets.action_pill import ActionPill
 from lang2sim.cli.widgets.prompt_card import PromptCard
 from lang2sim.cli.widgets.telemetry_sidebar import TelemetrySidebar
-from lang2sim.agent.tools import TOOL_REGISTRY, execute_tool
+from lang2sim.cli.widgets.thought_box import ThoughtBox
 
 
 @pytest.mark.asyncio
@@ -139,8 +140,9 @@ def test_tool_registry_has_all_14_tools():
 @pytest.mark.asyncio
 async def test_command_palette_modal_open_and_filter():
     """Verify CommandPaletteModal opens on ctrl+p, filters dynamically, and dismisses on esc."""
-    from lang2sim.cli.screens.command_palette_modal import CommandPaletteModal
     from textual.widgets import Input
+
+    from lang2sim.cli.screens.command_palette_modal import CommandPaletteModal
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:
@@ -189,7 +191,7 @@ async def test_nemotron_client_config():
 @pytest.mark.asyncio
 async def test_workspace_screen_conversation_flow():
     """Verify WorkspaceScreen accumulates multi-turn conversation and updates status."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:
@@ -229,7 +231,7 @@ async def test_workspace_screen_conversation_flow():
 @pytest.mark.asyncio
 async def test_session_manager_persistence_and_grouping(tmp_path):
     """Verify session manager creates, saves, lists, pins, and groups sessions."""
-    from lang2sim.core.session_manager import SessionManager, ChatMessage
+    from lang2sim.core.session_manager import ChatMessage, SessionManager
 
     mgr = SessionManager(sessions_dir=tmp_path)
     s1 = mgr.create_session(title="Review ROS 2 SLAM pipeline architecture")
@@ -261,11 +263,12 @@ async def test_session_manager_persistence_and_grouping(tmp_path):
 @pytest.mark.asyncio
 async def test_sessions_modal_flow():
     """Verify SessionsModal opens on ctrl+s, filters dynamically, and switches sessions."""
-    from lang2sim.cli.screens.sessions_modal import SessionsModal
-    from lang2sim.core.session_manager import session_manager
+    import uuid
+
     from textual.widgets import Input
 
-    import uuid
+    from lang2sim.cli.screens.sessions_modal import SessionsModal
+    from lang2sim.core.session_manager import session_manager
 
     unique_tag = str(uuid.uuid4())[:6]
     title1 = f"Test SLAM Exploration {unique_tag}"

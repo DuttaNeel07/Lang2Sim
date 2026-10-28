@@ -21,9 +21,9 @@ import os
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Deque, Mapping, Optional, Sequence
+from typing import Any, Deque, Optional, Sequence
 
 import numpy as np
 
@@ -439,7 +439,7 @@ class ReplaySource:
         self.t_start = time.time()
 
     @classmethod
-    def from_json(cls, json_path: str | Path) -> "ReplaySource":
+    def from_json(cls, json_path: str | Path) -> ReplaySource:
         traj = Trajectory.from_json(json_path)
         return cls(traj)
 

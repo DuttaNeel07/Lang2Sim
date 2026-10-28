@@ -172,7 +172,7 @@ class RosBridge:
         self._thread.start()
 
     @classmethod
-    def try_create(cls) -> Optional["RosBridge"]:
+    def try_create(cls) -> Optional[RosBridge]:
         try:
             return cls()
         except Exception:  # noqa: BLE001 - no ROS here (host tests) or rclpy failed to init

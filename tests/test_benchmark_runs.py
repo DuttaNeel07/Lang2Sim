@@ -340,6 +340,7 @@ def test_footprint_clearance_depends_on_heading():
 
 def test_nav2_goal_tolerance_with_and_without_pyyaml(tmp_path, monkeypatch):
     import builtins
+
     from lang2sim.telemetry.benchmark import nav2_goal_tolerance
 
     f = tmp_path / "nav2_params.l2s.yaml"
@@ -389,6 +390,7 @@ def test_nav2_completed_run_is_not_reported_failed(run_dir):
 
 def test_table_labels_localization_error_for_recorded_runs(run_dir):
     from rich.console import Console
+
     from lang2sim.telemetry.nqi_scorer import build_report, render_comparison_table
 
     spec = spec_of(run_dir)

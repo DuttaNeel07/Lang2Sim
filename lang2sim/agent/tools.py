@@ -3,7 +3,7 @@ Typed Tool Registry & Function Schemas for Nemotron 3 ReAct Supervisor
 File: lang2sim/agent/tools.py
 """
 
-from typing import Dict, Any, Callable
+from typing import Any, Callable, Dict
 
 # 14 Typed Tool Implementations (With baseline mockable handlers for Dev 2 testing)
 

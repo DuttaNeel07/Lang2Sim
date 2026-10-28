@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import base64
 import io
-import json
 import math
 from pathlib import Path
 
@@ -22,28 +21,19 @@ from PIL import Image
 
 from lang2sim.perturbation._compat import Pose2D
 from lang2sim.perturbation.gazebo_bridge import (
-    ClassicBridge,
     DryRunBridge,
-    HarmonicBridge,
-    get_bridge,
     reset_bridge_instance,
 )
 from lang2sim.perturbation.mcp_server import (
     call_tool_inprocess,
-    mcp,
 )
 from lang2sim.telemetry.nqi_scorer import (
     NQIParams,
     build_report,
-    compute_nqi,
     min_clearance,
-    mission_success,
-    optimal_length,
-    path_efficiency,
     path_length,
     render_comparison_table,
     score_trajectory,
-    trajectory_smoothness,
 )
 from lang2sim.telemetry.ros_subscribers import (
     CollisionCounter,
@@ -370,8 +360,9 @@ class TestWorldRouterAndClient:
     @pytest.mark.asyncio
     async def test_control_client_world_mutation_endpoints(self):
         import httpx
-        from lang2sim.runtime.control_api.server import create_app
+
         from lang2sim.runtime.control_api.client import ControlClient
+        from lang2sim.runtime.control_api.server import create_app
 
         app = create_app()
         transport = httpx.ASGITransport(app=app)

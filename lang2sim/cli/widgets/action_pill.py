@@ -3,9 +3,9 @@ Tool Action Status Pill Widget
 File: lang2sim/cli/widgets/action_pill.py
 """
 
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
-from textual.reactive import reactive
 
 
 class ActionPill(Widget):

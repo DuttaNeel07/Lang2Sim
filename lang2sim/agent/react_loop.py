@@ -4,10 +4,11 @@ File: lang2sim/agent/react_loop.py
 """
 
 import json
-from typing import List, Dict, Any, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from .nemotron_client import NemotronClient
-from .tools import TOOL_REGISTRY, execute_tool
+from .tools import execute_tool
 
 SYSTEM_PROMPT = """You are the Sim2Lang Autonomous Simulation Supervisor Agent.
 Your role is to translate natural language robotics requests into validated, collision-free Gazebo simulations and Nav2 missions.
