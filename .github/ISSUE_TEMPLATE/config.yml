@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Lang2Sim Documentation
+    url: https://github.com/DuttaNeel07/Lang2Sim/tree/staging/docs
+    about: Please review the runtime and telemetry documentation first.
