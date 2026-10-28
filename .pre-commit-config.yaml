@@ -9,9 +9,11 @@ repos:
       - id: check-yaml
       - id: debug-statements
       - id: end-of-file-fixer
+        exclude: ^(catalog/|.*\.pgm)
       - id: no-commit-to-branch
         args: [--branch, staging, --branch, main]
       - id: trailing-whitespace
+        exclude: ^(catalog/|.*\.pgm)
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
