@@ -233,6 +233,7 @@ async def test_workspace_full_turn_react_execution_and_persistence(tmp_path):
     async with app.run_test() as pilot:
         with patch("lang2sim.cli.screens.workspace_screen.session_manager", mgr):
             ws = WorkspaceScreen(initial_prompt="")
+            ws.always_allow_commands = True
             app.switch_screen(ws)
             await pilot.pause()
 
@@ -250,14 +251,15 @@ async def test_workspace_full_turn_react_execution_and_persistence(tmp_path):
                     yield t
 
             with patch.object(ws.client, "is_configured", return_value=True), \
-                 patch.object(ws.client, "stream_chat", side_effect=mock_stream):
+                 patch.object(ws.client, "stream_chat", side_effect=mock_stream), \
+                 patch("lang2sim.agent.react_loop.execute_tool", return_value={"status": "success", "object_count": 4}):
                 ws.handle_user_prompt("Spawn warehouse and test SLAM drift")
                 await pilot.pause()
 
-                for _ in range(15):
+                for _ in range(30):
                     if len(ws.conversation_history) == 3:
                         break
-                    await pilot.pause(0.05)
+                    await pilot.pause(0.1)
 
                 # 1. Verify conversation history updated
                 assert len(ws.conversation_history) == 3

@@ -17,6 +17,9 @@ def _env(*names: str, default: str) -> str:
     return default
 
 
+DEFAULT_LANG2SIM_ROOT = Path(os.path.expanduser(_env("L2S_ROOT", default="~/.lang2sim")))
+PROJECTS_DIR = Path(_env("L2S_PROJECTS_DIR", default=str(DEFAULT_LANG2SIM_ROOT / "projects")))
+
 def _resolve_catalog_dir() -> Path:
     env_p = os.getenv("L2S_CATALOG_DIR")
     if env_p and Path(env_p).is_dir():
