@@ -1,0 +1,27 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="wooden_pallet">
+    <static>true</static>
+    <link name="link">
+      <inertial>
+        <mass>25.0</mass>
+        <inertia>
+          <ixx>2.500</ixx>
+          <iyy>2.500</iyy>
+          <izz>2.500</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="pallet_vis">
+        <pose>0 0 0.075 0 0 0</pose>
+        <geometry><box><size>1.2 0.8 0.15</size></box></geometry>
+        <material><diffuse>0.65 0.50 0.35 1.0</diffuse><ambient>0.5 0.4 0.25 1.0</ambient></material>
+      </visual>
+      <collision name="pallet_col">
+        <pose>0 0 0.075 0 0 0</pose>
+        <geometry><box><size>1.2 0.8 0.15</size></box></geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>

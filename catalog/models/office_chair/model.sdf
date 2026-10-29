@@ -1,0 +1,32 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="office_chair">
+    <static>false</static>
+    <link name="link">
+      <inertial>
+        <mass>16.0</mass>
+        <inertia>
+          <ixx>1.600</ixx>
+          <iyy>1.600</iyy>
+          <izz>1.600</izz>
+        </inertia>
+      </inertial>
+
+      <visual name="seat_vis">
+        <pose>0 0 0.45 0 0 0</pose>
+        <geometry><box><size>0.5 0.5 0.1</size></box></geometry>
+        <material><diffuse>0.2 0.2 0.2 1.0</diffuse><ambient>0.1 0.1 0.1 1.0</ambient></material>
+      </visual>
+      <visual name="back_vis">
+        <pose>0 -0.22 0.7 0 0 0</pose>
+        <geometry><box><size>0.45 0.06 0.4</size></box></geometry>
+        <material><diffuse>0.25 0.25 0.25 1.0</diffuse><ambient>0.15 0.15 0.15 1.0</ambient></material>
+      </visual>
+      <collision name="chair_col">
+        <pose>0 0 0.45 0 0 0</pose>
+        <geometry><cylinder><radius>0.3</radius><length>0.9</length></cylinder></geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>

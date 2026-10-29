@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lang2sim"
-version = "2.0.0"
+version = "2.0.2"
 description = "Natural Language to Executable Robot Simulation with Dynamic Stress Testing"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -71,8 +71,11 @@ ignore = [
     "PTH123", # pathlib migration will be done incrementally
     "S101",   # Allow assert usage (extensive in tests)
     "S311",   # Pseudo-random usage is non-cryptographic here
+    "S602",   # subprocess calls with shell=True are intentional (docker/ros commands)
     "S603",   # subprocess calls are intentional (docker/ros runners)
     "S607",   # Allow partial executable paths (docker, ros2)
+    "S310",   # Internal HTTP requests to local control API (http://127.0.0.1:9090)
+    "PTH109", # os.getcwd() fallback in runtime tools
     "B008",   # Function call in argument defaults (standard in FastAPI / telemetry params)
     "S108",   # Allow /tmp paths for X11 sockets and container mounts
     "S110",   # Allow try-except-pass in teardown, UI unmount, and fallback handlers

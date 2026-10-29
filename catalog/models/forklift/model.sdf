@@ -1,0 +1,49 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="forklift">
+    <static>true</static>
+    <link name="link">
+      <inertial>
+        <mass>650.0</mass>
+        <inertia>
+          <ixx>120.0</ixx>
+          <iyy>180.0</iyy>
+          <izz>160.0</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Main Chassis -->
+      <visual name="body_vis">
+        <pose>0 0 0.55 0 0 0</pose>
+        <geometry><box><size>1.8 1.1 1.1</size></box></geometry>
+        <material><diffuse>0.95 0.75 0.05 1.0</diffuse><ambient>0.85 0.65 0.05 1.0</ambient></material>
+      </visual>
+      <collision name="body_col">
+        <pose>0 0 0.55 0 0 0</pose>
+        <geometry><box><size>1.8 1.1 1.1</size></box></geometry>
+      </collision>
+
+      <!-- Vertical Mast -->
+      <visual name="mast_vis">
+        <pose>0.9 0 1.05 0 0 0</pose>
+        <geometry><box><size>0.15 0.7 2.1</size></box></geometry>
+        <material><diffuse>0.15 0.15 0.15 1.0</diffuse><ambient>0.1 0.1 0.1 1.0</ambient></material>
+      </visual>
+      <collision name="mast_col">
+        <pose>0.9 0 1.05 0 0 0</pose>
+        <geometry><box><size>0.15 0.7 2.1</size></box></geometry>
+      </collision>
+
+      <!-- Front Forks -->
+      <visual name="forks_vis">
+        <pose>1.35 0 0.05 0 0 0</pose>
+        <geometry><box><size>0.9 0.65 0.08</size></box></geometry>
+        <material><diffuse>0.2 0.2 0.2 1.0</diffuse><ambient>0.2 0.2 0.2 1.0</ambient></material>
+      </visual>
+      <collision name="forks_col">
+        <pose>1.35 0 0.05 0 0 0</pose>
+        <geometry><box><size>0.9 0.65 0.08</size></box></geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

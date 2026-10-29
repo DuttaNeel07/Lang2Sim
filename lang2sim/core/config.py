@@ -23,9 +23,28 @@ def _env(*names: str, default: str) -> str:
 # host's ~/.lang2sim/projects on both sides.
 DEFAULT_LANG2SIM_ROOT = Path(_env("L2S_ROOT", default="~/.lang2sim")).expanduser()
 PROJECTS_DIR = Path(_env("L2S_PROJECTS_DIR", default=str(DEFAULT_LANG2SIM_ROOT / "projects")))
-CATALOG_DIR = Path(
-    _env("L2S_CATALOG_DIR", default=str(Path(__file__).resolve().parent.parent.parent / "catalog"))
-)
+
+
+def _resolve_catalog_dir() -> Path:
+    env_p = os.getenv("L2S_CATALOG_DIR")
+    if env_p and Path(env_p).is_dir():
+        return Path(env_p)
+    # Check package-bundled catalog inside lang2sim/catalog
+    pkg_cat = Path(__file__).resolve().parent.parent / "catalog"
+    if pkg_cat.is_dir():
+        return pkg_cat
+    # Check repo root
+    repo_cat = Path(__file__).resolve().parent.parent.parent / "catalog"
+    if repo_cat.is_dir():
+        return repo_cat
+    # Check ~/.lang2sim/catalog
+    home_cat = DEFAULT_LANG2SIM_ROOT / "catalog"
+    if home_cat.is_dir():
+        return home_cat
+    return repo_cat
+
+
+CATALOG_DIR = _resolve_catalog_dir()
 
 # Container-side mount points (contract with docker/sim/Dockerfile).
 CONTAINER_PROJECTS_DIR = "/lang2sim/projects"

@@ -193,6 +193,38 @@ Input:focus {
     height: auto;
 }
 
+/* Stage-wise Plan Card */
+PlanCard {
+    height: auto !important;
+    background: #111114;
+    border: solid #27272a;
+    border-left: thick #a78bfa;
+    padding: 0 1;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+.plan-header {
+    height: 1;
+    margin-bottom: 1;
+}
+
+.plan-title {
+    color: #f1f2f6;
+    text-style: bold;
+}
+
+.plan-counter {
+    text-align: right;
+    color: #a78bfa;
+}
+
+.plan-step {
+    height: auto;
+    padding: 0 1;
+    margin-bottom: 0;
+}
+
 /* Sticky Bottom Input Card */
 #sticky-input-card {
     dock: bottom;

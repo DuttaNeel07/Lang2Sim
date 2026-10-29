@@ -111,6 +111,8 @@ def test_tool_registry_has_all_14_tools():
         "read_robot_camera",
         "query_robot_telemetry",
         "auto_repair_tf",
+        "search_catalog",
+        "send_navigation_goal",
     ]
     for tool_name in expected_tools:
         assert tool_name in TOOL_REGISTRY, f"Missing tool: {tool_name}"
@@ -335,3 +337,34 @@ async def test_command_palette_switch_session_enter_opens_sessions_modal():
 
         # SessionsModal should now be displayed
         assert isinstance(app.screen, SessionsModal)
+
+
+def test_search_catalog_and_scenario_detection():
+    """Verify search_catalog tool returns 3D basic blocks & scenes, and ReAct supervisor detects option choices."""
+    from lang2sim.agent.react_loop import ReActSupervisor
+    from lang2sim.agent.tools import search_catalog
+
+    # Test catalog search
+    res = search_catalog(query="", category="all")
+    assert res["status"] == "success"
+    assert res["scenes_count"] >= 5
+    assert res["models_count"] >= 10
+    assert any(m["id"] == "tree" for m in res["models"])
+    assert any(m["id"] == "brick_wall" for m in res["models"])
+    assert any(m["id"] == "warehouse_rack" for m in res["models"])
+
+    # Test query filter
+    tree_res = search_catalog(query="tree")
+    assert any(m["id"] == "tree" for m in tree_res["models"])
+
+    # Test ReAct Supervisor option detection
+    agent = ReActSupervisor()
+    opt3_actions = agent._detect_requested_tools("option 3")
+    assert len(opt3_actions) == 4
+    tool_names = [a[0] for a in opt3_actions]
+    assert tool_names == [
+        "solve_spatial_layout",
+        "compile_world_sdf",
+        "generate_zero_slam_map",
+        "launch_simulation_stack",
+    ]

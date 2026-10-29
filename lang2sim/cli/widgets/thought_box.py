@@ -52,3 +52,16 @@ class ThoughtBox(Widget):
     def on_mount(self) -> None:
         body = self.query_one("#thought-body", Static)
         body.display = not self.is_collapsed
+
+    def update_content(self, content: str, duration_str: str = "") -> None:
+        """Dynamically update thought text and duration during streaming or completion."""
+        self.thought_content = content
+        if duration_str:
+            self.duration_str = duration_str
+        try:
+            header = self.query_one("#thought-header", Static)
+            body = self.query_one("#thought-body", Static)
+            header.update(self._format_header())
+            body.update(self.thought_content)
+        except Exception:
+            pass

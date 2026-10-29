@@ -32,14 +32,16 @@ class HarmonicSdfCompiler:
         sim_spec: SimSpec,
         output_path: Path,
         world_name: str = "default_world",
+        target: str = "harmonic",
     ) -> Path:
         """
-        Renders the SDF 1.9 template and writes the result to disk.
+        Renders the SDF template for target simulator and writes the result to disk.
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         context = {
             "world_name": world_name,
+            "target": target,
             "ambient_light": sim_spec.environment.ambient_light_luminance,
             "surface_friction": sim_spec.environment.surface_friction,
             "sky": sim_spec.environment.sky_weather,

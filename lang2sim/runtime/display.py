@@ -62,6 +62,16 @@ class DisplayPlan:
 
 
 def _gpu_for_linux_host(platform: HostPlatform, hw: HardwareInfo, reasons: List[str]) -> GpuMode:
+    # On hybrid AMD/NVIDIA laptops under Wayland, Nvidia GLX direct context on AMD Xwayland fails with GLXBadFBConfig.
+    # Fall back to software rendering for 100% crash-free stability.
+    is_hybrid_wayland = bool(
+        platform.env.get("WAYLAND_DISPLAY") or platform.env.get("XDG_SESSION_TYPE") == "wayland"
+    ) and any(g.vendor == "amd" for g in hw.gpus)
+    if is_hybrid_wayland:
+        reasons.append(
+            "hybrid AMD/NVIDIA under Wayland: software rendering for rock-solid stability"
+        )
+        return "software"
     nv = hw.nvidia
     if nv is not None:
         if not platform.docker.has_nvidia_runtime:
