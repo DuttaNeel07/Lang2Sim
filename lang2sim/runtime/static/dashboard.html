@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lang2Sim Benchmark</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --panel-2: #18202b; --line: #233042; --text: #e6edf3;
+    --muted: #8b98a8; --faint: #5b6878; --accent: #34c3ff; --good: #3ddc84; --warn: #ffb547;
+    --bad: #ff5d6c; --nominal: #7aa7ff; --stress: #ffb547; --live: #34c3ff; --crate: #ff5d6c;
+    --free: #141b25; --occupied: #9aa7b8; --unknown: #0b0f14;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line);
+    background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header h1 span { color: var(--muted); font-weight: 500; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 650; letter-spacing: .4px; border: 1px solid currentColor; }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .live { color: var(--good); } .replay { color: var(--warn); } .offline { color: var(--bad); }
+  .pulse .dot { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .spacer { flex: 1; }
+  .hstat { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .hstat b { color: var(--text); font-weight: 600; }
+  main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr); gap: 16px; padding: 16px 20px 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .card h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); font-weight: 650; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  #mapWrap { position: relative; width: 100%; aspect-ratio: 4 / 3; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .legend i.sq { width: 10px; height: 10px; border-radius: 2px; }
+  .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .kpi { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .kpi .value { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .kpi .unit { font-size: 12px; color: var(--muted); font-weight: 500; margin-left: 3px; }
+  .nqi-hero { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+  .nqi-hero .big { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+  .nqi-hero .arrow { color: var(--faint); font-size: 24px; }
+  .nqi-hero .delta { font-size: 16px; font-weight: 650; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; color: var(--muted); }
+  tr:last-child td { border-bottom: 0; }
+  .good { color: var(--good); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+  .empty { color: var(--faint); padding: 18px 0; text-align: center; }
+  .charts { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chart { position: relative; height: 170px; }
+  .chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #events { list-style: none; margin: 0; padding: 0; max-height: 168px; overflow: auto; font-size: 13px; }
+  #events li { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+  #events li:last-child { border-bottom: 0; }
+  #events .t { color: var(--faint); font-variant-numeric: tabular-nums; min-width: 58px; }
+  .meta-line { color: var(--faint); font-size: 12px; margin-top: 8px; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } .charts { grid-template-columns: 1fr; } }
+  @media (max-width: 520px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } header { padding: 10px 16px; } main { padding: 12px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lang2Sim <span>· Navigation Benchmark</span></h1>
+  <span id="mode" class="badge offline"><span class="dot"></span><span id="modeText">CONNECTING</span></span>
+  <span id="rec" class="badge live pulse" style="display:none;color:var(--bad)"><span class="dot"></span><span id="recText">REC</span></span>
+  <span class="spacer"></span>
+  <span class="hstat">World <b id="world">–</b></span>
+  <span class="hstat">Sim time <b id="simTime">–</b></span>
+  <span class="hstat">RTF <b id="rtf">–</b></span>
+  <span class="hstat">Nav <b id="nav">–</b></span>
+</header>
+
+<main>
+  <div class="col">
+    <section class="card">
+      <h2>Top-down view <span class="muted" id="poseSource" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h2>
+      <div id="mapWrap"><canvas id="map"></canvas></div>
+      <div class="legend">
+        <span><i style="background:var(--nominal)"></i>Nominal run</span>
+        <span><i style="background:var(--stress)"></i>Stress run</span>
+        <span><i style="background:var(--live)"></i>Live trail</span>
+        <span><i class="sq" style="background:var(--crate)"></i>Spawned obstacle</span>
+        <span><i class="sq" style="background:var(--good);border-radius:50%"></i>Start</span>
+        <span><i class="sq" style="background:#fff;border-radius:50%"></i>Waypoint / goal</span>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Events</h2>
+      <ul id="events"></ul>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Live robot</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Speed</div><div class="value"><span id="kSpeed">–</span><span class="unit">m/s</span></div></div>
+        <div class="kpi"><div class="label">Clearance</div><div class="value"><span id="kClear">–</span><span class="unit">m</span></div></div>
+        <div class="kpi"><div class="label">To goal</div><div class="value"><span id="kGoal">–</span><span class="unit">m</span></div></div>
+        <div class="kpi"><div class="label">Collisions</div><div class="value" id="kColl">–</div></div>
+        <div class="kpi"><div class="label">Bumper force</div><div class="value"><span id="kForce">–</span><span class="unit">N</span></div></div>
+        <div class="kpi"><div class="label">Localization err</div><div class="value"><span id="kLoc">–</span><span class="unit">m</span></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Navigation Quality Index</h2>
+      <div id="nqi"><div class="empty">No benchmark yet. Run <code>/benchmark</code> in the TUI or <code>run_sim.py --benchmark</code>.</div></div>
+    </section>
+
+  </div>
+
+  <div class="charts">
+    <section class="card"><h2>Speed · m/s</h2><div class="chart"><canvas id="chSpeed"></canvas></div></section>
+    <section class="card"><h2>Obstacle clearance · m</h2><div class="chart"><canvas id="chClear"></canvas></div></section>
+  </div>
+</main>
+
+<script>
+"use strict";
+const FOOTPRINT = [-0.197, 0.069, -0.153, 0.153];     // TurtleBot3 Waffle chassis, base frame (m)
+const C_SAFE = 0.5;                                   // NQI clearance saturation (architecture §7.5)
+const WINDOW_S = 90;                                  // chart window, sim seconds
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = (id) => document.getElementById(id);
+
+const S = { mode: null, run: null, map: null, mapImg: null, traj: {}, report: null, reportStamp: null,
+            live: null, nav: null, trail: [], speed: [], clear: [], lastT: null, lastColl: 0,
+            recLabel: null, navStatus: null, spawnedSeen: new Set(), connected: false, ws: null };
+
+async function getJSON(path, timeoutMs = 2500) {
+  const ctl = new AbortController(); const id = setTimeout(() => ctl.abort(), timeoutMs);
+  try { const r = await fetch(path, { signal: ctl.signal, cache: "no-store" }); return r.ok ? await r.json() : null; }
+  catch { return null; } finally { clearTimeout(id); }
+}
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? "–" : Number(v).toFixed(d);
+const fmtT = (t) => { if (t === null || t === undefined) return "–"; const m = Math.floor(t / 60); return `${String(m).padStart(2, "0")}:${(t - 60 * m).toFixed(1).padStart(4, "0")}`; };
+
+function logEvent(text, cls = "") {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="t">${S.lastT !== null ? S.lastT.toFixed(1) + "s" : ""}</span><span class="${cls}"></span>`;
+  li.lastChild.textContent = text;
+  $("events").prepend(li);
+  while ($("events").children.length > 60) $("events").lastChild.remove();
+}
+
+// ------------------------------------------------------------------ data loading
+async function loadRun() {
+  const run = await getJSON("/v1/run");
+  if (!run) { setMode(null); return; }
+  setMode(run.mode);
+  if (!run.loaded) { S.run = null; return; }
+  const changed = !S.run || S.run.run_dir !== run.run_dir;
+  S.run = run;
+  $("world").textContent = run.world_name || (run.project_path || run.run_dir || "").split("/")[0] || "–";
+  if (changed) {
+    S.map = await getJSON("/v1/run/map"); buildMapImage();
+    S.trail = []; S.speed = []; S.clear = []; S.spawnedSeen = new Set(); S.traj = {};
+    await loadTrajectories(); S.reportStamp = null;
+  }
+  for (const e of run.spawned_entities || []) {
+    if (!S.spawnedSeen.has(e.name)) { S.spawnedSeen.add(e.name); logEvent(`Obstacle spawned: ${e.model} at (${fmt(e.x)}, ${fmt(e.y)})`, "bad"); }
+  }
+  // While a run is being recorded its streamed samples are on disk: refresh so its path grows live.
+  if (S.live && S.live.recording && (S.trajTick = (S.trajTick || 0) + 1) % 2 === 0) await loadTrajectories();
+  if (run.has_report && run.report_generated_at !== S.reportStamp) {
+    S.reportStamp = run.report_generated_at; S.report = await getJSON("/v1/run/report"); renderReport();
+    await loadTrajectories(); if (S.report) logEvent(`Benchmark scored: NQI ${nqiSummary()}`, "good");
+  }
+}
+async function loadTrajectories() { const t = await getJSON("/v1/run/trajectories", 4000); if (t) S.traj = t.runs || {}; }
+
+function setMode(mode) {
+  const el = $("mode");
+  el.className = "badge " + (mode === "live" ? "live pulse" : mode === "replay" ? "replay pulse" : "offline");
+  $("modeText").textContent = mode === "live" ? "LIVE SIM" : mode === "replay" ? "REPLAY" : "OFFLINE";
+  S.mode = mode;
+}
+
+function buildMapImage() {
+  S.mapImg = null; if (!S.map) return;
+  const { width: w, height: h, cells_b64 } = S.map;
+  const cells = Uint8Array.from(atob(cells_b64), (c) => c.charCodeAt(0));
+  const off = document.createElement("canvas"); off.width = w; off.height = h;
+  const ctx = off.getContext("2d"); const img = ctx.createImageData(w, h);
+  const col = { 0: hex(css("--free")), 1: hex(css("--occupied")), 2: hex(css("--unknown")) };
+  for (let i = 0; i < w * h; i++) { const c = col[cells[i]] || col[2]; img.data.set([c[0], c[1], c[2], 255], i * 4); }
+  ctx.putImageData(img, 0, 0); S.mapImg = off;
+}
+function hex(s) { const m = s.replace("#", ""); return [0, 2, 4].map((i) => parseInt(m.slice(i, i + 2), 16)); }
+
+// ------------------------------------------------------------------ live stream
+function onLive(msg) {
+  const live = msg.live || null; const nav = msg.nav || null;
+  S.connected = true;
+  if (live) {
+    const t = live.sim_time;
+    if (S.lastT !== null && t + 1 < S.lastT) { S.trail = []; S.speed = []; S.clear = []; logEvent("Simulation time reset"); }
+    S.lastT = t; S.live = live;
+    if (live.pose) {
+      const last = S.trail[S.trail.length - 1];
+      if (!last || Math.hypot(last[0] - live.pose.x, last[1] - live.pose.y) > 0.02) S.trail.push([live.pose.x, live.pose.y]);
+      if (S.trail.length > 6000) S.trail.splice(0, S.trail.length - 6000);
+    }
+    S.speed.push([t, Math.abs(live.linear_speed || 0)]);
+    if (live.obstacle_clearance_m !== null && live.obstacle_clearance_m !== undefined) S.clear.push([t, live.obstacle_clearance_m]);
+    for (const arr of [S.speed, S.clear]) while (arr.length && arr[0][0] < t - WINDOW_S) arr.shift();
+    if (live.recording && live.recording_label !== S.recLabel) { S.trail = []; logEvent(`Recording started: ${live.recording_label} run`); }
+    if (!live.recording && S.recLabel) logEvent(`Recording stopped: ${S.recLabel} run`);
+    S.recLabel = live.recording ? live.recording_label : null;
+    if ((live.collision_count || 0) > S.lastColl) logEvent(`Collision: ${live.last_contact_entity || "contact"} (${fmt(live.last_contact_force_n, 1)} N)`, "bad");
+    S.lastColl = live.collision_count || 0;
+  }
+  if (nav) {
+    if (nav.status !== S.navStatus && S.navStatus !== null && ["succeeded", "failed", "canceled"].includes(nav.status))
+      logEvent(`Mission ${nav.status}${nav.message ? ": " + nav.message : ""}`, nav.status === "succeeded" ? "good" : "bad");
+    S.navStatus = nav.status; S.nav = nav;
+  }
+  if (msg.sim) $("rtf").textContent = fmt(msg.sim.rtf, 2);
+  renderHeader(); renderKpis();
+}
+
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  let ws;
+  try { ws = new WebSocket(`${proto}://${location.host}/v1/nav/feedback?hz=10`); } catch { return pollFallback(); }
+  S.ws = ws;
+  ws.onmessage = (ev) => { try { onLive(JSON.parse(ev.data)); } catch {} };
+  ws.onclose = () => { S.ws = null; S.connected = false; setTimeout(connectWS, 1500); pollFallback(); };
+}
+let polling = false;
+async function pollFallback() {
+  if (polling) return; polling = true;
+  while (!S.ws || S.ws.readyState !== 1) {
+    const live = await getJSON("/v1/telemetry/live", 1200); const nav = await getJSON("/v1/nav/status", 1200);
+    if (live) onLive({ live, nav }); else { S.connected = false; setMode(null); }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  polling = false;
+}
+
+// ------------------------------------------------------------------ rendering
+function renderHeader() {
+  const l = S.live;
+  $("simTime").textContent = l ? fmtT(l.sim_time) : "–";
+  if (l && l.real_time_factor) $("rtf").textContent = fmt(l.real_time_factor, 2);
+  const n = S.nav;
+  $("nav").textContent = !n ? "–" : n.status === "navigating"
+    ? `waypoint ${n.waypoint_index + 1}/${n.waypoints_total} · ${fmt(n.distance_remaining, 1)} m` : n.status;
+  $("rec").style.display = l && l.recording ? "" : "none";
+  $("recText").textContent = l && l.recording ? `REC ${String(l.recording_label || "").toUpperCase()}` : "REC";
+  $("poseSource").textContent = l && l.pose_source && l.pose_source !== "none" ? `· pose from ${l.pose_source.replace("_", " ")}` : "";
+}
+
+function renderKpis() {
+  const l = S.live || {};
+  $("kSpeed").textContent = fmt(Math.abs(l.linear_speed ?? NaN), 2);
+  const c = l.obstacle_clearance_m; $("kClear").textContent = fmt(c, 2);
+  $("kClear").className = c === null || c === undefined ? "" : c < 0.15 ? "bad" : c < C_SAFE ? "" : "good";
+  $("kGoal").textContent = fmt(l.distance_to_goal_m, 2);
+  $("kColl").textContent = l.collision_count ?? "–"; $("kColl").className = "value " + ((l.collision_count || 0) > 0 ? "bad" : "good");
+  $("kForce").textContent = fmt(l.last_contact_force_n, 1);
+  $("kLoc").textContent = fmt(l.localization_error_m, 2);
+}
+
+function nqiSummary() {
+  const r = S.report && S.report.runs; if (!r) return "–";
+  return r.adversarial ? `${fmt(r.nominal.nqi, 1)} → ${fmt(r.adversarial.nqi, 1)}` : fmt(r.nominal.nqi, 1);
+}
+
+function renderReport() {
+  const box = $("nqi"); const r = S.report;
+  if (!r || !r.runs || !r.runs.nominal) { return; }
+  const nom = r.runs.nominal, adv = r.runs.adversarial || null, d = r.deltas || {};
+  const delta = (pct, higherBetter) => {
+    if (pct === null || pct === undefined) return "";
+    const good = higherBetter ? pct >= 0 : pct <= 0;
+    return `<span class="${Math.abs(pct) < 0.05 ? "muted" : good ? "good" : "bad"}">${pct > 0 ? "+" : ""}${pct.toFixed(1)}%</span>`;
+  };
+  const mission = (run) => run.nav_status === "interrupted" ? '<span class="bad">Interrupted</span>'
+    : run.S_mission === 1 ? '<span class="good">Succeeded</span>' : run.S_mission === 0 ? '<span class="bad">Failed</span>' : "n/a";
+  const rows = [
+    ["Mission", mission(nom), adv && mission(adv), ""],
+    ["Duration", fmt(nom.duration_s, 1) + " s", adv && fmt(adv.duration_s, 1) + " s", delta(d.duration_pct, false)],
+    ["Path length", fmt(nom.path_length_m) + " m", adv && fmt(adv.path_length_m) + " m", delta(d.path_length_pct, false)],
+    ["Path efficiency E<sub>p</sub>", fmt(nom.E_p), adv && fmt(adv.E_p), delta(d.E_p_pct, true)],
+    ["Smoothness S<sub>τ</sub>", fmt(nom.S_tau, 1), adv && fmt(adv.S_tau, 1), delta(d.S_tau_pct, false)],
+    ["Min clearance C<sub>min</sub>", fmt(nom.C_min_m) + " m", adv && fmt(adv.C_min_m) + " m", delta(d.C_min_pct, true)],
+    ["Collisions C<sub>force</sub>", nom.C_force, adv && adv.C_force,
+      d.C_force_delta === undefined ? "" : `<span class="${d.C_force_delta ? "bad" : "good"}">${d.C_force_delta > 0 ? "+" : ""}${d.C_force_delta}</span>`],
+  ];
+  if (nom.localization_error_mean_m !== undefined)
+    rows.push(["Localization error", fmt(nom.localization_error_mean_m) + " m", adv && fmt(adv.localization_error_mean_m) + " m", delta(d.ate_mean_pct, false)]);
+  const hero = adv
+    ? `<span class="big">${fmt(nom.nqi, 1)}</span><span class="arrow">→</span><span class="big ${adv.nqi < nom.nqi ? "bad" : "good"}">${fmt(adv.nqi, 1)}</span><span class="delta">${delta(d.nqi_pct, true)}</span>`
+    : `<span class="big">${fmt(nom.nqi, 1)}</span><span class="muted">/ 100</span>`;
+  const sc = r.scoring || {};
+  box.innerHTML = `<div class="nqi-hero">${hero}</div>
+    <table><thead><tr><th></th><th>Nominal</th>${adv ? "<th>Stress</th><th>Δ</th>" : ""}</tr></thead>
+    <tbody>${rows.map((x) => `<tr><td>${x[0]}</td><td>${x[1]}</td>${adv ? `<td>${x[2]}</td><td>${x[3]}</td>` : ""}</tr>`).join("")}</tbody></table>
+    <div class="meta-line">Scored ${r.generated_at ? new Date(r.generated_at).toLocaleTimeString() : ""} · sim-time stamps · ground-truth poses
+      ${sc.goal_tolerance_m ? `· goal tolerance ${sc.goal_tolerance_m} m (${String(sc.goal_tolerance_source || "").replace(/_/g, " ")})` : ""}</div>`;
+}
+
+function fitCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1; const r = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [ctx, r.width, r.height];
+}
+
+function drawMap() {
+  const [ctx, W, H] = fitCanvas($("map"));
+  ctx.fillStyle = css("--bg"); ctx.fillRect(0, 0, W, H);
+  const m = S.map;
+  if (!m) { ctx.fillStyle = css("--faint"); ctx.font = "14px sans-serif"; ctx.textAlign = "center"; ctx.fillText("Waiting for a run…", W / 2, H / 2); return; }
+  const pad = 12, scale = Math.min((W - 2 * pad) / m.width, (H - 2 * pad) / m.height);
+  const ox = (W - m.width * scale) / 2, oy = (H - m.height * scale) / 2;
+  const X = (x) => ox + (x - m.origin[0]) / m.resolution * scale;
+  const Y = (y) => oy + (m.height - (y - m.origin[1]) / m.resolution) * scale;
+  const px = scale / m.resolution;                         // pixels per metre
+  ctx.imageSmoothingEnabled = false;
+  if (S.mapImg) ctx.drawImage(S.mapImg, ox, oy, m.width * scale, m.height * scale);
+
+  const path = (pts, color, width, dash) => {
+    if (!pts || pts.length < 2) return;
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    if (dash) ctx.setLineDash(dash);
+    ctx.beginPath(); pts.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Y(p[1])) : ctx.moveTo(X(p[0]), Y(p[1])))); ctx.stroke(); ctx.restore();
+  };
+  const ms = S.run && S.run.mission;
+  if (ms) {
+    const route = [ms.initial_pose, ...ms.waypoints, ms.goal_pose].map((p) => [p.x, p.y]);
+    path(route, "rgba(255,255,255,.18)", 1.5, [4, 6]);
+  }
+  const nom = S.traj.nominal, adv = S.traj.adversarial;
+  if (nom) path(nom.samples.map((s) => [s[1], s[2]]), css("--nominal"), 2.5);
+  if (adv) path(adv.samples.map((s) => [s[1], s[2]]), css("--stress"), 2.5);
+
+  const crates = new Map();
+  for (const run of [nom, adv]) for (const e of (run && run.spawned_entities) || []) crates.set(e.name, e);
+  for (const e of (S.run && S.run.spawned_entities) || []) crates.set(e.name, e);
+  for (const e of crates.values()) {
+    ctx.save(); ctx.translate(X(e.x), Y(e.y)); ctx.rotate(-(e.yaw || 0));
+    ctx.fillStyle = css("--crate"); ctx.globalAlpha = .85;
+    if (e.shape === "box" && e.size) { const [sx, sy] = e.size; ctx.fillRect(-sx / 2 * px, -sy / 2 * px, sx * px, sy * px); }
+    else { ctx.beginPath(); ctx.arc(0, 0, (e.r || .3) * px, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+  for (const run of [nom, adv]) for (const c of (run && run.contact_events) || []) {
+    const s = run.samples.reduce((a, b) => Math.abs(b[0] - c.t) < Math.abs(a[0] - c.t) ? b : a, run.samples[0]);
+    if (!s) continue; ctx.save(); ctx.strokeStyle = css("--bad"); ctx.lineWidth = 2.5;
+    const r = 7; ctx.beginPath(); ctx.moveTo(X(s[1]) - r, Y(s[2]) - r); ctx.lineTo(X(s[1]) + r, Y(s[2]) + r);
+    ctx.moveTo(X(s[1]) + r, Y(s[2]) - r); ctx.lineTo(X(s[1]) - r, Y(s[2]) + r); ctx.stroke(); ctx.restore();
+  }
+  path(S.trail, css("--live"), 2);
+
+  if (ms) {
+    const dot = (p, fill, r) => { ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill(); };
+    dot(ms.initial_pose, css("--good"), 6);
+    ms.waypoints.forEach((p, i) => { dot(p, "#fff", 5); ctx.fillStyle = css("--muted"); ctx.font = "11px sans-serif"; ctx.fillText(`W${i + 1}`, X(p.x) + 8, Y(p.y) - 6); });
+    dot(ms.goal_pose, "#fff", 7); ctx.fillStyle = css("--text"); ctx.font = "600 11px sans-serif"; ctx.fillText("GOAL", X(ms.goal_pose.x) + 9, Y(ms.goal_pose.y) - 7);
+  }
+  const l = S.live;
+  if (l && l.pose) {
+    const [x0, x1, y0, y1] = FOOTPRINT;
+    ctx.save(); ctx.translate(X(l.pose.x), Y(l.pose.y)); ctx.rotate(-l.pose.yaw);
+    ctx.fillStyle = css("--live"); ctx.globalAlpha = .9;
+    ctx.fillRect(x0 * px, -y1 * px, (x1 - x0) * px, (y1 - y0) * px);
+    ctx.globalAlpha = 1; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.max(10, (x1 + .12) * px), 0); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawChart(cv, series, opts) {
+  const [ctx, W, H] = fitCanvas(cv);
+  ctx.clearRect(0, 0, W, H);
+  const padL = 34, padR = 8, padT = 8, padB = 20;
+  const tMax = S.lastT ?? 0, tMin = Math.max(0, tMax - WINDOW_S);
+  const yMax = Math.max(opts.yMin + 1e-6, opts.yMax ?? Math.max(opts.floor ?? 0, ...series.flatMap((s) => s.points.map((p) => p[1]))) * 1.15);
+  const X = (t) => padL + (t - tMin) / Math.max(1e-6, tMax - tMin) * (W - padL - padR);
+  const Y = (v) => padT + (1 - (v - opts.yMin) / (yMax - opts.yMin)) * (H - padT - padB);
+  ctx.strokeStyle = css("--line"); ctx.fillStyle = css("--faint"); ctx.font = "11px sans-serif"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const v = opts.yMin + (yMax - opts.yMin) * i / 3; const y = Y(v);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(v.toFixed(2), padL - 6, y + 4);
+  }
+  ctx.textAlign = "left"; ctx.fillText(`${tMin.toFixed(0)}s`, padL, H - 4); ctx.textAlign = "right"; ctx.fillText(`${tMax.toFixed(0)}s`, W - padR, H - 4);
+  if (opts.threshold !== undefined && opts.threshold < yMax) {
+    ctx.save(); ctx.setLineDash([5, 5]); ctx.strokeStyle = css("--warn"); ctx.beginPath(); ctx.moveTo(padL, Y(opts.threshold)); ctx.lineTo(W - padR, Y(opts.threshold)); ctx.stroke();
+    ctx.fillStyle = css("--warn"); ctx.textAlign = "left"; ctx.fillText(opts.thresholdLabel, padL + 6, Y(opts.threshold) - 5); ctx.restore();
+  }
+  for (const s of series) {
+    if (s.points.length < 2) continue;
+    ctx.save(); ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.beginPath();
+    s.points.forEach((p, i) => {                       // break the line across gaps (between runs)
+      const gap = i > 0 && p[0] - s.points[i - 1][0] > 2;
+      (i && !gap ? ctx.lineTo : ctx.moveTo).call(ctx, X(p[0]), Y(Math.min(p[1], yMax)));
+    });
+    ctx.stroke(); ctx.restore();
+  }
+  if (!series.some((s) => s.points.length > 1)) { ctx.fillStyle = css("--faint"); ctx.textAlign = "center"; ctx.fillText("waiting for live data", W / 2, H / 2); }
+}
+
+function frame() {
+  drawMap();
+  drawChart($("chSpeed"), [{ points: S.speed, color: css("--live") }], { yMin: 0, floor: 0.3 });
+  drawChart($("chClear"), [{ points: S.clear, color: css("--good") }],
+            { yMin: 0, floor: 1.0, threshold: C_SAFE, thresholdLabel: `C_safe ${C_SAFE} m` });
+}
+let last = 0;
+function loop(ts) { if (ts - last > 66) { frame(); last = ts; } requestAnimationFrame(loop); }
+
+(async function main() {
+  await loadRun(); renderHeader(); renderKpis(); renderReport();
+  connectWS(); requestAnimationFrame(loop);
+  setInterval(loadRun, 2000);
+  window.addEventListener("resize", frame);
+})();
+</script>
+</body>
+</html>

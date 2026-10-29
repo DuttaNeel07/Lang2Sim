@@ -17,9 +17,9 @@ from lang2sim.runtime.ros_bridge import RosSnapshot, readiness
 
 Health = Literal["healthy", "degraded", "crashed"]
 
-LOW_RTF = 0.2           # below this the sim is too slow to be useful
-LOW_RTF_FOR_S = 15.0    # ...for this long before we call it degraded
-STALL_S = 5.0           # clock not advancing this long while the process runs = stalled
+LOW_RTF = 0.2  # below this the sim is too slow to be useful
+LOW_RTF_FOR_S = 15.0  # ...for this long before we call it degraded
+STALL_S = 5.0  # clock not advancing this long while the process runs = stalled
 
 
 @dataclass
@@ -59,8 +59,12 @@ class HealthMonitor:
         if snap.rtf is not None and snap.rtf < self.low_rtf:
             self._low_since = self._low_since or snap.now
             if snap.now - self._low_since >= self.low_rtf_for_s:
-                issues.append(f"real-time factor {snap.rtf:.2f} below {self.low_rtf} for "
-                              f"{snap.now - self._low_since:.0f} s")
+                issues.append(
+                    f"real-time factor {snap.rtf:.2f} below {self.low_rtf} for "
+                    f"{snap.now - self._low_since:.0f} s"
+                )
         else:
             self._low_since = None
-        return HealthReport("degraded" if issues else "healthy", issues, snap.rtf, snap.sim_time, checks)
+        return HealthReport(
+            "degraded" if issues else "healthy", issues, snap.rtf, snap.sim_time, checks
+        )

@@ -3,30 +3,29 @@ Unit & Integration Tests for ReAct Supervisor and Enriched Session Memory
 File: tests/test_react_supervisor.py
 """
 
-import pytest
-from unittest.mock import AsyncMock, patch
-from textual.widgets import Markdown, Static
+from unittest.mock import patch
 
-from lang2sim.cli.app import Lang2SimApp
-from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
-from lang2sim.cli.widgets.thought_box import ThoughtBox
-from lang2sim.cli.widgets.action_pill import ActionPill
+import pytest
+
 from lang2sim.agent.nemotron_client import NemotronClient
 from lang2sim.agent.react_loop import (
-    ReActSupervisor,
-    ThoughtChunk,
-    ThoughtCompleted,
-    ActionStarted,
     ActionCompleted,
+    ActionStarted,
     ContentChunk,
+    ReActSupervisor,
+    ThoughtCompleted,
     TurnCompleted,
 )
+from lang2sim.cli.app import Lang2SimApp
+from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
+from lang2sim.cli.widgets.action_pill import ActionPill
+from lang2sim.cli.widgets.thought_box import ThoughtBox
 from lang2sim.core.session_manager import (
-    SessionManager,
-    ChatMessage,
-    ToolCallRecord,
     ArtifactRecord,
+    ChatMessage,
+    SessionManager,
     SimulationStateSnapshot,
+    ToolCallRecord,
 )
 
 
@@ -170,8 +169,12 @@ def test_in_chat_memory_strict_session_isolation(tmp_path):
     """Verify strict session isolation: zero cross-session memory bleed."""
     mgr = SessionManager(sessions_dir=tmp_path)
 
-    s1 = mgr.create_session(title="Session 1 - Warehouse Alpha", system_prompt="You are Copilot Alpha.")
-    s2 = mgr.create_session(title="Session 2 - Hospital Beta", system_prompt="You are Copilot Beta.")
+    s1 = mgr.create_session(
+        title="Session 1 - Warehouse Alpha", system_prompt="You are Copilot Alpha."
+    )
+    s2 = mgr.create_session(
+        title="Session 2 - Hospital Beta", system_prompt="You are Copilot Beta."
+    )
 
     # Add thought and action records only to Session 1
     s1.messages.append(
@@ -188,9 +191,7 @@ def test_in_chat_memory_strict_session_isolation(tmp_path):
             ],
         )
     )
-    s1.artifacts.append(
-        ArtifactRecord(type="sdf", path="/tmp/alpha.sdf", size_bytes=2048)
-    )
+    s1.artifacts.append(ArtifactRecord(type="sdf", path="/tmp/alpha.sdf", size_bytes=2048))
     s1.simulation_state = SimulationStateSnapshot(
         world_sdf="alpha.sdf",
         map_yaml="alpha.yaml",
@@ -250,9 +251,14 @@ async def test_workspace_full_turn_react_execution_and_persistence(tmp_path):
                 for t in tokens:
                     yield t
 
-            with patch.object(ws.client, "is_configured", return_value=True), \
-                 patch.object(ws.client, "stream_chat", side_effect=mock_stream), \
-                 patch("lang2sim.agent.react_loop.execute_tool", return_value={"status": "success", "object_count": 4}):
+            with (
+                patch.object(ws.client, "is_configured", return_value=True),
+                patch.object(ws.client, "stream_chat", side_effect=mock_stream),
+                patch(
+                    "lang2sim.agent.react_loop.execute_tool",
+                    return_value={"status": "success", "object_count": 4},
+                ),
+            ):
                 ws.handle_user_prompt("Spawn warehouse and test SLAM drift")
                 await pilot.pause()
 
@@ -289,7 +295,7 @@ async def test_workspace_full_turn_react_execution_and_persistence(tmp_path):
 
 def test_os_tools_execution_and_file_ops(tmp_path):
     """Verify run_command, view_file, write_file, replace_file_content work reliably."""
-    from lang2sim.agent.tools import run_command, view_file, write_file, replace_file_content
+    from lang2sim.agent.tools import replace_file_content, run_command, view_file, write_file
 
     # 1. Test run_command
     res = run_command("echo 'Hello Lang2Sim'")
@@ -341,6 +347,7 @@ async def test_react_supervisor_planning_demuxing():
             events.append(ev)
 
     from lang2sim.agent.react_loop import PlanCreated
+
     plan_events = [e for e in events if isinstance(e, PlanCreated)]
     assert len(plan_events) == 1
     assert len(plan_events[0].steps) == 3
@@ -365,10 +372,13 @@ async def test_react_supervisor_permission_flow():
 
     with patch.object(client, "stream_chat", side_effect=mock_stream):
         events_denied = []
-        async for ev in supervisor.stream_turn(session, "run command: pytest -q", [], permission_checker=deny_permission):
+        async for ev in supervisor.stream_turn(
+            session, "run command: pytest -q", [], permission_checker=deny_permission
+        ):
             events_denied.append(ev)
 
     from lang2sim.agent.react_loop import CommandExecuted, PermissionRequested
+
     perm_reqs = [e for e in events_denied if isinstance(e, PermissionRequested)]
     assert len(perm_reqs) == 1
     assert perm_reqs[0].tool_name == "run_command"
@@ -384,7 +394,9 @@ async def test_react_supervisor_permission_flow():
 
     with patch.object(client, "stream_chat", side_effect=mock_stream):
         events_approved = []
-        async for ev in supervisor.stream_turn(session, "run command: echo 'Approved'", [], permission_checker=approve_permission):
+        async for ev in supervisor.stream_turn(
+            session, "run command: echo 'Approved'", [], permission_checker=approve_permission
+        ):
             events_approved.append(ev)
 
     approved_execs = [e for e in events_approved if isinstance(e, CommandExecuted)]
@@ -475,6 +487,3 @@ def test_invoked_phrase_extraction_and_cleaning():
     assert tools[0][1]["sdf_path"] == "~/.lang2sim/projects/active_project/world.sdf"
     assert "Invoked generate_zero_slam_map" not in cleaned
     assert cleaned == ""
-
-
-

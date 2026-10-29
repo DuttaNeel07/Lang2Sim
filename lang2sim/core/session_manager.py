@@ -6,10 +6,12 @@ File: lang2sim/core/session_manager.py
 import json
 import time
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
 from .config import DEFAULT_LANG2SIM_ROOT
 
 SESSIONS_DIR = DEFAULT_LANG2SIM_ROOT / "sessions"
@@ -18,6 +20,7 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 class ToolCallRecord(BaseModel):
     """Execution record of an agentic tool call."""
+
     tool_name: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
     duration_str: str = "0.0s"
@@ -28,6 +31,7 @@ class ToolCallRecord(BaseModel):
 
 class ArtifactRecord(BaseModel):
     """Artifact produced during the session (worlds, maps, benchmark reports)."""
+
     type: str  # "world_sdf", "map_pgm", "map_yaml", "benchmark_report"
     path: str
     created_at: float = Field(default_factory=time.time)
@@ -36,6 +40,7 @@ class ArtifactRecord(BaseModel):
 
 class SimulationStateSnapshot(BaseModel):
     """Real-time simulation state snapshot."""
+
     world_sdf: Optional[str] = None
     map_yaml: Optional[str] = None
     active_robot: str = "turtlebot3_waffle"
@@ -58,7 +63,9 @@ class ChatMessage(BaseModel):
 
 class ChatSession(BaseModel):
     id: str = Field(
-        default_factory=lambda: datetime.now().strftime("session_%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:4]
+        default_factory=lambda: (
+            datetime.now().strftime("session_%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:4]
+        )
     )
     title: str = "New Session"
     created_at: float = Field(default_factory=time.time)
@@ -147,16 +154,14 @@ class SessionManager:
                 s = ChatSession.model_validate(data)
                 if workspace_name is None or s.workspace_name == workspace_name:
                     sessions.append(s)
-            except Exception:
+            except Exception:  # noqa: S112 - ignore corrupted session files
                 continue
 
         # Sort: pinned first (True > False), then updated_at descending
         sessions.sort(key=lambda s: (not s.pinned, -s.updated_at))
         return sessions
 
-    def group_sessions_by_date(
-        self, sessions: List[ChatSession]
-    ) -> Dict[str, List[ChatSession]]:
+    def group_sessions_by_date(self, sessions: List[ChatSession]) -> Dict[str, List[ChatSession]]:
         """
         Groups sessions chronologically matching OpenCode:
         - "Today"

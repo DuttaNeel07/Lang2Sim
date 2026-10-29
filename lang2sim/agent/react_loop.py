@@ -9,17 +9,14 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Dict, Any, Optional, AsyncGenerator, Callable, Tuple
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple
 
-from .nemotron_client import NemotronClient
-from .tools import TOOL_REGISTRY, MUTATING_TOOLS, execute_tool
 from ..core.session_manager import (
-    session_manager,
     ChatSession,
-    ChatMessage,
     ToolCallRecord,
-    ArtifactRecord,
 )
+from .nemotron_client import NemotronClient
+from .tools import MUTATING_TOOLS, TOOL_REGISTRY, execute_tool
 
 SUPERVISOR_SYSTEM_PROMPT = """You are an expert robotics engineer and simulation copilot for Gazebo and ROS 2.
 You pair-program with the user to build, simulate, test, and debug mobile robot scenarios.
@@ -84,6 +81,7 @@ Never print raw invocation phrases. Always use the ```tool ``` block. When tool 
 
 
 # ── Streaming Demuxer Event Types ──────────────────────────────────────
+
 
 @dataclass
 class ThoughtChunk:
@@ -156,6 +154,7 @@ class TurnCompleted:
 
 
 # ── Autonomous Supervisor Class ────────────────────────────────────────
+
 
 class ReActSupervisor:
     """Manages multi-turn conversation reasoning, tool execution, and state persistence."""
@@ -262,7 +261,9 @@ class ReActSupervisor:
                     if "</plan>" in accumulated.lower():
                         in_plan = False
                         plan_emitted = True
-                        plan_match = re.search(r"<plan>(.*?)</plan>", accumulated, re.DOTALL | re.IGNORECASE)
+                        plan_match = re.search(
+                            r"<plan>(.*?)</plan>", accumulated, re.DOTALL | re.IGNORECASE
+                        )
                         if plan_match:
                             raw_steps = [
                                 re.sub(r"^[\s*\-•\d.]+", "", line).strip()
@@ -271,7 +272,9 @@ class ReActSupervisor:
                             ]
                             if raw_steps:
                                 plan_steps = raw_steps
-                                yield PlanCreated(title="Autonomous Execution Plan", steps=raw_steps)
+                                yield PlanCreated(
+                                    title="Autonomous Execution Plan", steps=raw_steps
+                                )
                     continue
 
                 # Buffer remaining output
@@ -310,9 +313,13 @@ class ReActSupervisor:
                 if plan_steps:
                     for s_idx in range(plan_step_idx, len(plan_steps)):
                         if not has_failures:
-                            yield PlanStepUpdated(step_index=s_idx, status="completed", detail="Verified")
+                            yield PlanStepUpdated(
+                                step_index=s_idx, status="completed", detail="Verified"
+                            )
                         else:
-                            yield PlanStepUpdated(step_index=s_idx, status="failed", detail="Incomplete")
+                            yield PlanStepUpdated(
+                                step_index=s_idx, status="failed", detail="Incomplete"
+                            )
                 break
 
             # If tools WERE requested, execute each tool
@@ -328,7 +335,9 @@ class ReActSupervisor:
 
                 # Update plan step to running if plan is active
                 if plan_steps and plan_step_idx < len(plan_steps):
-                    yield PlanStepUpdated(step_index=plan_step_idx, status="running", detail=f"Running {tool_name}")
+                    yield PlanStepUpdated(
+                        step_index=plan_step_idx, status="running", detail=f"Running {tool_name}"
+                    )
 
                 # Check if user permission is required
                 needs_permission = tool_name in MUTATING_TOOLS or is_cmd
@@ -362,7 +371,9 @@ class ReActSupervisor:
                         stderr="Execution declined by user.",
                     )
                     if plan_steps and plan_step_idx < len(plan_steps):
-                        yield PlanStepUpdated(step_index=plan_step_idx, status="failed", detail="Declined by user")
+                        yield PlanStepUpdated(
+                            step_index=plan_step_idx, status="failed", detail="Declined by user"
+                        )
                         plan_step_idx += 1
                     continue
 
@@ -379,10 +390,21 @@ class ReActSupervisor:
                 exit_code = res.get("exit_code", 0) if isinstance(res, dict) else 0
 
                 if isinstance(res, dict):
-                    expected_timeout = is_cmd and ("timeout " in cmd_str or "timeout" in cmd_str.split()) and exit_code == 124
-                    if res.get("status") in ("error", "failed", "timeout") or (exit_code != 0 and not expected_timeout):
+                    expected_timeout = (
+                        is_cmd
+                        and ("timeout " in cmd_str or "timeout" in cmd_str.split())
+                        and exit_code == 124
+                    )
+                    if res.get("status") in ("error", "failed", "timeout") or (
+                        exit_code != 0 and not expected_timeout
+                    ):
                         is_failed = True
-                        error_msg = res.get("stderr") or res.get("error") or res.get("message") or f"Exited with code {exit_code}"
+                        error_msg = (
+                            res.get("stderr")
+                            or res.get("error")
+                            or res.get("message")
+                            or f"Exited with code {exit_code}"
+                        )
                 elif not res:
                     is_failed = True
                     error_msg = "Tool returned empty or null response"
@@ -421,7 +443,9 @@ class ReActSupervisor:
                 if plan_steps and plan_step_idx < len(plan_steps):
                     if is_failed:
                         detail_str = f"Failed (exit {exit_code})" if exit_code != 0 else "Failed"
-                        yield PlanStepUpdated(step_index=plan_step_idx, status="failed", detail=detail_str)
+                        yield PlanStepUpdated(
+                            step_index=plan_step_idx, status="failed", detail=detail_str
+                        )
                     else:
                         detail_str = "Done"
                         if "object_count" in res:
@@ -437,15 +461,21 @@ class ReActSupervisor:
                         elif "ate_drift_m" in res:
                             detail_str = f"Drift: {res['ate_drift_m']:.3f}m"
 
-                        yield PlanStepUpdated(step_index=plan_step_idx, status="completed", detail=detail_str)
+                        yield PlanStepUpdated(
+                            step_index=plan_step_idx, status="completed", detail=detail_str
+                        )
                         plan_step_idx += 1
 
                 # Feed observation back into conversation history with debugging directive on failure
-                obs_summary = json.dumps(res, indent=2) if isinstance(res, (dict, list)) else str(res)
-                messages.append({
-                    "role": "assistant",
-                    "content": f'```tool\n{{"tool": "{tool_name}", "arguments": {json.dumps(kwargs)}}}\n```'
-                })
+                obs_summary = (
+                    json.dumps(res, indent=2) if isinstance(res, (dict, list)) else str(res)
+                )
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f'```tool\n{{"tool": "{tool_name}", "arguments": {json.dumps(kwargs)}}}\n```',
+                    }
+                )
 
                 if is_failed:
                     prompt_feedback = (
@@ -465,17 +495,21 @@ class ReActSupervisor:
                         f"Operation succeeded. Proceed to execute the next plan step or conclude."
                     )
 
-                messages.append({
-                    "role": "user",
-                    "content": prompt_feedback,
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": prompt_feedback,
+                    }
+                )
 
         final_content = "".join(final_markdown_parts).strip()
         if not final_content:
             has_failures = any(a.status == "failed" for a in actions_taken)
             if has_failures:
                 failed_records = [a for a in actions_taken if a.status == "failed"]
-                err_bullets = "\n".join([f"- **`{f.tool_name}`**: {f.error or 'Failed'}" for f in failed_records])
+                err_bullets = "\n".join(
+                    [f"- **`{f.tool_name}`**: {f.error or 'Failed'}" for f in failed_records]
+                )
                 final_content = (
                     f"### ⚠️ Execution Pipeline Interrupted by Failures\n\n"
                     f"The autonomous execution encountered errors during execution:\n"
@@ -508,7 +542,9 @@ class ReActSupervisor:
         cleaned = text
 
         # 1. Match phrases like `Invoked generate_zero_slam_map with {...}`
-        invoked_re = re.compile(r"Invoked\s+([a-zA-Z0-9_]+)\s+with\s*(\{[^{}]*\}|\{[\s\S]*?\})", re.IGNORECASE)
+        invoked_re = re.compile(
+            r"Invoked\s+([a-zA-Z0-9_]+)\s+with\s*(\{[^{}]*\}|\{[\s\S]*?\})", re.IGNORECASE
+        )
         for match in invoked_re.finditer(cleaned):
             tname = match.group(1).strip()
             args_str = match.group(2).strip()
@@ -521,7 +557,9 @@ class ReActSupervisor:
         cleaned = invoked_re.sub("", cleaned)
 
         # 2. Check for fenced blocks: ```tool ... ``` or ```json ... ```
-        fenced_re = re.compile(r"```(?:tool|json)?\s*(\{\s*[\"'](?:tool|name)[\"'][\s\S]*?\})\s*```", re.IGNORECASE)
+        fenced_re = re.compile(
+            r"```(?:tool|json)?\s*(\{\s*[\"'](?:tool|name)[\"'][\s\S]*?\})\s*```", re.IGNORECASE
+        )
         for match in fenced_re.finditer(cleaned):
             try:
                 data = json.loads(match.group(1))
@@ -547,16 +585,16 @@ class ReActSupervisor:
                 if escape:
                     escape = False
                     continue
-                if ch == '\\':
+                if ch == "\\":
                     escape = True
                     continue
                 if ch == '"':
                     in_str = not in_str
                     continue
                 if not in_str:
-                    if ch == '{':
+                    if ch == "{":
                         depth += 1
-                    elif ch == '}':
+                    elif ch == "}":
                         depth -= 1
                         if depth == 0:
                             end_idx = i + 1
@@ -611,7 +649,11 @@ class ReActSupervisor:
         for pat, model_name, default_cnt in patterns:
             match = re.search(pat, p)
             if match:
-                cnt = int(match.group(1) or (match.group(2) if len(match.groups()) > 1 else None) or default_cnt)
+                cnt = int(
+                    match.group(1)
+                    or (match.group(2) if len(match.groups()) > 1 else None)
+                    or default_cnt
+                )
                 extracted.append({"model": model_name, "count": cnt})
             elif model_name.replace("_", " ") in p or model_name.split("_")[-1] in p:
                 extracted.append({"model": model_name, "count": default_cnt})
@@ -620,6 +662,47 @@ class ReActSupervisor:
             extracted.append({"model": "warehouse_rack", "count": 2})
 
         return extracted
+
+    def add_user_message(self, content: str) -> None:
+        if not hasattr(self, "messages"):
+            self.messages = [{"role": "system", "content": SUPERVISOR_SYSTEM_PROMPT}]
+        self.messages.append({"role": "user", "content": content})
+        self._persist_context()
+
+    def add_assistant_message(self, content: str) -> None:
+        if not hasattr(self, "messages"):
+            self.messages = [{"role": "system", "content": SUPERVISOR_SYSTEM_PROMPT}]
+        self.messages.append({"role": "assistant", "content": content})
+        self._persist_context()
+
+    def run_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
+        result = execute_tool(tool_name, **kwargs)
+        if not hasattr(self, "messages"):
+            self.messages = [{"role": "system", "content": SUPERVISOR_SYSTEM_PROMPT}]
+        self.messages.append({"role": "tool", "name": tool_name, "content": json.dumps(result)})
+        self._persist_context()
+        return result
+
+    def _persist_context(self) -> None:
+        """Persists internal context (.sim2lang.json) and human-readable context (SIM2LANG.md)."""
+        try:
+            ws_root = getattr(self, "workspace_root", Path.cwd())
+            json_file = ws_root / ".sim2lang.json"
+            md_file = ws_root / "SIM2LANG.md"
+
+            context_data = {
+                "active_project": getattr(self, "workspace_name", "active_project"),
+                "message_count": len(getattr(self, "messages", [])),
+                "last_message": self.messages[-1] if getattr(self, "messages", []) else {},
+            }
+            json_file.write_text(json.dumps(context_data, indent=2))
+
+            summary = "# Sim2Lang Workspace Context\n\n"
+            summary += f"- **Message Count:** {len(getattr(self, 'messages', []))}\n"
+            summary += f"- **API Configured:** {self.client.is_configured()}\n"
+            md_file.write_text(summary)
+        except Exception:
+            pass
 
     def _infer_tool_for_plan_step(self, step_text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
         """Infers the appropriate tool and parameters for a stage in an active plan dynamically."""
@@ -631,7 +714,10 @@ class ReActSupervisor:
         if "search" in s or "catalog" in s or "model" in s or "block" in s:
             return ("search_catalog", {"query": "", "category": "all"})
         if "layout" in s or "spatial" in s or "geometry" in s:
-            return ("solve_spatial_layout", {"dimensions": {"width": dim_x, "height": dim_y}, "objects": extracted_objs})
+            return (
+                "solve_spatial_layout",
+                {"dimensions": {"width": dim_x, "height": dim_y}, "objects": extracted_objs},
+            )
         if "sdf" in s or "compile" in s:
             return ("compile_world_sdf", {"layout_spec": {"dimensions": {"x": dim_x, "y": dim_y}}})
         if "slam" in s and ("map" in s or "grid" in s or "zero" in s):
@@ -639,7 +725,10 @@ class ReActSupervisor:
         if "launch" in s or "gazebo" in s or "sim" in s:
             return ("launch_simulation_stack", {"world_path": "world.l2s.sdf"})
         if "navigate" in s or "waypoint" in s or "drive" in s or "motion" in s or "goal" in s:
-            return ("send_navigation_goal", {"x": round(dim_x / 2.0 - 2.0, 1), "y": round(dim_y / 2.0 - 2.0, 1), "yaw": 0.0})
+            return (
+                "send_navigation_goal",
+                {"x": round(dim_x / 2.0 - 2.0, 1), "y": round(dim_y / 2.0 - 2.0, 1), "yaw": 0.0},
+            )
         if "benchmark" in s or "nqi" in s or "score" in s or "eval" in s:
             return ("compute_navigation_benchmark", {"adversarial_stress": False})
         if "drift" in s or "telemetry" in s or "diagnostics" in s or "scan" in s:
@@ -653,7 +742,16 @@ class ReActSupervisor:
 
         # 0. Scenario Selection (e.g., "option 1", "option 2", "option 3", "3", "multi-room office")
         opt_match = re.search(r"\b(?:option|scenario|choice|#)\s*([1-5])\b|^([1-5])$", p.strip())
-        if opt_match or any(w in p for w in ["multi-room", "office with doors", "warehouse aisle", "obstacle avoidance", "parking lot"]):
+        if opt_match or any(
+            w in p
+            for w in [
+                "multi-room",
+                "office with doors",
+                "warehouse aisle",
+                "obstacle avoidance",
+                "parking lot",
+            ]
+        ):
             num = None
             if opt_match:
                 num = opt_match.group(1) or opt_match.group(2)
@@ -669,41 +767,117 @@ class ReActSupervisor:
                 num = "5"
 
             if num == "1":
-                actions.append(("solve_spatial_layout", {"dimensions": {"width": 14.0, "height": 10.0}, "objects": [{"model": "warehouse_rack", "count": 4}, {"model": "wooden_pallet", "count": 2}]}))
-                actions.append(("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 14.0, "y": 10.0}, "objects": ["rack_1", "rack_2", "rack_3", "rack_4"]}}))
+                actions.append(
+                    (
+                        "solve_spatial_layout",
+                        {
+                            "dimensions": {"width": 14.0, "height": 10.0},
+                            "objects": [
+                                {"model": "warehouse_rack", "count": 4},
+                                {"model": "wooden_pallet", "count": 2},
+                            ],
+                        },
+                    )
+                )
+                actions.append(
+                    (
+                        "compile_world_sdf",
+                        {
+                            "layout_spec": {
+                                "dimensions": {"x": 14.0, "y": 10.0},
+                                "objects": ["rack_1", "rack_2", "rack_3", "rack_4"],
+                            }
+                        },
+                    )
+                )
                 actions.append(("generate_zero_slam_map", {"resolution": 0.05}))
                 actions.append(("launch_simulation_stack", {"world_path": "world.l2s.sdf"}))
                 return actions
             elif num == "2":
-                actions.append(("solve_spatial_layout", {"dimensions": {"width": 14.0, "height": 10.0}, "objects": [{"model": "warehouse_rack", "count": 2}, {"model": "cardboard_box", "count": 4}]}))
-                actions.append(("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 14.0, "y": 10.0}}}))
+                actions.append(
+                    (
+                        "solve_spatial_layout",
+                        {
+                            "dimensions": {"width": 14.0, "height": 10.0},
+                            "objects": [
+                                {"model": "warehouse_rack", "count": 2},
+                                {"model": "cardboard_box", "count": 4},
+                            ],
+                        },
+                    )
+                )
+                actions.append(
+                    ("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 14.0, "y": 10.0}}})
+                )
                 actions.append(("generate_zero_slam_map", {"resolution": 0.05}))
                 actions.append(("launch_simulation_stack", {"world_path": "world.l2s.sdf"}))
-                actions.append(("spawn_dynamic_entity", {"model_name": "barrel", "x": 3.0, "y": 1.5}))
+                actions.append(
+                    ("spawn_dynamic_entity", {"model_name": "barrel", "x": 3.0, "y": 1.5})
+                )
                 return actions
             elif num == "3":
-                actions.append(("solve_spatial_layout", {"dimensions": {"width": 16.0, "height": 12.0}, "objects": [{"model": "door_frame", "count": 2}, {"model": "office_desk", "count": 4}, {"model": "office_chair", "count": 4}]}))
-                actions.append(("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 16.0, "y": 12.0}}}))
+                actions.append(
+                    (
+                        "solve_spatial_layout",
+                        {
+                            "dimensions": {"width": 16.0, "height": 12.0},
+                            "objects": [
+                                {"model": "door_frame", "count": 2},
+                                {"model": "office_desk", "count": 4},
+                                {"model": "office_chair", "count": 4},
+                            ],
+                        },
+                    )
+                )
+                actions.append(
+                    ("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 16.0, "y": 12.0}}})
+                )
                 actions.append(("generate_zero_slam_map", {"resolution": 0.05}))
                 actions.append(("launch_simulation_stack", {"world_path": "world.l2s.sdf"}))
                 return actions
             elif num == "4":
-                actions.append(("solve_spatial_layout", {"dimensions": {"width": 14.0, "height": 10.0}, "objects": [{"model": "barrel", "count": 4}]}))
-                actions.append(("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 14.0, "y": 10.0}}}))
+                actions.append(
+                    (
+                        "solve_spatial_layout",
+                        {
+                            "dimensions": {"width": 14.0, "height": 10.0},
+                            "objects": [{"model": "barrel", "count": 4}],
+                        },
+                    )
+                )
+                actions.append(
+                    ("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 14.0, "y": 10.0}}})
+                )
                 actions.append(("generate_zero_slam_map", {"resolution": 0.05}))
                 actions.append(("launch_simulation_stack", {"world_path": "world.l2s.sdf"}))
                 actions.append(("set_ambient_lighting", {"luminance": 0.05}))
                 actions.append(("compute_navigation_benchmark", {"adversarial_stress": True}))
                 return actions
             elif num == "5":
-                actions.append(("solve_spatial_layout", {"dimensions": {"width": 25.0, "height": 15.0}, "objects": [{"model": "tree", "count": 6}, {"model": "brick_wall", "count": 4}, {"model": "traffic_cone", "count": 8}]}))
-                actions.append(("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 25.0, "y": 15.0}}}))
+                actions.append(
+                    (
+                        "solve_spatial_layout",
+                        {
+                            "dimensions": {"width": 25.0, "height": 15.0},
+                            "objects": [
+                                {"model": "tree", "count": 6},
+                                {"model": "brick_wall", "count": 4},
+                                {"model": "traffic_cone", "count": 8},
+                            ],
+                        },
+                    )
+                )
+                actions.append(
+                    ("compile_world_sdf", {"layout_spec": {"dimensions": {"x": 25.0, "y": 15.0}}})
+                )
                 actions.append(("generate_zero_slam_map", {"resolution": 0.1}))
                 actions.append(("launch_simulation_stack", {"world_path": "world.l2s.sdf"}))
                 return actions
 
         # 1. Direct command request detection
-        cmd_match = re.search(r"(?:run(?:\s+the)?\s+command:?|\$|exec:?)\s*(.+)$", prompt, re.IGNORECASE)
+        cmd_match = re.search(
+            r"(?:run(?:\s+the)?\s+command:?|\$|exec:?)\s*(.+)$", prompt, re.IGNORECASE
+        )
         if cmd_match:
             cmd_str = cmd_match.group(1).strip().strip("`").strip()
             actions.append(("run_command", {"command": cmd_str}))
@@ -714,18 +888,53 @@ class ReActSupervisor:
             return actions
 
         if "docker ps" in p or "docker status" in p:
-            actions.append(("run_command", {"command": "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"}))
+            actions.append(
+                (
+                    "run_command",
+                    {"command": "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"},
+                )
+            )
             return actions
 
         # 2. Catalog Search & Open-source basic blocks inspection
-        if any(w in p for w in ["search catalog", "search model", "catalog", "basic block", "open source block", "opensource available", "search engin"]):
-            matched_terms = [t for t in ["tree", "brick wall", "brick_wall", "rack", "pallet", "box", "barrel", "cone", "desk", "chair", "door"] if t in p]
+        if any(
+            w in p
+            for w in [
+                "search catalog",
+                "search model",
+                "catalog",
+                "basic block",
+                "open source block",
+                "opensource available",
+                "search engin",
+            ]
+        ):
+            matched_terms = [
+                t
+                for t in [
+                    "tree",
+                    "brick wall",
+                    "brick_wall",
+                    "rack",
+                    "pallet",
+                    "box",
+                    "barrel",
+                    "cone",
+                    "desk",
+                    "chair",
+                    "door",
+                ]
+                if t in p
+            ]
             q = matched_terms[0] if len(matched_terms) == 1 else ""
             actions.append(("search_catalog", {"query": q, "category": "all"}))
             return actions
 
         # 3. Dynamic Natural Language World Synthesis & Navigation Pipeline
-        if any(w in p for w in ["spawn", "warehouse", "layout", "rack", "room", "forklift", "factory", "yard"]):
+        if any(
+            w in p
+            for w in ["spawn", "warehouse", "layout", "rack", "room", "forklift", "factory", "yard"]
+        ):
             # Extract room dimensions if provided (e.g. "10m x 15 m", "10x15", "10 by 15", "10m x 15m")
             dim_x, dim_y = 14.0, 10.0
             dim_match = re.search(r"(\d+(?:\.\d+)?)\s*m?\s*(?:x|by|\*)\s*(\d+(?:\.\d+)?)\s*m?", p)
@@ -779,70 +988,101 @@ class ReActSupervisor:
                     {"model": "wooden_pallet", "count": 2},
                 ]
 
-            actions.append((
-                "solve_spatial_layout",
-                {"dimensions": {"width": dim_x, "height": dim_y}, "objects": extracted_objs},
-            ))
-            actions.append((
-                "compile_world_sdf",
-                {"layout_spec": {"dimensions": {"x": dim_x, "y": dim_y}}},
-            ))
-            actions.append((
-                "generate_zero_slam_map",
-                {"resolution": 0.05},
-            ))
-            actions.append((
-                "launch_simulation_stack",
-                {"world_path": "world.l2s.sdf"},
-            ))
+            actions.append(
+                (
+                    "solve_spatial_layout",
+                    {"dimensions": {"width": dim_x, "height": dim_y}, "objects": extracted_objs},
+                )
+            )
+            actions.append(
+                (
+                    "compile_world_sdf",
+                    {"layout_spec": {"dimensions": {"x": dim_x, "y": dim_y}}},
+                )
+            )
+            actions.append(
+                (
+                    "generate_zero_slam_map",
+                    {"resolution": 0.05},
+                )
+            )
+            actions.append(
+                (
+                    "launch_simulation_stack",
+                    {"world_path": "world.l2s.sdf"},
+                )
+            )
             # Dispatch navigation waypoint so robot actively moves through the environment
             goal_x = round(dim_x / 2.0 - 2.0, 1)
             goal_y = round(dim_y / 2.0 - 2.0, 1)
-            actions.append((
-                "send_navigation_goal",
-                {"x": goal_x, "y": goal_y, "yaw": 0.0},
-            ))
+            actions.append(
+                (
+                    "send_navigation_goal",
+                    {"x": goal_x, "y": goal_y, "yaw": 0.0},
+                )
+            )
             return actions
 
         # 4. Topic Diagnostics
         if any(w in p for w in ["scan", "health", "topic", "doctor", "diagnostic"]):
-            actions.append((
-                "inspect_topic_health",
-                {"topic_name": "/scan"},
-            ))
+            actions.append(
+                (
+                    "inspect_topic_health",
+                    {"topic_name": "/scan"},
+                )
+            )
 
         # 5. Simulation Launch
-        if any(w in p for w in ["launch gazebo", "start gazebo", "start sim", "launch sim", "launch simulation"]):
-            actions.append((
-                "launch_simulation_stack",
-                {"world_path": "world.l2s.sdf"},
-            ))
+        if any(
+            w in p
+            for w in [
+                "launch gazebo",
+                "start gazebo",
+                "start sim",
+                "launch sim",
+                "launch simulation",
+            ]
+        ):
+            actions.append(
+                (
+                    "launch_simulation_stack",
+                    {"world_path": "world.l2s.sdf"},
+                )
+            )
 
         # 6. Environment Lighting & Reset
         if any(w in p for w in ["light", "dark", "dim", "night"]):
-            actions.append((
-                "set_ambient_lighting",
-                {"luminance": 0.15},
-            ))
+            actions.append(
+                (
+                    "set_ambient_lighting",
+                    {"luminance": 0.15},
+                )
+            )
 
         if any(w in p for w in ["reset", "restart", "origin"]):
-            actions.append((
-                "reset_simulation",
-                {"mode": "all"},
-            ))
+            actions.append(
+                (
+                    "reset_simulation",
+                    {"mode": "all"},
+                )
+            )
 
         # 7. Benchmark & Scoring
         if any(w in p for w in ["benchmark", "nqi", "score", "evaluate navigation"]):
-            actions.append((
-                "compute_navigation_benchmark",
-                {"adversarial_stress": "stress" in p or "adversarial" in p},
-            ))
+            actions.append(
+                (
+                    "compute_navigation_benchmark",
+                    {"adversarial_stress": "stress" in p or "adversarial" in p},
+                )
+            )
 
         # 8. Drift & Telemetry
         if any(w in p for w in ["drift", "telemetry", "ate", "speed"]):
-            actions.append((
-                "query_robot_telemetry",
-                {},
-            ))
+            actions.append(
+                (
+                    "query_robot_telemetry",
+                    {},
+                )
+            )
 
         return actions

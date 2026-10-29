@@ -44,16 +44,26 @@ IMG = "ghcr.io/duttaneel07/lang2sim-sim:staging"
 # fixtures
 # ---------------------------------------------------------------------------
 
+
 def docker_ok(nvidia: bool = False, desktop: bool = False, arch: str = "amd64") -> DockerInfo:
-    return DockerInfo(cli_path="/usr/bin/docker", server_reachable=True, server_version="27.0",
-                      operating_system="Docker Desktop" if desktop else "Ubuntu 24.04 LTS",
-                      arch=arch, runtimes=["nvidia", "runc"] if nvidia else ["runc"])  # type: ignore[arg-type]
+    return DockerInfo(
+        cli_path="/usr/bin/docker",
+        server_reachable=True,
+        server_version="27.0",
+        operating_system="Docker Desktop" if desktop else "Ubuntu 24.04 LTS",
+        arch=arch,
+        runtimes=["nvidia", "runc"] if nvidia else ["runc"],
+    )  # type: ignore[arg-type]
 
 
 def ubuntu(nvidia_runtime: bool = False, display: bool = True) -> HostPlatform:
-    return HostPlatform(os="linux", arch="amd64",
-                        env={"DISPLAY": ":0"} if display else {},
-                        has_x11_socket_dir=display, docker=docker_ok(nvidia_runtime))
+    return HostPlatform(
+        os="linux",
+        arch="amd64",
+        env={"DISPLAY": ":0"} if display else {},
+        has_x11_socket_dir=display,
+        docker=docker_ok(nvidia_runtime),
+    )
 
 
 def mac() -> HostPlatform:
@@ -61,11 +71,19 @@ def mac() -> HostPlatform:
 
 
 def wsl() -> HostPlatform:
-    return HostPlatform(os="wsl", arch="amd64", env={"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"},
-                        has_wslg=True, has_x11_socket_dir=True, docker=docker_ok(desktop=True))
+    return HostPlatform(
+        os="wsl",
+        arch="amd64",
+        env={"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"},
+        has_wslg=True,
+        has_x11_socket_dir=True,
+        docker=docker_ok(desktop=True),
+    )
 
 
-NV_8G = HardwareInfo(gpus=[GpuInfo("nvidia", "RTX 3070", 8192, 7000)], dri_render_nodes=["/dev/dri/renderD128"])
+NV_8G = HardwareInfo(
+    gpus=[GpuInfo("nvidia", "RTX 3070", 8192, 7000)], dri_render_nodes=["/dev/dri/renderD128"]
+)
 NV_1G = HardwareInfo(gpus=[GpuInfo("nvidia", "MX150", 1024, 900)])
 INTEL = HardwareInfo(gpus=[GpuInfo("intel")], dri_render_nodes=["/dev/dri/renderD128"])
 NONE = HardwareInfo()
@@ -74,6 +92,7 @@ NONE = HardwareInfo()
 # ---------------------------------------------------------------------------
 # hardware_probe / platform parsers
 # ---------------------------------------------------------------------------
+
 
 def test_parse_nvidia_smi():
     gpus = parse_nvidia_smi("NVIDIA GeForce RTX 3070, 8192, 7400\nTesla T4, 15360, 15000\n")
@@ -99,9 +118,17 @@ def test_classify_os_and_arch():
 
 
 def test_parse_docker_info():
-    info = parse_docker_info(json.dumps({"ServerVersion": "27.3.1", "OperatingSystem": "Docker Desktop",
-                                         "Architecture": "aarch64",
-                                         "Runtimes": {"runc": {}, "nvidia": {}}}), "/x/docker")
+    info = parse_docker_info(
+        json.dumps(
+            {
+                "ServerVersion": "27.3.1",
+                "OperatingSystem": "Docker Desktop",
+                "Architecture": "aarch64",
+                "Runtimes": {"runc": {}, "nvidia": {}},
+            }
+        ),
+        "/x/docker",
+    )
     assert info.server_reachable and info.is_desktop and info.has_nvidia_runtime
     assert info.arch == "arm64"
     bad = parse_docker_info(json.dumps({"ServerErrors": ["Cannot connect to the Docker daemon"]}))
@@ -111,6 +138,7 @@ def test_parse_docker_info():
 # ---------------------------------------------------------------------------
 # display plan (decisions 3 and 4)
 # ---------------------------------------------------------------------------
+
 
 def test_ubuntu_nvidia_with_toolkit():
     p = choose_display(ubuntu(nvidia_runtime=True), NV_8G)
@@ -163,9 +191,17 @@ def test_force_software_and_bad_mode():
 # docker_runner.build_run_args (pure)
 # ---------------------------------------------------------------------------
 
+
 def _opts(plan: DisplayPlan, tmp_path: Path, **kw) -> RunOptions:
-    base = dict(image=IMG, plan=plan, projects_dir=tmp_path / "projects", catalog_dir=tmp_path / "catalog",
-                host_uid=1000, host_gid=1000, host_env={"DISPLAY": ":1", "XAUTHORITY": "/home/u/.Xauthority"})
+    base = dict(
+        image=IMG,
+        plan=plan,
+        projects_dir=tmp_path / "projects",
+        catalog_dir=tmp_path / "catalog",
+        host_uid=1000,
+        host_gid=1000,
+        host_env={"DISPLAY": ":1", "XAUTHORITY": "/home/u/.Xauthority"},
+    )
     base.update(kw)
     return RunOptions(**base)
 
@@ -190,8 +226,14 @@ def test_run_args_x11_nvidia(tmp_path):
     assert "--gpus" in args and "--device" not in args
     assert _pairs(args, "-p") == ["127.0.0.1:9090:9090"]  # no foxglove / vnc ports
     env = _pairs(args, "-e")
-    for e in ("L2S_HOST_UID=1000", "L2S_DISPLAY_MODE=x11", "L2S_GPU=nvidia", "L2S_FOXGLOVE=0",
-              "DISPLAY=:1", "XAUTHORITY=/tmp/.Xauthority"):
+    for e in (
+        "L2S_HOST_UID=1000",
+        "L2S_DISPLAY_MODE=x11",
+        "L2S_GPU=nvidia",
+        "L2S_FOXGLOVE=0",
+        "DISPLAY=:1",
+        "XAUTHORITY=/tmp/.Xauthority",
+    ):
         assert e in env
     vols = _pairs(args, "-v")
     assert "/tmp/.X11-unix:/tmp/.X11-unix" in vols
@@ -200,14 +242,20 @@ def test_run_args_x11_nvidia(tmp_path):
 
 
 def test_run_args_dri_and_dev_src(tmp_path):
-    args = build_run_args(_opts(DisplayPlan("x11", "dri", False), tmp_path, src_dir=tmp_path / "repo"))
+    args = build_run_args(
+        _opts(DisplayPlan("x11", "dri", False), tmp_path, src_dir=tmp_path / "repo")
+    )
     assert _pairs(args, "--device") == ["/dev/dri"]
     assert f"{tmp_path / 'repo'}:/opt/lang2sim/src:ro" in _pairs(args, "-v")
 
 
 def test_run_args_vnc_and_headless_ports(tmp_path):
     vnc = build_run_args(_opts(DisplayPlan("vnc", "software", True), tmp_path))
-    assert set(_pairs(vnc, "-p")) == {"127.0.0.1:9090:9090", "127.0.0.1:8765:8765", "127.0.0.1:6080:6080"}
+    assert set(_pairs(vnc, "-p")) == {
+        "127.0.0.1:9090:9090",
+        "127.0.0.1:8765:8765",
+        "127.0.0.1:6080:6080",
+    }
     assert not any(v.startswith("/tmp/.X11-unix") for v in _pairs(vnc, "-v"))
     hl = build_run_args(_opts(DisplayPlan("headless", "software", True), tmp_path, api_port=19090))
     assert set(_pairs(hl, "-p")) == {"127.0.0.1:19090:9090", "127.0.0.1:8765:8765"}
@@ -235,6 +283,7 @@ def test_host_to_container_path(tmp_path):
 # DockerRunner with a fake CLI
 # ---------------------------------------------------------------------------
 
+
 class FakeDocker:
     def __init__(self, existing: bool = True):
         self.calls = []
@@ -245,7 +294,9 @@ class FakeDocker:
         sub = argv[1]
         if sub == "container" and argv[2] == "inspect":
             if self.existing:
-                return subprocess.CompletedProcess(argv, 0, json.dumps([{"State": {"Running": True}}]), "")
+                return subprocess.CompletedProcess(
+                    argv, 0, json.dumps([{"State": {"Running": True}}]), ""
+                )
             return subprocess.CompletedProcess(argv, 1, "", "No such container")
         if sub == "run":
             return subprocess.CompletedProcess(argv, 0, "abc123\n", "")
@@ -264,6 +315,7 @@ def test_runner_start_replaces_stale_container(tmp_path):
 # ---------------------------------------------------------------------------
 # doctor
 # ---------------------------------------------------------------------------
+
 
 class StubRunner:
     def __init__(self, present=True, running=False):
@@ -285,7 +337,9 @@ def test_doctor_no_docker_fails():
 
 
 def test_doctor_happy_path_reports_plan():
-    res = doctor.run_checks(ubuntu(nvidia_runtime=True), NV_8G, runner=StubRunner(present=True, running=True))
+    res = doctor.run_checks(
+        ubuntu(nvidia_runtime=True), NV_8G, runner=StubRunner(present=True, running=True)
+    )
     disp = next(c for c in res if c.name == "display")
     assert disp.status == "ok" and "nvidia" in disp.detail
     assert next(c for c in res if c.name == "image").status == "ok"
@@ -306,19 +360,39 @@ def test_runner_exec_runs_as_sim_user():
 
 
 def test_parse_docker_info_resources():
-    info = parse_docker_info(json.dumps({"ServerVersion": "27", "OperatingSystem": "Docker Desktop",
-                                         "Architecture": "aarch64", "MemTotal": 4 * 1024 ** 3, "NCPU": 2}))
+    info = parse_docker_info(
+        json.dumps(
+            {
+                "ServerVersion": "27",
+                "OperatingSystem": "Docker Desktop",
+                "Architecture": "aarch64",
+                "MemTotal": 4 * 1024**3,
+                "NCPU": 2,
+            }
+        )
+    )
     assert info.mem_total_mb == 4096 and info.cpus == 2
 
 
 def test_doctor_warns_on_small_docker_vm_and_native_windows():
-    small = DockerInfo(cli_path="/x", server_reachable=True, server_version="27", operating_system="Docker Desktop",
-                       arch="arm64", mem_total_mb=4096, cpus=2)
-    res = doctor.run_checks(HostPlatform(os="macos", arch="arm64", docker=small), NONE, runner=StubRunner())
+    small = DockerInfo(
+        cli_path="/x",
+        server_reachable=True,
+        server_version="27",
+        operating_system="Docker Desktop",
+        arch="arm64",
+        mem_total_mb=4096,
+        cpus=2,
+    )
+    res = doctor.run_checks(
+        HostPlatform(os="macos", arch="arm64", docker=small), NONE, runner=StubRunner()
+    )
     mem = next(c for c in res if c.name == "docker memory")
     assert mem.status == "warn" and "Resources" in mem.fix
     assert next(c for c in res if c.name == "docker cpus").status == "warn"
     win = HostPlatform(os="windows", arch="amd64", docker=docker_ok(desktop=True))
     res = doctor.run_checks(win, NONE, runner=StubRunner())
     assert next(c for c in res if c.name == "windows").status == "warn"
-    assert next(c for c in res if c.name == "display").detail.startswith("Gazebo/RViz in your browser")
+    assert next(c for c in res if c.name == "display").detail.startswith(
+        "Gazebo/RViz in your browser"
+    )

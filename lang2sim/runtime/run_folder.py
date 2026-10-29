@@ -62,9 +62,15 @@ def write_manifest(run_dir: Path, manifest: RunManifest) -> Path:
     return path
 
 
-def to_start_request(run_dir: Path, manifest: Optional[RunManifest] = None, *,
-                     projects_dir: Optional[Path] = None, gui: bool = True, rviz: bool = True,
-                     initial_pose: Optional[Pose2D] = None) -> SimStartRequest:
+def to_start_request(
+    run_dir: Path,
+    manifest: Optional[RunManifest] = None,
+    *,
+    projects_dir: Optional[Path] = None,
+    gui: bool = True,
+    rviz: bool = True,
+    initial_pose: Optional[Pose2D] = None,
+) -> SimStartRequest:
     """Container-side SimStartRequest for a host run folder under projects_dir."""
     run_dir = Path(run_dir)
     manifest = manifest or load_manifest(run_dir)

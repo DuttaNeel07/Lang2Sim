@@ -34,7 +34,9 @@ POLL_S = 0.1
 
 
 def _ros_navigator() -> Any:
-    from nav2_simple_commander.robot_navigator import BasicNavigator  # type: ignore[import-not-found]
+    from nav2_simple_commander.robot_navigator import (
+        BasicNavigator,  # type: ignore[import-not-found]
+    )
     from rclpy.parameter import Parameter  # type: ignore[import-not-found]
 
     nav = BasicNavigator("l2s_nav_dispatcher")
@@ -64,19 +66,22 @@ def _seconds(duration: Any) -> float:
 
 @dataclass
 class _Task:
-    kind: str                      # "goal" | "waypoints" | "initial_pose"
+    kind: str  # "goal" | "waypoints" | "initial_pose"
     poses: List[Pose2D]
     timeout_s: float = 120.0
 
 
 class NavDispatcher:
-    def __init__(self, navigator_factory: Callable[[], Any] = _ros_navigator,
-                 make_pose: Callable[[Any, Pose2D], Any] = _ros_pose) -> None:
+    def __init__(
+        self,
+        navigator_factory: Callable[[], Any] = _ros_navigator,
+        make_pose: Callable[[Any, Pose2D], Any] = _ros_pose,
+    ) -> None:
         self._factory = navigator_factory
         self._make_pose = make_pose
         self._lock = threading.Lock()
         self._status = NavStatus()
-        self._queue: "queue.Queue[_Task]" = queue.Queue()
+        self._queue: queue.Queue[_Task] = queue.Queue()
         self._cancel = threading.Event()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -108,7 +113,9 @@ class NavDispatcher:
     def resume_with(self, first: Pose2D, timeout_s: Optional[float] = None) -> NavStatus:
         """Replace the current leg's target with `first`, keep the rest of the mission."""
         rest = self.remaining()[1:]
-        timeout = timeout_s if timeout_s is not None else (self._last.timeout_s if self._last else 120.0)
+        timeout = (
+            timeout_s if timeout_s is not None else (self._last.timeout_s if self._last else 120.0)
+        )
         if rest:
             return self.follow([first, *rest], timeout)
         return self.go_to(first, timeout)
@@ -129,12 +136,17 @@ class NavDispatcher:
     def _submit(self, task: _Task) -> NavStatus:
         self._ensure_worker()
         if task.kind != "initial_pose":
-            self._drain()                          # newest command wins
+            self._drain()  # newest command wins
             if self.status().is_active:
-                self._cancel.set()                 # preempt the running task
-            with self._lock:                       # report the new task immediately
-                self._status = NavStatus(is_active=True, status="navigating", current_task=task.kind,
-                                         target_pose=task.poses[0], waypoints_total=len(task.poses))
+                self._cancel.set()  # preempt the running task
+            with self._lock:  # report the new task immediately
+                self._status = NavStatus(
+                    is_active=True,
+                    status="navigating",
+                    current_task=task.kind,
+                    target_pose=task.poses[0],
+                    waypoints_total=len(task.poses),
+                )
         self._queue.put(task)
         return self.status()
 
@@ -172,17 +184,32 @@ class NavDispatcher:
     def _run(self, task: _Task) -> None:
         total = len(task.poses)
         for i, pose in enumerate(task.poses):
-            self._set(is_active=True, status="navigating", current_task=task.kind, target_pose=pose,
-                      waypoint_index=i, waypoints_total=total, distance_remaining=0.0,
-                      navigation_time=0.0, eta_seconds=None, recoveries=0, message=None)
+            self._set(
+                is_active=True,
+                status="navigating",
+                current_task=task.kind,
+                target_pose=pose,
+                waypoint_index=i,
+                waypoints_total=total,
+                distance_remaining=0.0,
+                navigation_time=0.0,
+                eta_seconds=None,
+                recoveries=0,
+                message=None,
+            )
             outcome, msg = self._leg(pose, task.timeout_s)
             if outcome != "succeeded":
                 if outcome == "canceled" and not self._queue.empty():
                     return  # preempted: the next task's status is already showing
                 self._set(is_active=False, status=outcome, message=msg)
                 return
-        self._set(is_active=False, status="succeeded", distance_remaining=0.0, eta_seconds=0.0,
-                  message=None)
+        self._set(
+            is_active=False,
+            status="succeeded",
+            distance_remaining=0.0,
+            eta_seconds=0.0,
+            message=None,
+        )
 
     def _leg(self, pose: Pose2D, timeout_s: float):
         nav = self._nav
@@ -193,10 +220,12 @@ class NavDispatcher:
             fb = nav.getFeedback()
             if fb is not None:
                 t = _seconds(getattr(fb, "navigation_time", None))
-                self._set(distance_remaining=round(float(getattr(fb, "distance_remaining", 0.0)), 3),
-                          navigation_time=round(t, 2),
-                          eta_seconds=round(_seconds(getattr(fb, "estimated_time_remaining", None)), 1),
-                          recoveries=int(getattr(fb, "number_of_recoveries", 0)))
+                self._set(
+                    distance_remaining=round(float(getattr(fb, "distance_remaining", 0.0)), 3),
+                    navigation_time=round(t, 2),
+                    eta_seconds=round(_seconds(getattr(fb, "estimated_time_remaining", None)), 1),
+                    recoveries=int(getattr(fb, "number_of_recoveries", 0)),
+                )
                 if t > timeout_s and not timed_out:
                     timed_out = True
                     nav.cancelTask()

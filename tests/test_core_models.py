@@ -5,38 +5,26 @@ File: tests/test_core_models.py
 
 import json
 import unittest
-from pathlib import Path
+
 from pydantic import ValidationError
 
-from lang2sim.core.models import (
-    Pose2D,
-    Vector3D,
-    SkyWeatherSpec,
-    EnvironmentSpec,
-    ObjectSpec,
-    SensorNoiseSpec,
-    CameraPerturbation,
-    LidarPerturbation,
-    DynamicObstacleTrigger,
-    MissionSpec,
-    SimSpec,
-    SimulationIR,
-    AisleCorridor,
-    SimStatus,
-    NavStatus,
-    SimStartRequest,
-    SimStatusResponse,
-    NavGoalRequest,
-    HealEvent,
-)
 from lang2sim.core.config import (
-    config,
-    get_projects_dir,
-    get_active_project_dir,
-    get_run_dir,
-    get_catalog_dir,
-    DEFAULT_SIM_IMAGE,
     DEFAULT_CONTROL_PORT,
+    DEFAULT_SIM_IMAGE,
+    get_catalog_dir,
+    get_projects_dir,
+    get_run_dir,
+)
+from lang2sim.core.models import (
+    EnvironmentSpec,
+    MissionSpec,
+    NavStatus,
+    ObjectSpec,
+    Pose2D,
+    SimSpec,
+    SimStartRequest,
+    SimStatus,
+    Vector3D,
 )
 
 
@@ -86,9 +74,7 @@ class TestCoreModels(unittest.TestCase):
     def test_complete_sim_spec(self):
         """Test a complete SimSpec containing environment, objects, and mission."""
         spec = SimSpec(
-            environment=EnvironmentSpec(
-                room_dimensions=Vector3D(x=14.0, y=10.0, z=4.0)
-            ),
+            environment=EnvironmentSpec(room_dimensions=Vector3D(x=14.0, y=10.0, z=4.0)),
             objects=[
                 ObjectSpec(
                     id="rack_1",
@@ -160,7 +146,7 @@ class TestConfigAndCatalog(unittest.TestCase):
         """Verify catalog/scene_catalog.json is valid and contains expected anchors."""
         catalog_path = get_catalog_dir() / "scene_catalog.json"
         self.assertTrue(catalog_path.exists())
-        with open(catalog_path, "r") as f:
+        with open(catalog_path) as f:
             data = json.load(f)
         self.assertIn("scenes", data)
         self.assertIn("aws_small_warehouse", data["scenes"])

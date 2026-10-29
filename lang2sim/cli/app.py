@@ -3,12 +3,16 @@ Main Textual Application for Lang2Sim
 File: lang2sim/cli/app.py
 """
 
+import os
 from pathlib import Path
+
 from textual.app import App
 from textual.binding import Binding
+
 from .screens.landing_screen import LandingScreen
 
 CSS_PATH = Path(__file__).parent / "styles" / "app.tcss"
+
 
 class Lang2SimApp(App):
     """Lang2Sim Terminal Copilot Application."""
@@ -63,8 +67,8 @@ class Lang2SimApp(App):
             text = self.screen.get_conversation_as_text()
 
         if text:
-            import subprocess
             import shutil
+            import subprocess
 
             # 1. Native Wayland clipboard (wl-copy) for Ubuntu Wayland sessions
             wl_copy = shutil.which("wl-copy") or str(Path.home() / ".local" / "bin" / "wl-copy")
@@ -108,7 +112,9 @@ class Lang2SimApp(App):
             except Exception:
                 pass
 
-            self.notify(f"Copied {len(text)} characters to clipboard!", title="Clipboard", timeout=2.0)
+            self.notify(
+                f"Copied {len(text)} characters to clipboard!", title="Clipboard", timeout=2.0
+            )
 
     def action_copy_or_quit(self) -> None:
         """Copies selected text if any exists, otherwise exits."""
@@ -134,22 +140,26 @@ class Lang2SimApp(App):
     def action_command_palette(self) -> None:
         """Open custom floating command palette modal."""
         from .screens.command_palette_modal import CommandPaletteModal
+
         self.push_screen(CommandPaletteModal(), callback=self.on_command_palette_result)
 
     def action_open_sessions(self) -> None:
         """Open custom floating sessions modal."""
         from .screens.sessions_modal import SessionsModal
+
         self.push_screen(SessionsModal(), callback=self.on_session_selected)
 
     def action_new_session(self) -> None:
         """Create new blank session and navigate to Workspace."""
         from .screens.workspace_screen import WorkspaceScreen
+
         self.switch_screen(WorkspaceScreen(session_id=None))
 
     def on_session_selected(self, session_id: str | None) -> None:
         if not session_id:
             return
         from .screens.workspace_screen import WorkspaceScreen
+
         if isinstance(self.screen, WorkspaceScreen):
             self.screen.load_session(session_id)
         else:
@@ -178,6 +188,7 @@ def main():
     """Console script entrypoint: lang2sim."""
     app = Lang2SimApp()
     app.run()
+
 
 if __name__ == "__main__":
     main()

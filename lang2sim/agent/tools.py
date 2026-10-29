@@ -6,9 +6,10 @@ File: lang2sim/agent/tools.py
 import inspect
 import time
 from pathlib import Path
-from typing import Dict, Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 # 14 Typed Tool Implementations connected to Sim2Lang Core Components
+
 
 def solve_spatial_layout(
     dimensions: Optional[Dict[str, float]] = None,
@@ -20,9 +21,10 @@ def solve_spatial_layout(
     try:
         import json
         import math
+
+        from lang2sim.core.models import EnvironmentSpec, ObjectSpec, Pose2D, Vector3D
         from lang2sim.world_gen.catalog_loader import catalog
         from lang2sim.world_gen.shapely_solver import ShapelySpatialSolver
-        from lang2sim.core.models import EnvironmentSpec, ObjectSpec, Vector3D, Pose2D
 
         dims = room_dimensions or dimensions or kwargs.get("room") or {}
         objs = objects if objects is not None else kwargs.get("items", [])
@@ -35,7 +37,9 @@ def solve_spatial_layout(
             count = 1
             if isinstance(obj, dict):
                 count = int(obj.get("count", 1))
-                base_name = (obj.get("model") or obj.get("name") or obj.get("type") or f"obj_{i}").lower()
+                base_name = (
+                    obj.get("model") or obj.get("name") or obj.get("type") or f"obj_{i}"
+                ).lower()
             elif isinstance(obj, str):
                 base_name = obj.lower()
             else:
@@ -85,7 +89,9 @@ def solve_spatial_layout(
         solver = ShapelySpatialSolver()
         spawn_pose = Pose2D(x=round(-dim_x / 2.0 + 2.0, 2), y=round(-dim_y / 2.0 + 2.0, 2), yaw=0.0)
         goal_pose = Pose2D(x=round(dim_x / 2.0 - 2.0, 2), y=round(dim_y / 2.0 - 2.0, 2), yaw=0.0)
-        placed, corridors = solver.solve_layout(env, obj_specs, spawn_pose=spawn_pose, goal_pose=goal_pose)
+        placed, corridors = solver.solve_layout(
+            env, obj_specs, spawn_pose=spawn_pose, goal_pose=goal_pose
+        )
 
         # Fallback grid placement if solver was constrained - ensure exclusion around spawn and goal
         if not placed and obj_specs:
@@ -101,7 +107,9 @@ def solve_spatial_layout(
                     px += 2.0
                 if math.hypot(px - goal_pose.x, py - goal_pose.y) < 2.0:
                     px -= 2.0
-                placed.append(o.model_copy(update={"pose": Pose2D(x=round(px, 2), y=round(py, 2), yaw=0.0)}))
+                placed.append(
+                    o.model_copy(update={"pose": Pose2D(x=round(px, 2), y=round(py, 2), yaw=0.0)})
+                )
 
         # Calculate real clearance dynamically from layout
         if corridors:
@@ -133,12 +141,17 @@ def solve_spatial_layout(
         # Persist layout to active project
         proj_dir = Path("~/.lang2sim/projects/active_project").expanduser()
         proj_dir.mkdir(parents=True, exist_ok=True)
-        (proj_dir / "layout.json").write_text(json.dumps({
-            "room_dimensions": {"x": dim_x, "y": dim_y},
-            "spawn_pose": {"x": spawn_pose.x, "y": spawn_pose.y, "yaw": spawn_pose.yaw},
-            "goal_pose": {"x": goal_pose.x, "y": goal_pose.y, "yaw": goal_pose.yaw},
-            "placed_objects": placed_data,
-        }, indent=2))
+        (proj_dir / "layout.json").write_text(
+            json.dumps(
+                {
+                    "room_dimensions": {"x": dim_x, "y": dim_y},
+                    "spawn_pose": {"x": spawn_pose.x, "y": spawn_pose.y, "yaw": spawn_pose.yaw},
+                    "goal_pose": {"x": goal_pose.x, "y": goal_pose.y, "yaw": goal_pose.yaw},
+                    "placed_objects": placed_data,
+                },
+                indent=2,
+            )
+        )
 
         return {
             "status": "success",
@@ -150,8 +163,16 @@ def solve_spatial_layout(
             "placed_objects": placed_data,
         }
     except Exception as e:
-        dim_x = float(dimensions.get("x") or dimensions.get("width") or 14.0) if isinstance(dimensions, dict) else 14.0
-        dim_y = float(dimensions.get("y") or dimensions.get("height") or 10.0) if isinstance(dimensions, dict) else 10.0
+        dim_x = (
+            float(dimensions.get("x") or dimensions.get("width") or 14.0)
+            if isinstance(dimensions, dict)
+            else 14.0
+        )
+        dim_y = (
+            float(dimensions.get("y") or dimensions.get("height") or 10.0)
+            if isinstance(dimensions, dict)
+            else 10.0
+        )
         return {
             "status": "success",
             "room_dimensions": {"x": dim_x, "y": dim_y},
@@ -163,14 +184,32 @@ def solve_spatial_layout(
             "note": str(e),
         }
 
-def compile_world_sdf(layout_spec: Dict[str, Any], target_simulator: str = "ignition", output_dir: Optional[str] = None) -> Dict[str, Any]:
+
+def compile_world_sdf(
+    layout_spec: Dict[str, Any],
+    target_simulator: str = "ignition",
+    output_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """Compiles spatial layout into Gazebo SDF world and performs pre-flight verification."""
     try:
         import json
+
         from lang2sim.compiler.sdf_compiler import HarmonicSdfCompiler
+        from lang2sim.core.models import (
+            EnvironmentSpec,
+            MissionSpec,
+            ObjectSpec,
+            Pose2D,
+            SimSpec,
+            Vector3D,
+        )
         from lang2sim.runtime.world_check import prepare_world
-        from lang2sim.core.models import SimSpec, EnvironmentSpec, Vector3D, MissionSpec, Pose2D, ObjectSpec
-        out_dir = Path(output_dir).expanduser() if output_dir else Path("~/.lang2sim/projects/active_project").expanduser()
+
+        out_dir = (
+            Path(output_dir).expanduser()
+            if output_dir
+            else Path("~/.lang2sim/projects/active_project").expanduser()
+        )
         out_dir.mkdir(parents=True, exist_ok=True)
         sdf_path = out_dir / "world.sdf"
 
@@ -194,17 +233,23 @@ def compile_world_sdf(layout_spec: Dict[str, Any], target_simulator: str = "igni
         for i, p in enumerate(placed_raw):
             if isinstance(p, dict):
                 p_dims = p.get("dimensions") or {}
-                obj_specs.append(ObjectSpec(
-                    id=str(p.get("id", f"obj_{i}")),
-                    model_name=str(p.get("model_name", p.get("model", "box"))),
-                    pose=Pose2D(x=float(p.get("x", 0.0)), y=float(p.get("y", 0.0)), yaw=float(p.get("yaw", 0.0))),
-                    dimensions=Vector3D(
-                        x=float(p_dims.get("x", 1.2)),
-                        y=float(p_dims.get("y", 0.8)),
-                        z=float(p_dims.get("z", 1.5)),
-                    ),
-                    is_static=bool(p.get("is_static", True)),
-                ))
+                obj_specs.append(
+                    ObjectSpec(
+                        id=str(p.get("id", f"obj_{i}")),
+                        model_name=str(p.get("model_name", p.get("model", "box"))),
+                        pose=Pose2D(
+                            x=float(p.get("x", 0.0)),
+                            y=float(p.get("y", 0.0)),
+                            yaw=float(p.get("yaw", 0.0)),
+                        ),
+                        dimensions=Vector3D(
+                            x=float(p_dims.get("x", 1.2)),
+                            y=float(p_dims.get("y", 0.8)),
+                            z=float(p_dims.get("z", 1.5)),
+                        ),
+                        is_static=bool(p.get("is_static", True)),
+                    )
+                )
 
         compiler = HarmonicSdfCompiler()
         sim_spec = SimSpec(
@@ -223,15 +268,19 @@ def compile_world_sdf(layout_spec: Dict[str, Any], target_simulator: str = "igni
 
         # Persist spec.json and manifest.json to satisfy the Run Folder contract
         try:
-            from lang2sim.runtime.run_folder import write_manifest
             from lang2sim.core.models import RunManifest
+            from lang2sim.runtime.run_folder import write_manifest
+
             (out_dir / "spec.json").write_text(sim_spec.model_dump_json(indent=2))
-            write_manifest(out_dir, RunManifest(
-                world_sdf=Path(final_path).name,
-                map_yaml="map.yaml",
-                world_name="sim2lang",
-                initial_pose=sim_spec.mission.initial_pose,
-            ))
+            write_manifest(
+                out_dir,
+                RunManifest(
+                    world_sdf=Path(final_path).name,
+                    map_yaml="map.yaml",
+                    world_name="sim2lang",
+                    initial_pose=sim_spec.mission.initial_pose,
+                ),
+            )
         except Exception:
             pass
 
@@ -255,6 +304,7 @@ def compile_world_sdf(layout_spec: Dict[str, Any], target_simulator: str = "igni
             "note": str(e),
         }
 
+
 def generate_zero_slam_map(
     sdf_path: str = "",
     output_dir: Optional[str] = None,
@@ -266,10 +316,16 @@ def generate_zero_slam_map(
     t0 = time.time()
     try:
         import json
+
+        from lang2sim.core.models import ObjectSpec, Pose2D, Vector3D
         from lang2sim.world_gen.map_slicer import slice_map_from_layout
-        from lang2sim.core.models import Vector3D, ObjectSpec, Pose2D
+
         target_dir = output_dir or active_project_dir or kwargs.get("project_dir")
-        out_dir = Path(target_dir).expanduser() if target_dir else Path("~/.lang2sim/projects/active_project").expanduser()
+        out_dir = (
+            Path(target_dir).expanduser()
+            if target_dir
+            else Path("~/.lang2sim/projects/active_project").expanduser()
+        )
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # Retrieve placed objects from layout.json
@@ -285,17 +341,21 @@ def generate_zero_slam_map(
                 dim_y = float(dims.get("y", 10.0))
                 for p in data.get("placed_objects", []):
                     p_dims = p.get("dimensions", {})
-                    placed_objects.append(ObjectSpec(
-                        id=p.get("id", "obj"),
-                        model_name=p.get("model_name", "box"),
-                        pose=Pose2D(x=p.get("x", 0.0), y=p.get("y", 0.0), yaw=p.get("yaw", 0.0)),
-                        dimensions=Vector3D(
-                            x=float(p_dims.get("x", 1.2)),
-                            y=float(p_dims.get("y", 0.8)),
-                            z=float(p_dims.get("z", 1.5)),
-                        ),
-                        is_static=bool(p.get("is_static", True)),
-                    ))
+                    placed_objects.append(
+                        ObjectSpec(
+                            id=p.get("id", "obj"),
+                            model_name=p.get("model_name", "box"),
+                            pose=Pose2D(
+                                x=p.get("x", 0.0), y=p.get("y", 0.0), yaw=p.get("yaw", 0.0)
+                            ),
+                            dimensions=Vector3D(
+                                x=float(p_dims.get("x", 1.2)),
+                                y=float(p_dims.get("y", 0.8)),
+                                z=float(p_dims.get("z", 1.5)),
+                            ),
+                            is_static=bool(p.get("is_static", True)),
+                        )
+                    )
             except Exception:
                 pass
 
@@ -326,6 +386,7 @@ def generate_zero_slam_map(
             "note": str(e),
         }
 
+
 def launch_simulation_stack(
     world_path: Optional[str] = None,
     robot_model: str = "turtlebot3_waffle",
@@ -334,10 +395,9 @@ def launch_simulation_stack(
     **kwargs,
 ) -> Dict[str, Any]:
     """Dispatches real Gazebo Harmonic GUI and ROS 2 Nav2 simulation stack via Part 3 SimSession."""
-    import subprocess
-    import shutil
-    import os
     import json
+    import shutil
+    import subprocess
     import time
     import urllib.request
     from pathlib import Path
@@ -350,14 +410,16 @@ def launch_simulation_stack(
 
     # Ensure X11 display permissions
     try:
-        subprocess.run("xhost +local:root >/dev/null 2>&1 || xhost + >/dev/null 2>&1", shell=True, timeout=2)
+        subprocess.run(
+            "xhost +local:root >/dev/null 2>&1 || xhost + >/dev/null 2>&1", shell=True, timeout=2
+        )
     except Exception:
         pass
 
     # 1. Primary Engine: Neel's Part 3 Runtime (SimSession / run_sim.py / Control API)
     try:
-        from lang2sim.runtime.run_folder import load_manifest, write_manifest
-        from lang2sim.core.models import RunManifest, Pose2D
+        from lang2sim.core.models import Pose2D, RunManifest
+        from lang2sim.runtime.run_folder import write_manifest
 
         run_dir = Path("~/.lang2sim/projects/active_project").expanduser().resolve()
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -370,12 +432,15 @@ def launch_simulation_stack(
 
         # Ensure manifest.json exists
         if not (run_dir / "manifest.json").exists():
-            write_manifest(run_dir, RunManifest(
-                world_sdf="world.sdf",
-                map_yaml="map.yaml",
-                world_name="sim2lang",
-                initial_pose=Pose2D(x=0.0, y=0.0, yaw=0.0),
-            ))
+            write_manifest(
+                run_dir,
+                RunManifest(
+                    world_sdf="world.sdf",
+                    map_yaml="map.yaml",
+                    world_name="sim2lang",
+                    initial_pose=Pose2D(x=0.0, y=0.0, yaw=0.0),
+                ),
+            )
 
         # Stop any stale lang2sim-sim container
         subprocess.run("docker rm -f lang2sim-sim >/dev/null 2>&1 || true", shell=True, timeout=5)
@@ -391,7 +456,9 @@ def launch_simulation_stack(
         for _ in range(25):
             time.sleep(1.0)
             try:
-                with urllib.request.urlopen("http://127.0.0.1:9090/v1/sim/status", timeout=1.0) as resp:
+                with urllib.request.urlopen(
+                    "http://127.0.0.1:9090/v1/sim/status", timeout=1.0
+                ) as resp:
                     api_data = json.loads(resp.read().decode())
                     if api_data.get("status") in ("running", "launching") or api_data.get("ready"):
                         ready = True
@@ -411,7 +478,7 @@ def launch_simulation_stack(
             "gui_windows": ["Gazebo Harmonic GUI", "Nav2 RViz2"],
             "message": "Gazebo Harmonic & ROS 2 Nav2 simulation stack launched via SimSession Control API",
         }
-    except Exception as e:
+    except Exception:
         pass
 
     # 2. Check if host has gz or ign installed
@@ -444,12 +511,13 @@ def launch_simulation_stack(
         "gui_windows": ["Gazebo Simulation (:0)", "RViz2"],
     }
 
+
 def inspect_topic_health(topic_name: str = "/scan", **kwargs) -> Dict[str, Any]:
     """Verifies topic publication rates and active publisher count dynamically from Control API or container."""
-    import urllib.request
     import json
-    import subprocess
     import re
+    import subprocess
+    import urllib.request
 
     # 1. Primary source: Control API
     try:
@@ -511,11 +579,13 @@ def inspect_topic_health(topic_name: str = "/scan", **kwargs) -> Dict[str, Any]:
             "error": str(e),
         }
 
+
 def spawn_dynamic_entity(model_name: str, x: float, y: float, z: float = 0.5) -> Dict[str, Any]:
     """Dynamically drops obstacle into running Gazebo physics without reload."""
     t0 = time.time()
     try:
         from lang2sim.world_gen.catalog_loader import SceneCatalog
+
         cat = SceneCatalog()
         is_known = model_name in cat.list_models()
     except Exception:
@@ -530,6 +600,7 @@ def spawn_dynamic_entity(model_name: str, x: float, y: float, z: float = 0.5) ->
         "ipc_latency_ms": elapsed_ms,
     }
 
+
 def set_ambient_lighting(luminance: float) -> Dict[str, Any]:
     """Adjusts ambient lighting dynamically (1.0 = nominal, 0.15 = night/dim)."""
     return {
@@ -538,11 +609,17 @@ def set_ambient_lighting(luminance: float) -> Dict[str, Any]:
         "viewport_dimmed": luminance < 0.5,
     }
 
+
 def reset_simulation(mode: str = "all") -> Dict[str, Any]:
     """Sub-second world reset snapping robot back in <0.3s without restarting GUI."""
     import urllib.request
+
     try:
-        req = urllib.request.Request("http://127.0.0.1:9090/v1/nav/cancel", data=b"{}", headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(
+            "http://127.0.0.1:9090/v1/nav/cancel",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+        )
         urllib.request.urlopen(req, timeout=1.0)
     except Exception:
         pass
@@ -552,6 +629,7 @@ def reset_simulation(mode: str = "all") -> Dict[str, Any]:
         "source": "control_api",
     }
 
+
 def apply_chassis_perturbation(velocity_bias: Dict[str, float]) -> Dict[str, Any]:
     """Applies traction loss or external disturbance velocity bias."""
     return {
@@ -559,12 +637,16 @@ def apply_chassis_perturbation(velocity_bias: Dict[str, float]) -> Dict[str, Any
         "applied_bias": velocity_bias,
     }
 
+
 def capture_gazebo_window() -> Dict[str, Any]:
     """Checks live status of the Gazebo GUI process on the host/container."""
     import subprocess
+
     is_active = False
     try:
-        proc = subprocess.run("docker exec lang2sim-sim ps aux", shell=True, capture_output=True, text=True, timeout=2)
+        proc = subprocess.run(
+            "docker exec lang2sim-sim ps aux", shell=True, capture_output=True, text=True, timeout=2
+        )
         out = proc.stdout.lower()
         is_active = "ign gazebo" in out or "gz sim" in out or "gz-sim" in out
     except Exception:
@@ -584,12 +666,16 @@ def capture_gazebo_window() -> Dict[str, Any]:
         "source": "live_process_table",
     }
 
+
 def capture_rviz_window() -> Dict[str, Any]:
     """Checks live status of the RViz2 visualization process."""
     import subprocess
+
     is_active = False
     try:
-        proc = subprocess.run("docker exec lang2sim-sim ps aux", shell=True, capture_output=True, text=True, timeout=2)
+        proc = subprocess.run(
+            "docker exec lang2sim-sim ps aux", shell=True, capture_output=True, text=True, timeout=2
+        )
         out = proc.stdout.lower()
         is_active = "rviz2" in out
     except Exception:
@@ -603,10 +689,12 @@ def capture_rviz_window() -> Dict[str, Any]:
         "source": "live_process_table",
     }
 
+
 def read_robot_camera(topic: str = "/camera/image_raw") -> Dict[str, Any]:
     """Checks live optical stream from camera topic in ROS 2."""
-    import subprocess
     import re
+    import subprocess
+
     try:
         proc = subprocess.run(
             f'docker exec lang2sim-sim bash -c "source /opt/ros/jazzy/setup.bash && ros2 topic info {topic}"',
@@ -642,61 +730,25 @@ def read_robot_camera(topic: str = "/camera/image_raw") -> Dict[str, Any]:
             "error": str(e),
         }
 
-def query_robot_telemetry(timeout_seconds: float = 1.5, **kwargs) -> Dict[str, Any]:
-    """Reads instantaneous kinematics, distance to goal, and contact forces in real-time from Control API."""
-    import urllib.request
-    import json
 
-    try:
-        with urllib.request.urlopen("http://127.0.0.1:9090/v1/telemetry", timeout=timeout_seconds) as resp:
-            data = json.loads(resp.read().decode())
-            pose = data.get("robot_pose") or {}
-            vel = data.get("robot_velocity") or {}
+def query_robot_telemetry() -> Dict[str, Any]:
+    """Reads instantaneous kinematics, distance to goal, and contact forces.
 
-            # Query nav status for distance remaining
-            dist_remaining = 0.0
-            try:
-                with urllib.request.urlopen("http://127.0.0.1:9090/v1/nav/status", timeout=0.5) as n_resp:
-                    n_data = json.loads(n_resp.read().decode())
-                    dist_remaining = round(float(n_data.get("distance_remaining", 0.0)), 2)
-            except Exception:
-                pass
+    Live data from the control API (GET /v1/telemetry/live); {"status": "unavailable"}
+    when no simulation is running.
+    """
+    from lang2sim.telemetry.live import agent_view, fetch_live
 
-            is_running = data.get("is_running", False)
-            return {
-                "status": "active" if is_running else "idle",
-                "x": round(float(pose.get("x", 0.0)), 2),
-                "y": round(float(pose.get("y", 0.0)), 2),
-                "speed": round(float(vel.get("x", 0.0)), 2),
-                "clearance": 0.35,
-                "distance_to_goal": dist_remaining,
-                "bumper_force_newtons": 0.0,
-                "collision_count": 0,
-                "health": data.get("health_status", "healthy"),
-                "render_mode": data.get("render_mode", "software"),
-                "source": "control_api",
-            }
-    except Exception:
-        pass
+    return agent_view(fetch_live())
 
-    return {
-        "status": "idle",
-        "x": 0.0,
-        "y": 0.0,
-        "speed": 0.0,
-        "clearance": 0.0,
-        "distance_to_goal": 0.0,
-        "bumper_force_newtons": 0.0,
-        "collision_count": 0,
-        "source": "offline",
-    }
 
 def auto_repair_tf(parent_frame: str = "map", child_frame: str = "odom") -> Dict[str, Any]:
     """Injects static transform publisher if frames disconnect."""
     import subprocess
+
     cmd = (
         f'docker exec -d lang2sim-sim bash -c "'
-        f'source /opt/ros/jazzy/setup.bash && '
+        f"source /opt/ros/jazzy/setup.bash && "
         f'ros2 run tf2_ros static_transform_publisher --frame-id {parent_frame} --child-frame-id {child_frame}"'
     )
     try:
@@ -713,14 +765,23 @@ def auto_repair_tf(parent_frame: str = "map", child_frame: str = "odom") -> Dict
             "error": str(e),
         }
 
+
 def compute_navigation_benchmark(
     adversarial_stress: bool = False,
     adversarial_collisions: int = 0,
 ) -> Dict[str, Any]:
     """Computes the Navigation Quality Index (NQI) benchmark and persists benchmark_report.json."""
-    from lang2sim.telemetry.nqi_scorer import demo_trajectories, score_trajectory, build_report, write_report, render_comparison_table
     import io
+
     from rich.console import Console
+
+    from lang2sim.telemetry.nqi_scorer import (
+        build_report,
+        demo_trajectories,
+        render_comparison_table,
+        score_trajectory,
+        write_report,
+    )
 
     try:
         data = demo_trajectories(adversarial_collisions=adversarial_collisions)
@@ -749,18 +810,28 @@ def compute_navigation_benchmark(
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+
 def run_command(command: str, timeout: int = 60, cwd: Optional[str] = None) -> Dict[str, Any]:
     """Executes a shell command in the local environment or ROS 2 / Docker container."""
     import os
     import subprocess
+
     t0 = time.time()
 
     # Self-healing container check: auto-restart lang2sim-sim if command targets it
     if "lang2sim-sim" in command:
         try:
-            check_running = subprocess.run("docker ps -q -f name=lang2sim-sim", shell=True, capture_output=True, text=True, timeout=3)
+            check_running = subprocess.run(
+                "docker ps -q -f name=lang2sim-sim",
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
             if not check_running.stdout.strip():
-                subprocess.run("docker start lang2sim-sim", shell=True, capture_output=True, timeout=5)
+                subprocess.run(
+                    "docker start lang2sim-sim", shell=True, capture_output=True, timeout=5
+                )
                 time.sleep(0.5)
         except Exception:
             pass
@@ -776,7 +847,9 @@ def run_command(command: str, timeout: int = 60, cwd: Optional[str] = None) -> D
         )
         elapsed = round(time.time() - t0, 3)
         # In shell commands using Linux `timeout N ...`, code 124 is normal completion of the duration
-        is_expected_timeout = ("timeout " in command or "timeout" in command.split()) and proc.returncode == 124
+        is_expected_timeout = (
+            "timeout " in command or "timeout" in command.split()
+        ) and proc.returncode == 124
         is_success = (proc.returncode == 0) or is_expected_timeout
         return {
             "status": "success" if is_success else "error",
@@ -807,7 +880,10 @@ def run_command(command: str, timeout: int = 60, cwd: Optional[str] = None) -> D
             "duration_sec": elapsed,
         }
 
-def view_file(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> Dict[str, Any]:
+
+def view_file(
+    path: str, start_line: Optional[int] = None, end_line: Optional[int] = None
+) -> Dict[str, Any]:
     """Reads lines from a file on the local filesystem."""
     try:
         p = Path(path).expanduser().resolve()
@@ -828,9 +904,11 @@ def view_file(path: str, start_line: Optional[int] = None, end_line: Optional[in
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
 def write_file(path: str, content: str) -> Dict[str, Any]:
     """Writes content to a file, creating parent directories if needed, and syncs to simulation container."""
     import subprocess
+
     try:
         p = Path(path).expanduser().resolve()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -839,7 +917,9 @@ def write_file(path: str, content: str) -> Dict[str, Any]:
         # Auto-sync to container if path is in /tmp or is a python script
         try:
             target_container_path = path if path.startswith("/tmp/") else f"/tmp/{p.name}"
-            subprocess.run(f"docker cp {p} lang2sim-sim:{target_container_path}", shell=True, timeout=5)
+            subprocess.run(
+                f"docker cp {p} lang2sim-sim:{target_container_path}", shell=True, timeout=5
+            )
         except Exception:
             pass
 
@@ -851,6 +931,7 @@ def write_file(path: str, content: str) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 
 def replace_file_content(path: str, target: str, replacement: str) -> Dict[str, Any]:
     """Replaces target string in a file with replacement string."""
@@ -867,9 +948,11 @@ def replace_file_content(path: str, target: str, replacement: str) -> Dict[str, 
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
 def search_catalog(query: str = "", category: str = "all", **kwargs) -> Dict[str, Any]:
     """Semantic and keyword search engine for example SDF scenes, world environments, and basic physical 3D blocks."""
     import json
+
     repo_root = Path(__file__).resolve().parents[2]
     cat_path = repo_root / "catalog" / "scene_catalog.json"
 
@@ -890,32 +973,36 @@ def search_catalog(query: str = "", category: str = "all", **kwargs) -> Dict[str
         for sid, s in data.get("scenes", {}).items():
             text = f"{sid} {s.get('display_name', '')} {s.get('description', '')} {s.get('environment_type', '')} {' '.join(s.get('tags', []))}".lower()
             if not q or any(term in text for term in q.split()):
-                matched_scenes.append({
-                    "id": sid,
-                    "display_name": s.get("display_name"),
-                    "description": s.get("description"),
-                    "environment_type": s.get("environment_type"),
-                    "dimensions": s.get("dimensions"),
-                    "difficulty": s.get("difficulty"),
-                    "fixture_path": s.get("fixture_path"),
-                    "tags": s.get("tags", []),
-                })
+                matched_scenes.append(
+                    {
+                        "id": sid,
+                        "display_name": s.get("display_name"),
+                        "description": s.get("description"),
+                        "environment_type": s.get("environment_type"),
+                        "dimensions": s.get("dimensions"),
+                        "difficulty": s.get("difficulty"),
+                        "fixture_path": s.get("fixture_path"),
+                        "tags": s.get("tags", []),
+                    }
+                )
 
     # 2. Search Models
     if category in ("all", "models", "blocks", "objects"):
         for mid, m in data.get("models", {}).items():
             text = f"{mid} {m.get('display_name', '')} {m.get('description', '')} {m.get('category', '')}".lower()
             if not q or any(term in text for term in q.split()):
-                matched_models.append({
-                    "id": mid,
-                    "display_name": m.get("display_name"),
-                    "description": m.get("description"),
-                    "category": m.get("category"),
-                    "dimensions": m.get("dimensions"),
-                    "mass": m.get("mass"),
-                    "is_static": m.get("is_static"),
-                    "path": m.get("path"),
-                })
+                matched_models.append(
+                    {
+                        "id": mid,
+                        "display_name": m.get("display_name"),
+                        "description": m.get("description"),
+                        "category": m.get("category"),
+                        "dimensions": m.get("dimensions"),
+                        "mass": m.get("mass"),
+                        "is_static": m.get("is_static"),
+                        "path": m.get("path"),
+                    }
+                )
 
     return {
         "status": "success",
@@ -928,28 +1015,46 @@ def search_catalog(query: str = "", category: str = "all", **kwargs) -> Dict[str
         "models": matched_models,
     }
 
-def send_navigation_goal(x: float = 2.0, y: float = 2.0, yaw: float = 0.0, timeout: float = 60.0, **kwargs) -> Dict[str, Any]:
+
+def send_navigation_goal(
+    x: float = 2.0, y: float = 2.0, yaw: float = 0.0, timeout: float = 60.0, **kwargs
+) -> Dict[str, Any]:
     """Dispatches an autonomous Nav2 navigation goal to drive the robot to specified coordinates."""
     import json
     import urllib.request
+
     try:
         url = "http://127.0.0.1:9090/v1/nav/goal"
-        body = json.dumps({
-            "goal_pose": {"x": float(x), "y": float(y), "yaw": float(yaw)},
-            "timeout_seconds": float(timeout),
-        }).encode("utf-8")
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+        body = json.dumps(
+            {
+                "goal_pose": {"x": float(x), "y": float(y), "yaw": float(yaw)},
+                "timeout_seconds": float(timeout),
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+        )
         with urllib.request.urlopen(req, timeout=0.5) as resp:
             data = json.loads(resp.read().decode())
             return {"status": "success", "nav_status": data, "goal": {"x": x, "y": y, "yaw": yaw}}
     except Exception as e:
         import subprocess
+
         try:
             cmd = f"ros2 topic pub --once /goal_pose geometry_msgs/msg/PoseStamped '{{header: {{frame_id: \"map\"}}, pose: {{position: {{x: {x}, y: {y}, z: 0.0}}, orientation: {{w: 1.0}}}}}}'"
-            subprocess.run(f"docker exec -d lang2sim-sim bash -c '{cmd}' >/dev/null 2>&1 || true", shell=True, timeout=0.5)
-            return {"status": "success", "mode": "docker_topic_pub", "goal": {"x": x, "y": y, "yaw": yaw}}
+            subprocess.run(
+                f"docker exec -d lang2sim-sim bash -c '{cmd}' >/dev/null 2>&1 || true",
+                shell=True,
+                timeout=0.5,
+            )
+            return {
+                "status": "success",
+                "mode": "docker_topic_pub",
+                "goal": {"x": x, "y": y, "yaw": yaw},
+            }
         except Exception:
             return {"status": "success", "goal": {"x": x, "y": y, "yaw": yaw}, "note": str(e)}
+
 
 TOOL_REGISTRY: Dict[str, Callable] = {
     "send_navigation_goal": send_navigation_goal,
@@ -984,7 +1089,6 @@ MUTATING_TOOLS = {
     "reset_simulation",
 }
 
-import inspect
 
 def execute_tool(name: str, **kwargs) -> Dict[str, Any]:
     """Executes a tool from the registry safely, passing only accepted arguments."""
@@ -994,5 +1098,3 @@ def execute_tool(name: str, **kwargs) -> Dict[str, Any]:
     sig = inspect.signature(func)
     filtered = {k: v for k, v in kwargs.items() if k in sig.parameters}
     return func(**filtered)
-
-

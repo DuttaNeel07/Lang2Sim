@@ -25,7 +25,12 @@ from lang2sim.runtime.control_api.server import SimProcess, create_app  # noqa: 
 
 class FakeSim(SimProcess):
     def build_command(self, req):
-        return [sys.executable, "-u", "-c", "import time; print('gz up', flush=True); time.sleep(60)"]
+        return [
+            sys.executable,
+            "-u",
+            "-c",
+            "import time; print('gz up', flush=True); time.sleep(60)",
+        ]
 
 
 GOOD_WORLD = '<?xml version="1.0"?><sdf version="1.9"><world name="w"></world></sdf>'
@@ -33,7 +38,9 @@ BAD_WORLD = '<sdf version="1.9"><world name="w"><model name="wall"><pose>04.0 1 
 
 
 def _client(sim):
-    return ControlClient("http://test", transport=httpx.ASGITransport(app=create_app(sim, use_ros=False)))
+    return ControlClient(
+        "http://test", transport=httpx.ASGITransport(app=create_app(sim, use_ros=False))
+    )
 
 
 def _run(tmp_path, world=GOOD_WORLD):
@@ -41,9 +48,13 @@ def _run(tmp_path, world=GOOD_WORLD):
     run.mkdir(parents=True, exist_ok=True)
     (run / "world.sdf").write_text(world)
     (run / "map.yaml").write_text("image: map.pgm\n")
-    return SimStartRequest(run_dir=str(run), world_sdf_path=str(run / "world.sdf"),
-                           map_yaml_path=str(run / "map.yaml"), initial_pose=Pose2D(x=1, y=2, yaw=0.5),
-                           world_name=None)
+    return SimStartRequest(
+        run_dir=str(run),
+        world_sdf_path=str(run / "world.sdf"),
+        map_yaml_path=str(run / "map.yaml"),
+        initial_pose=Pose2D(x=1, y=2, yaw=0.5),
+        world_name=None,
+    )
 
 
 def test_api_health_info_status():
@@ -53,6 +64,7 @@ def test_api_health_info_status():
             assert h["status"] == "ok"
             assert "display_mode" in await api.info()
             assert (await api.sim_status()).status == "idle"
+
     asyncio.run(go())
 
 
@@ -73,6 +85,7 @@ def test_api_start_logs_conflict_stop(tmp_path):
                 await api.sim_start(req)
             assert e.value.status_code == 409
             assert (await api.sim_stop()).status == "stopped"
+
     try:
         asyncio.run(go())
     finally:
@@ -95,6 +108,7 @@ def test_api_rejects_bad_world_with_report(tmp_path):
             assert e.value.status_code == 422 and "malformed pose" in str(e.value)
             st = await api.sim_status()
             assert st.status == "idle" and any("pose" in line for line in st.world_report)
+
     asyncio.run(go())
 
 
@@ -105,16 +119,25 @@ def test_status_uses_readiness_when_ros_is_present(tmp_path):
         def __init__(self):
             self.ready = False
 
-        def reset(self):
+        def reset(self, spawn=None):
             pass
 
         def snapshot(self):
             import time as _t
+
             now = _t.time()
             if not self.ready:
                 return RosSnapshot(now=now, clock_wall=now, sim_time=1.0)
-            return RosSnapshot(now=now, clock_wall=now, odom_wall=now, scan_wall=now, sim_time=9.5, rtf=0.8,
-                               map_pose=(1.0, 2.0, 0.5), lifecycle={n: "active" for n in NAV2_NODES})
+            return RosSnapshot(
+                now=now,
+                clock_wall=now,
+                odom_wall=now,
+                scan_wall=now,
+                sim_time=9.5,
+                rtf=0.8,
+                map_pose=(1.0, 2.0, 0.5),
+                lifecycle={n: "active" for n in NAV2_NODES},
+            )
 
     sim = FakeSim()
     app = create_app(sim, use_ros=False)
@@ -131,6 +154,7 @@ def test_status_uses_readiness_when_ros_is_present(tmp_path):
             assert st.status == "running" and st.ready and st.rtf == 0.8 and st.sim_time == 9.5
             bridge.ready = False
             assert (await api.sim_status()).status == "degraded"
+
     try:
         asyncio.run(go())
     finally:
@@ -138,14 +162,19 @@ def test_status_uses_readiness_when_ros_is_present(tmp_path):
 
 
 def test_api_start_missing_world_is_404(tmp_path):
-    req = SimStartRequest(run_dir=str(tmp_path), world_sdf_path="/nope/world.sdf",
-                          map_yaml_path="/nope/map.yaml", initial_pose=Pose2D(x=0, y=0))
+    req = SimStartRequest(
+        run_dir=str(tmp_path),
+        world_sdf_path="/nope/world.sdf",
+        map_yaml_path="/nope/map.yaml",
+        initial_pose=Pose2D(x=0, y=0),
+    )
 
     async def go():
         async with _client(FakeSim()) as api:
             with pytest.raises(ControlAPIError) as e:
                 await api.sim_start(req)
             assert e.value.status_code == 404
+
     asyncio.run(go())
 
 
@@ -156,4 +185,5 @@ def test_client_unavailable_is_typed():
         async with ControlClient("http://127.0.0.1:9", timeout=1) as api:
             with pytest.raises(ControlAPIUnavailable):
                 await api.wait_until_ready(timeout=1, interval=0.2)
+
     asyncio.run(go())

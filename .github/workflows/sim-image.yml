@@ -17,7 +17,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/sim-image.yml"
       - "pyproject.toml"
-      - "sim2lang/**"
+      - "lang2sim/**"
       - "catalog/fixtures/**"
       - "tests/integration/**"
   pull_request:
@@ -26,7 +26,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/sim-image.yml"
       - "pyproject.toml"
-      - "sim2lang/**"
+      - "lang2sim/**"
       - "catalog/fixtures/**"
       - "tests/integration/**"
   workflow_dispatch:

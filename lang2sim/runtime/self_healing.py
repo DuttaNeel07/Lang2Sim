@@ -56,30 +56,34 @@ GOAL_PATTERNS = (
     re.compile(r"(?:GridBased|NavFn|Smac).*[Ff]ailed to create (?:a )?plan"),
     re.compile(r"[Ff]ailed to create plan with tolerance"),
 )
-DIED = re.compile(r"\[(robot_state_publisher|parameter_bridge|ros_gz_bridge)[\w\-]*\]: process has died")
+DIED = re.compile(
+    r"\[(robot_state_publisher|parameter_bridge|ros_gz_bridge)[\w\-]*\]: process has died"
+)
 
 # healer name -> (ROS package, executable); processes are matched on "lib/<pkg>/<exe>"
-NODES = {"robot_state_publisher": ("robot_state_publisher", "robot_state_publisher"),
-         "bridge": ("ros_gz_bridge", "parameter_bridge")}
+NODES = {
+    "robot_state_publisher": ("robot_state_publisher", "robot_state_publisher"),
+    "bridge": ("ros_gz_bridge", "parameter_bridge"),
+}
 SCAN_GRACE_S = 5.0
 TF_GRACE_S = 10.0
 
 
 @dataclass(frozen=True)
 class Fault:
-    kind: str          # missing_package | missing_tf | unlinked_scan | goal_in_collision
-    signature: str     # stable text used for rate limiting and the log
+    kind: str  # missing_package | missing_tf | unlinked_scan | goal_in_collision
+    signature: str  # stable text used for rate limiting and the log
     evidence: str
 
 
 @dataclass
 class Observation:
-    lines: List[str]                            # new log lines since the last check
+    lines: List[str]  # new log lines since the last check
     snap: Optional[RosSnapshot]
-    alive: Dict[str, bool]                      # node process name -> running
+    alive: Dict[str, bool]  # node process name -> running
     nav: Optional[NavStatus] = None
     sim_running: bool = True
-    was_localized: bool = False                 # robot was localized earlier in this run
+    was_localized: bool = False  # robot was localized earlier in this run
 
 
 def classify(obs: Observation) -> List[Fault]:
@@ -120,8 +124,11 @@ def classify(obs: Observation) -> List[Fault]:
         if s is not None and s.fresh(s.clock_wall):
             if s.scan_wall is None or s.now - s.scan_wall > SCAN_GRACE_S:
                 if obs.was_localized:  # scan worked before in this run
-                    add("unlinked_scan", "no /scan while the clock runs",
-                        f"last scan {'never' if s.scan_wall is None else f'{s.now - s.scan_wall:.0f} s ago'}")
+                    add(
+                        "unlinked_scan",
+                        "no /scan while the clock runs",
+                        f"last scan {'never' if s.scan_wall is None else f'{s.now - s.scan_wall:.0f} s ago'}",
+                    )
     return list(faults.values())
 
 
@@ -129,17 +136,21 @@ def classify(obs: Observation) -> List[Fault]:
 # Recovery plans
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Action:
-    kind: str                       # report | restart_node | snap_goal
+    kind: str  # report | restart_node | snap_goal
     target: str = ""
     detail: Dict[str, object] = field(default_factory=dict)
 
 
 def plan_recovery(f: Fault) -> Action:
     if f.kind == "missing_package":
-        return Action("report", f.signature, {"hint": "the sim image is missing this; rebuild it - "
-                                                       "nothing is installed at runtime"})
+        return Action(
+            "report",
+            f.signature,
+            {"hint": "the sim image is missing this; rebuild it - nothing is installed at runtime"},
+        )
     if f.kind == "missing_tf":
         return Action("restart_node", "robot_state_publisher")
     if f.kind == "unlinked_scan":
@@ -147,14 +158,21 @@ def plan_recovery(f: Fault) -> Action:
     if f.kind == "goal_in_collision":
         return Action("snap_goal")
     if f.kind == "tf_warning":
-        return Action("report", f.signature, {"hint": "TF lookups failed while robot_state_publisher "
-                                                       "was running; no restart (often transient)"})
+        return Action(
+            "report",
+            f.signature,
+            {
+                "hint": "TF lookups failed while robot_state_publisher "
+                "was running; no restart (often transient)"
+            },
+        )
     return Action("report", f.signature)
 
 
 # ---------------------------------------------------------------------------
 # Map helpers (goal snapping)
 # ---------------------------------------------------------------------------
+
 
 def read_map(map_yaml: Path) -> Tuple[List[bytes], int, int, float, Tuple[float, float], float]:
     """Parse a Nav2 map.yaml + binary PGM. Returns rows (top first), w, h, resolution, origin, free_thresh."""
@@ -169,39 +187,42 @@ def read_map(map_yaml: Path) -> Tuple[List[bytes], int, int, float, Tuple[float,
     free_thresh = float(meta.get("free_thresh", "0.196"))
     data = (Path(map_yaml).parent / meta["image"]).read_bytes()
     tokens, i = [], 0
-    while len(tokens) < 4:                       # P5 header: magic, w, h, maxval (skip comments)
-        while data[i:i + 1].isspace():
+    while len(tokens) < 4:  # P5 header: magic, w, h, maxval (skip comments)
+        while data[i : i + 1].isspace():
             i += 1
-        if data[i:i + 1] == b"#":
-            while data[i:i + 1] not in (b"\n", b""):
+        if data[i : i + 1] == b"#":
+            while data[i : i + 1] not in (b"\n", b""):
                 i += 1
             continue
         j = i
-        while not data[j:j + 1].isspace():
+        while not data[j : j + 1].isspace():
             j += 1
         tokens.append(data[i:j])
         i = j
     if tokens[0] != b"P5":
         raise ValueError("only binary PGM (P5) maps are supported")
     w, h = int(tokens[1]), int(tokens[2])
-    pix = data[i + 1:i + 1 + w * h]
+    pix = data[i + 1 : i + 1 + w * h]
     if negate:
         pix = bytes(255 - b for b in pix)
-    rows = [pix[r * w:(r + 1) * w] for r in range(h)]
+    rows = [pix[r * w : (r + 1) * w] for r in range(h)]
     return rows, w, h, res, (ox, oy), free_thresh
 
 
-def nearest_free(map_yaml: Path, x: float, y: float, clearance: float = 0.45,
-                 max_radius: float = 3.0) -> Optional[Pose2D]:
+def nearest_free(
+    map_yaml: Path, x: float, y: float, clearance: float = 0.45, max_radius: float = 3.0
+) -> Optional[Pose2D]:
     """Closest map point to (x, y) with every cell within `clearance` free. None if none nearby."""
     rows, w, h, res, (ox, oy), free_thresh = read_map(map_yaml)
-    free_min = int((1 - free_thresh) * 255)      # brighter than this = free
+    free_min = int((1 - free_thresh) * 255)  # brighter than this = free
 
     def free(c: int, r: int) -> bool:
         return 0 <= c < w and 0 <= r < h and rows[r][c] >= free_min
 
     k = int(math.ceil(clearance / res))
-    disk = [(dc, dr) for dc in range(-k, k + 1) for dr in range(-k, k + 1) if dc * dc + dr * dr <= k * k]
+    disk = [
+        (dc, dr) for dc in range(-k, k + 1) for dr in range(-k, k + 1) if dc * dc + dr * dr <= k * k
+    ]
 
     def clear(c: int, r: int) -> bool:
         return all(free(c + dc, r + dr) for dc, dr in disk)
@@ -218,13 +239,16 @@ def nearest_free(map_yaml: Path, x: float, y: float, clearance: float = 0.45,
                         best = (d, c, r)
         if best:
             _, c, r = best
-            return Pose2D(x=round(ox + (c + 0.5) * res, 3), y=round(oy + (h - 1 - r + 0.5) * res, 3))
+            return Pose2D(
+                x=round(ox + (c + 0.5) * res, 3), y=round(oy + (h - 1 - r + 0.5) * res, 3)
+            )
     return None
 
 
 # ---------------------------------------------------------------------------
 # Executor
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RateLimit:
@@ -236,11 +260,17 @@ class RateLimit:
 class SelfHealer:
     """Plans and executes recoveries. Side effects are injected so tests can fake them."""
 
-    def __init__(self, run_dir: Path, *, restart_node: Callable[[str], bool],
-                 resend_goal: Optional[Callable[[Pose2D], bool]] = None,
-                 current_goal: Optional[Callable[[], Optional[Pose2D]]] = None,
-                 map_yaml: Optional[Path] = None, limit: Optional[RateLimit] = None,
-                 clock: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self,
+        run_dir: Path,
+        *,
+        restart_node: Callable[[str], bool],
+        resend_goal: Optional[Callable[[Pose2D], bool]] = None,
+        current_goal: Optional[Callable[[], Optional[Pose2D]]] = None,
+        map_yaml: Optional[Path] = None,
+        limit: Optional[RateLimit] = None,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
         self.run_dir = Path(run_dir)
         self.log_path = self.run_dir / "logs" / "heal_log.jsonl"
         self._restart = restart_node
@@ -275,7 +305,9 @@ class SelfHealer:
                 if key in self._reported:
                     continue
                 self._reported.add(key)
-                out.append(self._log(f, action, success=False, note=str(action.detail.get("hint", ""))))
+                out.append(
+                    self._log(f, action, success=False, note=str(action.detail.get("hint", "")))
+                )
                 continue
             key = f"{action.kind}:{action.target}"
             if key in done_this_pass:
@@ -285,9 +317,15 @@ class SelfHealer:
             if not ok:
                 if why == "attempt limit reached" and f"{key}:gaveup" not in self._reported:
                     self._reported.add(f"{key}:gaveup")
-                    out.append(self._log(f, Action("give_up", action.target), success=False,
-                                         note=f"{self.limit.max_attempts} attempts in "
-                                              f"{self.limit.window_s:.0f} s; needs a person"))
+                    out.append(
+                        self._log(
+                            f,
+                            Action("give_up", action.target),
+                            success=False,
+                            note=f"{self.limit.max_attempts} attempts in "
+                            f"{self.limit.window_s:.0f} s; needs a person",
+                        )
+                    )
                 continue
             self._history.setdefault(key, []).append(self._clock())
             success, note = self._execute(action)
@@ -306,14 +344,20 @@ class SelfHealer:
                 if free is None:
                     return False, f"no free cell within 3 m of ({goal.x}, {goal.y})"
                 free = free.model_copy(update={"yaw": goal.yaw})
-                return bool(self._resend(free)), f"goal moved ({goal.x}, {goal.y}) -> ({free.x}, {free.y})"
+                return bool(
+                    self._resend(free)
+                ), f"goal moved ({goal.x}, {goal.y}) -> ({free.x}, {free.y})"
         except Exception as e:  # noqa: BLE001 - a failed recovery must never take the server down
             return False, f"{type(e).__name__}: {e}"
         return False, f"unknown action {a.kind}"
 
     def _log(self, f: Fault, a: Action, success: bool, note: str = "") -> dict:
-        ev = HealEvent(timestamp=round(self._clock(), 3), error_signature=f"{f.kind}: {f.signature}",
-                       action_taken=f"{a.kind} {a.target}".strip(), success=success)
+        ev = HealEvent(
+            timestamp=round(self._clock(), 3),
+            error_signature=f"{f.kind}: {f.signature}",
+            action_taken=f"{a.kind} {a.target}".strip(),
+            success=success,
+        )
         rec = {**ev.model_dump(), "evidence": f.evidence, "note": note}
         self.events.append(rec)
         try:
@@ -328,6 +372,7 @@ class SelfHealer:
 # ---------------------------------------------------------------------------
 # Container-side node control (used by the API server)
 # ---------------------------------------------------------------------------
+
 
 class NodeControl:
     """Find and restart the nodes the healer knows how to replace."""
@@ -353,13 +398,36 @@ class NodeControl:
 
             urdf = Path(f"{share}/urdf/{model}.urdf").read_text()
             params = self.run_dir / "logs" / "rsp_params.l2s.yaml"
-            params.write_text(yaml.safe_dump({"robot_state_publisher": {"ros__parameters": {
-                "use_sim_time": True, "robot_description": urdf}}}))
-            return ["ros2", "run", "robot_state_publisher", "robot_state_publisher",
-                    "--ros-args", "--params-file", str(params)]
+            params.write_text(
+                yaml.safe_dump(
+                    {
+                        "robot_state_publisher": {
+                            "ros__parameters": {"use_sim_time": True, "robot_description": urdf}
+                        }
+                    }
+                )
+            )
+            return [
+                "ros2",
+                "run",
+                "robot_state_publisher",
+                "robot_state_publisher",
+                "--ros-args",
+                "--params-file",
+                str(params),
+            ]
         if name == "bridge":
-            return ["ros2", "run", "ros_gz_bridge", "parameter_bridge", "--ros-args",
-                    "-p", f"config_file:={share}/params/{model}_bridge.yaml", "-p", "use_sim_time:=true"]
+            return [
+                "ros2",
+                "run",
+                "ros_gz_bridge",
+                "parameter_bridge",
+                "--ros-args",
+                "-p",
+                f"config_file:={share}/params/{model}_bridge.yaml",
+                "-p",
+                "use_sim_time:=true",
+            ]
         raise ValueError(f"no restart recipe for {name}")
 
     def restart(self, name: str) -> bool:
@@ -367,8 +435,14 @@ class NodeControl:
         subprocess.run(["pkill", "-f", f"lib/{pkg}/{exe}"], capture_output=True)
         with self._lock:
             log = open(self.run_dir / "logs" / f"healed_{name}.log", "a")
-            self._procs.append(subprocess.Popen(self._command(name), stdout=log, stderr=subprocess.STDOUT,
-                                                start_new_session=True))
+            self._procs.append(
+                subprocess.Popen(
+                    self._command(name),
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+            )
         for _ in range(50):
             if self.alive().get(name):
                 return True

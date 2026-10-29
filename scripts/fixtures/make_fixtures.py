@@ -42,15 +42,28 @@ OUT = REPO / "catalog" / "fixtures"
 MIN_CLEARANCE = 0.5
 
 
-def obj(i: str, model: str, x: float, y: float, dx: float, dy: float, dz: float, yaw: float = 0.0) -> ObjectSpec:
-    return ObjectSpec(id=i, model_name=model, dimensions=Vector3D(x=dx, y=dy, z=dz), pose=Pose2D(x=x, y=y, yaw=yaw))
+def obj(
+    i: str, model: str, x: float, y: float, dx: float, dy: float, dz: float, yaw: float = 0.0
+) -> ObjectSpec:
+    return ObjectSpec(
+        id=i,
+        model_name=model,
+        dimensions=Vector3D(x=dx, y=dy, z=dz),
+        pose=Pose2D(x=x, y=y, yaw=yaw),
+    )
 
 
-def mission(start: Tuple[float, float, float], waypoints: Sequence[Tuple[float, float]],
-            goal: Tuple[float, float, float]) -> MissionSpec:
-    return MissionSpec(initial_pose=Pose2D(x=start[0], y=start[1], yaw=start[2]),
-                       waypoints=[Pose2D(x=x, y=y) for x, y in waypoints],
-                       goal_pose=Pose2D(x=goal[0], y=goal[1], yaw=goal[2]), timeout_seconds=300)
+def mission(
+    start: Tuple[float, float, float],
+    waypoints: Sequence[Tuple[float, float]],
+    goal: Tuple[float, float, float],
+) -> MissionSpec:
+    return MissionSpec(
+        initial_pose=Pose2D(x=start[0], y=start[1], yaw=start[2]),
+        waypoints=[Pose2D(x=x, y=y) for x, y in waypoints],
+        goal_pose=Pose2D(x=goal[0], y=goal[1], yaw=goal[2]),
+        timeout_seconds=300,
+    )
 
 
 def check_clearance(spec: SimSpec) -> None:
@@ -60,8 +73,10 @@ def check_clearance(spec: SimSpec) -> None:
 
     solver = ShapelySpatialSolver()
     room = solver.create_room_polygon(spec.environment.room_dimensions)
-    polys = [solver.create_obb(o.pose.x, o.pose.y, o.dimensions.x, o.dimensions.y, o.pose.yaw)
-             for o in spec.objects]
+    polys = [
+        solver.create_obb(o.pose.x, o.pose.y, o.dimensions.x, o.dimensions.y, o.pose.yaw)
+        for o in spec.objects
+    ]
     m = spec.mission
     for p in [m.initial_pose, *m.waypoints, m.goal_pose]:
         pt = Point(p.x, p.y)
@@ -70,12 +85,17 @@ def check_clearance(spec: SimSpec) -> None:
             raise SystemExit(f"waypoint ({p.x}, {p.y}) has only {clear:.2f} m clearance")
 
 
-def generate(name: str, room: Tuple[float, float], objects: List[ObjectSpec], m: MissionSpec) -> None:
+def generate(
+    name: str, room: Tuple[float, float], objects: List[ObjectSpec], m: MissionSpec
+) -> None:
     from lang2sim.compiler import compile_world_sdf, generate_simulation_ir
     from lang2sim.world_gen import slice_map_from_layout
 
-    spec = SimSpec(environment=EnvironmentSpec(room_dimensions=Vector3D(x=room[0], y=room[1], z=3.0)),
-                   objects=objects, mission=m)
+    spec = SimSpec(
+        environment=EnvironmentSpec(room_dimensions=Vector3D(x=room[0], y=room[1], z=3.0)),
+        objects=objects,
+        mission=m,
+    )
     ir = generate_simulation_ir(spec)
     if not ir.is_valid:
         raise SystemExit(f"{name}: Part 1 validator rejected the layout: {ir.validation_messages}")
@@ -92,25 +112,38 @@ def generate(name: str, room: Tuple[float, float], objects: List[ObjectSpec], m:
 def tb3_world() -> None:
     run = OUT / "tb3_world"
     if not (run / "world.sdf").is_file():
-        raise SystemExit("catalog/fixtures/tb3_world/world.sdf missing: copy it from the sim image "
-                         "(turtlebot3_gazebo/worlds/turtlebot3_world.world, map from turtlebot3_navigation2)")
+        raise SystemExit(
+            "catalog/fixtures/tb3_world/world.sdf missing: copy it from the sim image "
+            "(turtlebot3_gazebo/worlds/turtlebot3_world.world, map from turtlebot3_navigation2)"
+        )
     m = mission((-2.0, -0.5, 0.0), [(0.55, -0.55), (2.0, 0.5)], (0.5, 1.8, 3.14159))
-    spec = SimSpec(environment=EnvironmentSpec(room_dimensions=Vector3D(x=5.6, y=5.2, z=1.0)), mission=m)
+    spec = SimSpec(
+        environment=EnvironmentSpec(room_dimensions=Vector3D(x=5.6, y=5.2, z=1.0)), mission=m
+    )
     (run / "spec.json").write_text(spec.model_dump_json(indent=2) + "\n")
     write_manifest(run, RunManifest(world_name="default", initial_pose=m.initial_pose))
     print(f"wrote {run.relative_to(REPO)} (spec + manifest)")
 
 
 def main() -> int:
-    generate("empty_room", (8.0, 6.0), [],
-             mission((-2.5, -1.5, 0.0), [(2.5, -1.5), (2.5, 1.5)], (-2.5, 1.5, 3.14159)))
-    generate("small_warehouse", (12.0, 10.0), [
-        obj("rack_1", "aws_warehouse_rack", -2.5, 2.5, 3.0, 0.8, 2.0),
-        obj("rack_2", "aws_warehouse_rack", 2.5, 2.5, 3.0, 0.8, 2.0),
-        obj("rack_3", "aws_warehouse_rack", -2.5, -0.5, 3.0, 0.8, 2.0),
-        obj("rack_4", "aws_warehouse_rack", 2.5, -0.5, 3.0, 0.8, 2.0),
-        obj("crate_1", "wooden_crate", 4.5, -3.5, 0.8, 0.8, 0.8),
-    ], mission((-4.5, -3.5, 0.0), [(0.0, 1.0), (4.5, 1.0), (0.0, -3.0)], (-4.0, 3.5, 1.5708)))
+    generate(
+        "empty_room",
+        (8.0, 6.0),
+        [],
+        mission((-2.5, -1.5, 0.0), [(2.5, -1.5), (2.5, 1.5)], (-2.5, 1.5, 3.14159)),
+    )
+    generate(
+        "small_warehouse",
+        (12.0, 10.0),
+        [
+            obj("rack_1", "aws_warehouse_rack", -2.5, 2.5, 3.0, 0.8, 2.0),
+            obj("rack_2", "aws_warehouse_rack", 2.5, 2.5, 3.0, 0.8, 2.0),
+            obj("rack_3", "aws_warehouse_rack", -2.5, -0.5, 3.0, 0.8, 2.0),
+            obj("rack_4", "aws_warehouse_rack", 2.5, -0.5, 3.0, 0.8, 2.0),
+            obj("crate_1", "wooden_crate", 4.5, -3.5, 0.8, 0.8, 0.8),
+        ],
+        mission((-4.5, -3.5, 0.0), [(0.0, 1.0), (4.5, 1.0), (0.0, -3.0)], (-4.0, 3.5, 1.5708)),
+    )
     tb3_world()
     return 0
 

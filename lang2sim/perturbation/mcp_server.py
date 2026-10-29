@@ -15,15 +15,14 @@ Can also be launched standalone via HTTP for developer introspection with MCP In
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sys
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 from fastmcp import FastMCP
 
 from lang2sim.perturbation._compat import Pose2D
-from lang2sim.perturbation.gazebo_bridge import BridgeResult, get_bridge
+from lang2sim.perturbation.gazebo_bridge import get_bridge
 
 __all__ = [
     "mcp",
@@ -66,7 +65,9 @@ async def reset_simulation(mode: str = "world") -> dict[str, Any]:
 
 
 @mcp.tool
-async def apply_chassis_perturbation(velocity_bias: Pose2D, duration_s: float = 1.0) -> dict[str, Any]:
+async def apply_chassis_perturbation(
+    velocity_bias: Pose2D, duration_s: float = 1.0
+) -> dict[str, Any]:
     """Inject traction loss or force impulse (linear x/y, angular yaw) onto the mobile robot."""
     bridge = get_bridge()
     res = await bridge.apply_perturbation(velocity_bias, duration_s)
@@ -108,17 +109,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Lang2Sim FastMCP Perturbation Server")
     parser.add_argument("--http", action="store_true", help="Run HTTP transport for MCP Inspector")
     parser.add_argument("--port", type=int, default=8765, help="HTTP server port (default: 8765)")
-    parser.add_argument("--host", default="127.0.0.1", help="HTTP server bind host (default: 127.0.0.1)")
-    parser.add_argument("--backend", choices=["auto", "dryrun", "harmonic", "classic"], default=None,
-                        help="Override Gazebo bridge backend")
+    parser.add_argument(
+        "--host", default="127.0.0.1", help="HTTP server bind host (default: 127.0.0.1)"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "dryrun", "harmonic", "classic"],
+        default=None,
+        help="Override Gazebo bridge backend",
+    )
     args = parser.parse_args()
 
     if args.backend:
         get_bridge(args.backend)
 
     if args.http:
-        print(f"Starting FastMCP HTTP server at http://{args.host}:{args.port}/mcp (Streamable HTTP)")
-        print(f"Connect via MCP Inspector: npx @modelcontextprotocol/inspector")
+        print(
+            f"Starting FastMCP HTTP server at http://{args.host}:{args.port}/mcp (Streamable HTTP)"
+        )
+        print("Connect via MCP Inspector: npx @modelcontextprotocol/inspector")
         mcp.run(transport="http", host=args.host, port=args.port)
     else:
         mcp.run()

@@ -5,34 +5,37 @@ File: lang2sim/cli/screens/workspace_screen.py
 
 import asyncio
 import json
-from typing import List, Dict, Any, Optional
-from textual.screen import Screen
-from textual.widgets import Static, Markdown
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from typing import Any, Dict, List, Optional
+
+from rich.markup import escape
+from textual import events, work
 from textual.binding import Binding
-from textual import work, events
-from ..widgets.prompt_card import PromptCard
-from ..widgets.telemetry_sidebar import TelemetrySidebar
-from ..widgets.thought_box import ThoughtBox
-from ..widgets.action_pill import ActionPill
-from ..widgets.command_card import CommandCard
-from ..widgets.plan_card import PlanCard
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import Screen
+from textual.widgets import Markdown, Static
+
 from ...agent.nemotron_client import NemotronClient
 from ...agent.react_loop import (
     SUPERVISOR_SYSTEM_PROMPT,
+    ActionCompleted,
+    ActionStarted,
+    CommandExecuted,
+    ContentChunk,
+    PermissionRequested,
+    PlanCreated,
+    PlanStepUpdated,
     ReActSupervisor,
     ThoughtChunk,
     ThoughtCompleted,
-    PlanCreated,
-    PlanStepUpdated,
-    PermissionRequested,
-    CommandExecuted,
-    ActionStarted,
-    ActionCompleted,
-    ContentChunk,
     TurnCompleted,
 )
-from ...core.session_manager import session_manager, ChatSession, ChatMessage
+from ...core.session_manager import ChatMessage, session_manager
+from ..widgets.action_pill import ActionPill
+from ..widgets.command_card import CommandCard
+from ..widgets.plan_card import PlanCard
+from ..widgets.prompt_card import PromptCard
+from ..widgets.telemetry_sidebar import TelemetrySidebar
+from ..widgets.thought_box import ThoughtBox
 
 SYSTEM_PROMPT = SUPERVISOR_SYSTEM_PROMPT
 
@@ -89,7 +92,12 @@ class WorkspaceScreen(Screen):
                 self.conversation_history.append({"role": "assistant", "content": m.content})
         self.total_tokens_used: int = self.session.total_tokens
         self.is_streaming: bool = False
+        from ..demo_commands import DemoRunner
 
+        self.demo = DemoRunner(
+            say=self._demo_say, show=self._demo_show, progress=self._demo_progress
+        )
+        self._progress_line: Optional[Static] = None
 
     def compose(self):
         # Top title bar
@@ -102,7 +110,7 @@ class WorkspaceScreen(Screen):
                 with VerticalScroll(id="chat-scroll"):
                     yield Static("", id="scroll-anchor")
                 yield PromptCard(
-                    placeholder='lang2sim > Type follow-up (e.g. "drop light to 20%, spawn crate")',
+                    placeholder="lang2sim > Ask, or /mission · /stress · /benchmark · /report · /help",
                     card_id="sticky-prompt-input",
                     id="sticky-input-card",
                 )
@@ -121,8 +129,11 @@ class WorkspaceScreen(Screen):
                 classes="footer-right",
             )
 
+    TELEMETRY_POLL_S = 1.0
+
     def on_mount(self) -> None:
         """Mount existing session messages, focus input, and process initial prompt."""
+        self.set_interval(self.TELEMETRY_POLL_S, self.poll_telemetry)
         chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
 
         # Restore past messages if loading an existing session
@@ -137,11 +148,21 @@ class WorkspaceScreen(Screen):
                     chat_scroll.mount(thought_box)
                 if msg.actions:
                     for act in msg.actions:
-                        if act.tool_name == "run_command" or (act.arguments and "command" in act.arguments):
+                        if act.tool_name == "run_command" or (
+                            act.arguments and "command" in act.arguments
+                        ):
                             cmd = act.arguments.get("command", "") if act.arguments else ""
-                            out = act.output.get("stdout", "") if isinstance(act.output, dict) else ""
-                            err = act.output.get("stderr", "") if isinstance(act.output, dict) else ""
-                            rc = act.output.get("exit_code", 0) if isinstance(act.output, dict) else 0
+                            out = (
+                                act.output.get("stdout", "") if isinstance(act.output, dict) else ""
+                            )
+                            err = (
+                                act.output.get("stderr", "") if isinstance(act.output, dict) else ""
+                            )
+                            rc = (
+                                act.output.get("exit_code", 0)
+                                if isinstance(act.output, dict)
+                                else 0
+                            )
                             card = CommandCard(
                                 event_id="restored",
                                 command=cmd,
@@ -150,7 +171,9 @@ class WorkspaceScreen(Screen):
                                 permission_required=False,
                             )
                             chat_scroll.mount(card)
-                            card.set_result(exit_code=rc, duration_str=act.duration_str, stdout=out, stderr=err)
+                            card.set_result(
+                                exit_code=rc, duration_str=act.duration_str, stdout=out, stderr=err
+                            )
                         else:
                             pill = ActionPill(
                                 tool_name=act.tool_name,
@@ -183,13 +206,18 @@ class WorkspaceScreen(Screen):
         # 1. Try ControlClient
         try:
             from lang2sim.runtime.control_api.client import ControlClient
+
             async with ControlClient(timeout=0.3) as client:
                 status = await client.sim_status()
                 if status.status in ("running", "launching"):
                     telem = await client.telemetry()
                     pose = telem.robot_pose
                     vel = telem.robot_velocity
-                    rtf_str = f"{telem.real_time_factor:.2f}x" if telem.real_time_factor is not None else "1.0x"
+                    rtf_str = (
+                        f"{telem.real_time_factor:.2f}x"
+                        if telem.real_time_factor is not None
+                        else "1.0x"
+                    )
                     sidebar = self.query_one(TelemetrySidebar)
                     sidebar.update_telemetry(
                         sim_state=f"Active ({status.status.capitalize()})",
@@ -243,7 +271,9 @@ class WorkspaceScreen(Screen):
                         timeout=1,
                     )
                     out = ps_proc.stdout.lower()
-                    has_gui = "rviz2" in out or "gz sim" in out or "gz-sim" in out or "ign gazebo" in out
+                    has_gui = (
+                        "rviz2" in out or "gz sim" in out or "gz-sim" in out or "ign gazebo" in out
+                    )
                     sim_state = "Active (GUI)" if has_gui else "Active (Docker)"
                     rtf_str = "1.0x" if has_gui else "0.0x"
 
@@ -270,6 +300,7 @@ class WorkspaceScreen(Screen):
     def action_open_sessions(self) -> None:
         """Open custom floating sessions modal."""
         from .sessions_modal import SessionsModal
+
         self.app.push_screen(
             SessionsModal(workspace_name=self.session.workspace_name),
             callback=self.on_session_switched,
@@ -305,11 +336,21 @@ class WorkspaceScreen(Screen):
                     chat_scroll.mount(thought_box)
                 if msg.actions:
                     for act in msg.actions:
-                        if act.tool_name == "run_command" or (act.arguments and "command" in act.arguments):
+                        if act.tool_name == "run_command" or (
+                            act.arguments and "command" in act.arguments
+                        ):
                             cmd = act.arguments.get("command", "") if act.arguments else ""
-                            out = act.output.get("stdout", "") if isinstance(act.output, dict) else ""
-                            err = act.output.get("stderr", "") if isinstance(act.output, dict) else ""
-                            rc = act.output.get("exit_code", 0) if isinstance(act.output, dict) else 0
+                            out = (
+                                act.output.get("stdout", "") if isinstance(act.output, dict) else ""
+                            )
+                            err = (
+                                act.output.get("stderr", "") if isinstance(act.output, dict) else ""
+                            )
+                            rc = (
+                                act.output.get("exit_code", 0)
+                                if isinstance(act.output, dict)
+                                else 0
+                            )
                             card = CommandCard(
                                 event_id="restored",
                                 command=cmd,
@@ -318,7 +359,9 @@ class WorkspaceScreen(Screen):
                                 permission_required=False,
                             )
                             chat_scroll.mount(card)
-                            card.set_result(exit_code=rc, duration_str=act.duration_str, stdout=out, stderr=err)
+                            card.set_result(
+                                exit_code=rc, duration_str=act.duration_str, stdout=out, stderr=err
+                            )
                         else:
                             pill = ActionPill(
                                 tool_name=act.tool_name,
@@ -330,9 +373,7 @@ class WorkspaceScreen(Screen):
                 chat_scroll.mount(resp_md)
 
         # Update header and sidebar
-        self.query_one("#workspace-header", Static).update(
-            f"S2L | {self.session.title} — lang2sim"
-        )
+        self.query_one("#workspace-header", Static).update(f"S2L | {self.session.title} — lang2sim")
         sidebar = self.query_one(TelemetrySidebar)
         capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
         sidebar.update_telemetry(
@@ -388,13 +429,16 @@ class WorkspaceScreen(Screen):
                 lines.append(f"[THOUGHT]:\n{msg.thought}\n")
             if msg.actions:
                 for act in msg.actions:
-                    lines.append(f"[TOOL: {act.tool_name}]: {act.duration_str} - status: {act.status}")
+                    lines.append(
+                        f"[TOOL: {act.tool_name}]: {act.duration_str} - status: {act.status}"
+                    )
         return "\n".join(lines).strip()
 
     def action_select_all(self) -> None:
         """Select all text in current input or select entire conversation for copying."""
         try:
             from textual.widgets import Input
+
             inp = self.query_one("#sticky-prompt-input", Input)
             if inp.has_focus and inp.value:
                 inp.action_select_all()
@@ -406,7 +450,9 @@ class WorkspaceScreen(Screen):
 
         full_text = self.get_conversation_as_text()
         self._selected_text = full_text
-        self.app.notify("Selected all chat text! Press Ctrl+Shift+C to copy", title="Select All", timeout=2.0)
+        self.app.notify(
+            "Selected all chat text! Press Ctrl+Shift+C to copy", title="Select All", timeout=2.0
+        )
 
     def on_key(self, event: events.Key) -> None:
         """Global key interceptor for immediate command approval, Ctrl+A select all, and copy."""
@@ -430,6 +476,7 @@ class WorkspaceScreen(Screen):
         if self._pending_permissions:
             try:
                 from textual.widgets import Input
+
                 inp = self.query_one("#sticky-prompt-input", Input)
                 if not inp.value.strip():
                     if key in ("y", "enter"):
@@ -449,10 +496,6 @@ class WorkspaceScreen(Screen):
                         return
             except Exception:
                 pass
-
-    def on_prompt_card_submitted(self, message: PromptCard.Submitted) -> None:
-        """When user types in sticky input card, add prompt and run execution."""
-        self.handle_user_prompt(message.value)
 
     def handle_user_prompt(self, prompt: str) -> None:
         """Mount user message and launch async LLM streaming worker."""
@@ -475,12 +518,30 @@ class WorkspaceScreen(Screen):
 
         # 2. Recovery for "try again" / "retry" / "restart"
         if cleaned_prompt.lower() in ("try again", "retry", "restart"):
-            for event_id, fut in list(self._pending_permissions.items()):
+            for _event_id, fut in list(self._pending_permissions.items()):
                 if not fut.done():
                     fut.cancel()
             self._pending_permissions.clear()
             self.is_streaming = False
 
+        # 3. Demo commands (/mission, /stress, /benchmark, ...) and plain-language stress requests
+        from ..demo_commands import parse_command, parse_stress_intent
+
+        command = parse_command(cleaned_prompt) or parse_stress_intent(cleaned_prompt)
+        if command is not None:
+            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+            chat_scroll.mount(
+                Static(f"[bold #ffffff]{escape(cleaned_prompt)}[/]", classes="user-prompt-card")
+            )
+            chat_scroll.scroll_end(animate=False)
+            self.session.messages.append(
+                ChatMessage(
+                    role="user", content=cleaned_prompt, tokens=max(1, len(cleaned_prompt) // 4)
+                )
+            )
+            session_manager.save_session(self.session)
+            self.run_demo_command(command)
+            return
         if self.is_streaming:
             return
 
@@ -527,6 +588,54 @@ class WorkspaceScreen(Screen):
         if fut and not fut.done():
             fut.set_result(False)
 
+    # --- demo commands ------------------------------------------------------------
+    @work(exclusive=False, group="demo")
+    async def run_demo_command(self, command) -> None:
+        await self.demo.run(command)
+        self.poll_telemetry()
+
+    def _demo_say(self, markup: str) -> None:
+        self._mount_chat(Static(markup, classes="demo-line"))
+
+    def _demo_show(self, renderable) -> None:
+        self._mount_chat(Static(renderable, classes="demo-table"))
+
+    def _demo_progress(self, markup: Optional[str]) -> None:
+        """One status line updated in place (None: leave it and start a new one next time)."""
+        if markup is None:
+            self._progress_line = None
+            return
+        if self._progress_line is None or not self._progress_line.is_attached:
+            self._progress_line = Static(markup, classes="demo-line demo-progress")
+            self._mount_chat(self._progress_line)
+        else:
+            self._progress_line.update(markup)
+
+    def _mount_chat(self, widget) -> None:
+        try:
+            chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
+        except Exception:  # noqa: BLE001 - screen gone
+            return
+        chat_scroll.mount(widget)
+        chat_scroll.scroll_end(animate=False)
+
+    @work(thread=True, exclusive=True, group="telemetry")
+    def poll_telemetry(self) -> None:
+        """Fetch live telemetry off the UI thread (GET /v1/telemetry/live) and refresh the sidebar."""
+        from ...telemetry.live import fetch_live, sidebar_fields
+
+        fields = sidebar_fields(fetch_live(timeout=0.5))
+        try:
+            self.app.call_from_thread(self._apply_telemetry, fields)
+        except Exception:  # noqa: BLE001 - app shutting down
+            pass
+
+    def _apply_telemetry(self, fields: Dict[str, Any]) -> None:
+        try:
+            self.query_one(TelemetrySidebar).update_telemetry(**fields)
+        except Exception:  # noqa: BLE001 - screen not mounted any more
+            pass
+
     @work(exclusive=True, group="chat_stream")
     async def stream_response(self, response_widget: Markdown, prompt: str) -> None:
         """Stream conversational response directly from LLM / ReAct supervisor with low latency."""
@@ -553,7 +662,18 @@ class WorkspaceScreen(Screen):
         content_parts: List[str] = []
         active_pills: Dict[str, ActionPill] = {}
 
-        async def permission_checker(tool_name: str, cmd_str: str, args: dict, event_id: str) -> bool:
+        # Ground the answer in the running simulation (live telemetry + latest NQI report)
+        from ...agent.grounding import fetch_context, with_context
+
+        try:
+            context = await asyncio.wait_for(asyncio.to_thread(fetch_context), timeout=3.0)
+        except Exception:  # noqa: BLE001 - no sim context is fine
+            context = None
+        grounded_history = with_context(self.conversation_history, context)
+
+        async def permission_checker(
+            tool_name: str, cmd_str: str, args: dict, event_id: str
+        ) -> bool:
             if self.always_allow_commands:
                 card = CommandCard(
                     event_id=event_id,
@@ -587,7 +707,7 @@ class WorkspaceScreen(Screen):
             async for event in supervisor.stream_turn(
                 self.session,
                 prompt,
-                self.conversation_history,
+                grounded_history,
                 permission_checker=permission_checker,
             ):
                 if isinstance(event, ThoughtChunk):
@@ -600,7 +720,9 @@ class WorkspaceScreen(Screen):
 
                 elif isinstance(event, ThoughtCompleted):
                     if not thought_box:
-                        thought_box = ThoughtBox(duration_str=event.duration_str, content=event.thought)
+                        thought_box = ThoughtBox(
+                            duration_str=event.duration_str, content=event.thought
+                        )
                         await chat_scroll.mount(thought_box, before=response_widget)
                     else:
                         thought_box.update_content(event.thought, duration_str=event.duration_str)
@@ -613,7 +735,9 @@ class WorkspaceScreen(Screen):
 
                 elif isinstance(event, PlanStepUpdated):
                     if self._active_plan_card:
-                        self._active_plan_card.update_step(event.step_index, event.status, event.detail)
+                        self._active_plan_card.update_step(
+                            event.step_index, event.status, event.detail
+                        )
                     chat_scroll.scroll_end(animate=False)
 
                 elif isinstance(event, PermissionRequested):
@@ -632,7 +756,9 @@ class WorkspaceScreen(Screen):
 
                 elif isinstance(event, ActionStarted):
                     if event.tool_name != "run_command" and self._active_plan_card is None:
-                        pill = ActionPill(tool_name=event.tool_name, duration_str="0.0s", status="running")
+                        pill = ActionPill(
+                            tool_name=event.tool_name, duration_str="0.0s", status="running"
+                        )
                         active_pills[event.tool_name] = pill
                         await chat_scroll.mount(pill, before=response_widget)
                         chat_scroll.scroll_end(animate=False)
@@ -642,11 +768,17 @@ class WorkspaceScreen(Screen):
                     if pill:
                         pill.set_completed(event.duration_str)
                     elif event.tool_name != "run_command" and self._active_plan_card is None:
-                        pill = ActionPill(tool_name=event.tool_name, duration_str=event.duration_str, status=event.status)
+                        pill = ActionPill(
+                            tool_name=event.tool_name,
+                            duration_str=event.duration_str,
+                            status=event.status,
+                        )
                         await chat_scroll.mount(pill, before=response_widget)
 
                     # Dynamically sync live telemetry metrics into sidebar
-                    if event.tool_name == "query_robot_telemetry" and isinstance(event.output, dict):
+                    if event.tool_name == "query_robot_telemetry" and isinstance(
+                        event.output, dict
+                    ):
                         sidebar = self.query_one(TelemetrySidebar)
                         sidebar.update_telemetry(
                             robot_x=float(event.output.get("x", 0.0)),
@@ -669,8 +801,9 @@ class WorkspaceScreen(Screen):
                         full_text = "".join(content_parts).strip()
                     if full_text:
                         await response_widget.update(full_text)
-                        history_content = full_text
-                        self.conversation_history.append({"role": "assistant", "content": full_text})
+                        self.conversation_history.append(
+                            {"role": "assistant", "content": full_text}
+                        )
                         prompt_tokens = max(1, len(prompt) // 4)
                         resp_tokens = max(1, len(full_text) // 4)
                         self.total_tokens_used += prompt_tokens + resp_tokens

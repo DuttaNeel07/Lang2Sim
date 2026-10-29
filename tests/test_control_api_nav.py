@@ -36,16 +36,25 @@ class FakeBridge:
     def __init__(self, ready=True):
         self.ready = ready
 
-    def reset(self):
-        pass
+    def reset(self, spawn=None):
+        self.spawn = spawn
 
     def snapshot(self):
         now = time.time()
         if not self.ready:
             return RosSnapshot(now=now, clock_wall=now)
-        return RosSnapshot(now=now, clock_wall=now, odom_wall=now, scan_wall=now, sim_time=12.0, rtf=0.9,
-                           odom_pose=(0.1, 0.2, 0.0), map_pose=(-2.0, -0.5, 3.1416),
-                           velocity=(0.22, 0.0, -0.4), lifecycle={n: "active" for n in NAV2_NODES})
+        return RosSnapshot(
+            now=now,
+            clock_wall=now,
+            odom_wall=now,
+            scan_wall=now,
+            sim_time=12.0,
+            rtf=0.9,
+            odom_pose=(0.1, 0.2, 0.0),
+            map_pose=(-2.0, -0.5, 3.1416),
+            velocity=(0.22, 0.0, -0.4),
+            lifecycle={n: "active" for n in NAV2_NODES},
+        )
 
 
 class FakeNav:
@@ -64,8 +73,12 @@ class FakeNav:
         return False
 
     def getFeedback(self):
-        return SimpleNamespace(distance_remaining=float(self._left), navigation_time=1.0,
-                               estimated_time_remaining=2.0, number_of_recoveries=0)
+        return SimpleNamespace(
+            distance_remaining=float(self._left),
+            navigation_time=1.0,
+            estimated_time_remaining=2.0,
+            number_of_recoveries=0,
+        )
 
     def getResult(self):
         return SimpleNamespace(name="CANCELED" if self._c else "SUCCEEDED")
@@ -83,8 +96,12 @@ def setup(tmp_path):
     run.mkdir()
     (run / "world.sdf").write_text(WORLD)
     (run / "map.yaml").write_text("image: map.pgm\n")
-    req = SimStartRequest(run_dir=str(run), world_sdf_path=str(run / "world.sdf"),
-                          map_yaml_path=str(run / "map.yaml"), initial_pose=Pose2D(x=-2, y=-0.5))
+    req = SimStartRequest(
+        run_dir=str(run),
+        world_sdf_path=str(run / "world.sdf"),
+        map_yaml_path=str(run / "map.yaml"),
+        initial_pose=Pose2D(x=-2, y=-0.5),
+    )
     sim, nav = FakeSim(), FakeNav(steps=10_000)
     disp = NavDispatcher(navigator_factory=lambda: nav, make_pose=lambda _n, p: p)
     app = create_app(sim, use_ros=False, nav=disp)
@@ -124,7 +141,10 @@ def test_nav_requires_ready_then_runs(setup):
             st = await api.nav_waypoints([Pose2D(x=1, y=0), Pose2D(x=2, y=0)])
             assert st.waypoints_total == 2
             done = await api.wait_nav_done(poll_s=0.05, timeout=5)
-            assert done.status == "succeeded" and nav.goals[-2:] == [Pose2D(x=1, y=0), Pose2D(x=2, y=0)]
+            assert done.status == "succeeded" and nav.goals[-2:] == [
+                Pose2D(x=1, y=0),
+                Pose2D(x=2, y=0),
+            ]
 
             await api.nav_initial_pose(Pose2D(x=-2, y=-0.5, yaw=0.1))
             for _ in range(100):
@@ -132,6 +152,7 @@ def test_nav_requires_ready_then_runs(setup):
                     break
                 await asyncio.sleep(0.02)
             assert nav.initial == [Pose2D(x=-2, y=-0.5, yaw=0.1)]
+
     asyncio.run(go())
 
 
@@ -146,11 +167,12 @@ def test_telemetry_and_empty_waypoints(setup):
             await api.sim_start(req)
             t = await api.telemetry()
             assert t.is_running and t.health_status == "healthy" and t.real_time_factor == 0.9
-            assert (t.robot_pose.x, t.robot_pose.y) == (-2.0, -0.5)          # map pose preferred over odom
+            assert (t.robot_pose.x, t.robot_pose.y) == (-2.0, -0.5)  # map pose preferred over odom
             assert t.robot_velocity.x == 0.22 and t.robot_velocity.yaw == -0.4
             with pytest.raises(ControlAPIError) as e:
                 await api.nav_waypoints([])
             assert e.value.status_code == 422
+
     asyncio.run(go())
 
 
@@ -163,7 +185,7 @@ def test_feedback_websocket_streams_nav_and_telemetry(setup):
         with tc.websocket_connect("/v1/nav/feedback?hz=20") as ws:
             msgs = [ws.receive_json() for _ in range(3)]
     m = msgs[-1]
-    assert set(m) == {"nav", "telemetry", "sim"}
+    assert set(m) == {"nav", "telemetry", "live", "sim"}
     assert m["nav"]["target_pose"]["x"] == 3 and m["nav"]["status"] == "navigating"
     assert m["telemetry"]["robot_pose"]["x"] == -2.0 and m["sim"]["ready"] is True
 
@@ -178,8 +200,9 @@ def test_sim_health_endpoint(setup):
             h = await api._request("GET", "/sim/health")
             assert h["health"] == "healthy" and h["issues"] == [] and h["rtf"] == 0.9
             assert (await api.sim_status()).status == "running"
-            bridge.ready = False                       # readiness lost after being ready
+            bridge.ready = False  # readiness lost after being ready
             h = await api._request("GET", "/sim/health")
             assert h["health"] == "degraded" and any("lost" in i for i in h["issues"])
             assert (await api.telemetry()).health_status == "degraded"
+
     asyncio.run(go())

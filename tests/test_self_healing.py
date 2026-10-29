@@ -27,8 +27,14 @@ ALIVE = {"robot_state_publisher": True, "bridge": True}
 
 
 def healthy_snap(now=100.0, **kw):
-    base = dict(now=now, clock_wall=now, odom_wall=now, scan_wall=now, map_pose=(0.0, 0.0, 0.0),
-                lifecycle={n: "active" for n in NAV2_NODES})
+    base = dict(
+        now=now,
+        clock_wall=now,
+        odom_wall=now,
+        scan_wall=now,
+        map_pose=(0.0, 0.0, 0.0),
+        lifecycle={n: "active" for n in NAV2_NODES},
+    )
     base.update(kw)
     return RosSnapshot(**base)
 
@@ -39,27 +45,47 @@ def kinds(faults):
 
 # --- classify: one fault-injection case per rule --------------------------------
 
+
 def test_healthy_run_has_no_faults():
-    assert classify(Observation(lines=["[INFO] all good"], snap=healthy_snap(), alive=ALIVE,
-                                was_localized=True)) == []
+    assert (
+        classify(
+            Observation(
+                lines=["[INFO] all good"], snap=healthy_snap(), alive=ALIVE, was_localized=True
+            )
+        )
+        == []
+    )
 
 
 def test_missing_package_from_log():
-    obs = Observation(lines=["[ERROR] [launch]: Caught exception: \"package 'turtlebot4_description' not found\"",
-                             "ModuleNotFoundError: No module named 'foo_msgs'"],
-                      snap=None, alive=ALIVE)
+    obs = Observation(
+        lines=[
+            "[ERROR] [launch]: Caught exception: \"package 'turtlebot4_description' not found\"",
+            "ModuleNotFoundError: No module named 'foo_msgs'",
+        ],
+        snap=None,
+        alive=ALIVE,
+    )
     f = classify(obs)
     assert kinds(f) == ["missing_package", "missing_package"]
     assert {x.signature for x in f} == {"turtlebot4_description", "foo_msgs"}
 
 
 def test_missing_tf_when_rsp_dies_or_lookups_fail():
-    died = Observation(lines=["[ERROR] [robot_state_publisher-3]: process has died [pid 41, exit code -9]"],
-                       snap=healthy_snap(), alive={**ALIVE, "robot_state_publisher": False}, was_localized=True)
+    died = Observation(
+        lines=["[ERROR] [robot_state_publisher-3]: process has died [pid 41, exit code -9]"],
+        snap=healthy_snap(),
+        alive={**ALIVE, "robot_state_publisher": False},
+        was_localized=True,
+    )
     assert set(kinds(classify(died))) == {"missing_tf"}
     warn = ["[WARN] Timed out waiting for transform from base_link to map"]
-    tf = Observation(lines=warn, snap=healthy_snap(), alive={**ALIVE, "robot_state_publisher": False},
-                     was_localized=True)
+    tf = Observation(
+        lines=warn,
+        snap=healthy_snap(),
+        alive={**ALIVE, "robot_state_publisher": False},
+        was_localized=True,
+    )
     assert set(kinds(classify(tf))) == {"missing_tf"}
     # stale warnings while the publisher runs (e.g. right after a restart): report, never restart
     stale = Observation(lines=warn, snap=healthy_snap(), alive=ALIVE, was_localized=True)
@@ -72,19 +98,29 @@ def test_missing_tf_when_rsp_dies_or_lookups_fail():
 def test_unlinked_scan_when_bridge_dies_or_scan_stops():
     dead = Observation(lines=[], snap=healthy_snap(), alive={**ALIVE, "bridge": False})
     assert kinds(classify(dead)) == ["unlinked_scan"]
-    stale = Observation(lines=[], snap=healthy_snap(now=100, scan_wall=80), alive=ALIVE, was_localized=True)
+    stale = Observation(
+        lines=[], snap=healthy_snap(now=100, scan_wall=80), alive=ALIVE, was_localized=True
+    )
     assert kinds(classify(stale)) == ["unlinked_scan"]
     # clock stopped too (sim paused / dead): not the bridge's fault
-    paused = Observation(lines=[], snap=healthy_snap(now=100, scan_wall=80, clock_wall=80), alive=ALIVE,
-                         was_localized=True)
+    paused = Observation(
+        lines=[],
+        snap=healthy_snap(now=100, scan_wall=80, clock_wall=80),
+        alive=ALIVE,
+        was_localized=True,
+    )
     assert classify(paused) == []
 
 
 def test_goal_in_collision_only_while_navigating():
     line = "[ERROR] [planner_server]: GridBased plugin failed to plan from (0.00, 0.00) to (2.50, 2.50): Failed to create plan"
     nav = NavStatus(is_active=True, status="navigating", target_pose=Pose2D(x=2.5, y=2.5))
-    assert kinds(classify(Observation(lines=[line], snap=healthy_snap(), alive=ALIVE, nav=nav))) == ["goal_in_collision"]
-    assert classify(Observation(lines=[line], snap=healthy_snap(), alive=ALIVE, nav=NavStatus())) == []
+    assert kinds(
+        classify(Observation(lines=[line], snap=healthy_snap(), alive=ALIVE, nav=nav))
+    ) == ["goal_in_collision"]
+    assert (
+        classify(Observation(lines=[line], snap=healthy_snap(), alive=ALIVE, nav=NavStatus())) == []
+    )
 
 
 def test_plans():
@@ -96,6 +132,7 @@ def test_plans():
 
 # --- executor ---------------------------------------------------------------
 
+
 class Clock:
     def __init__(self):
         self.t = 1000.0
@@ -106,24 +143,30 @@ class Clock:
 
 def test_executor_restarts_and_rate_limits(tmp_path):
     clock, restarts = Clock(), []
-    h = SelfHealer(tmp_path, restart_node=lambda n: restarts.append(n) or True,
-                   limit=RateLimit(cooldown_s=10, max_attempts=2, window_s=100), clock=clock)
+    h = SelfHealer(
+        tmp_path,
+        restart_node=lambda n: restarts.append(n) or True,
+        limit=RateLimit(cooldown_s=10, max_attempts=2, window_s=100),
+        clock=clock,
+    )
     f = Fault("unlinked_scan", "ros_gz_bridge not running", "process not found")
     assert h.handle([f])[0]["success"] is True and restarts == ["bridge"]
-    assert h.handle([f]) == []                          # cooldown
+    assert h.handle([f]) == []  # cooldown
     clock.t += 11
     h.handle([f])
     assert restarts == ["bridge", "bridge"]
     clock.t += 11
-    gave_up = h.handle([f])                             # attempt limit -> one give-up record
+    gave_up = h.handle([f])  # attempt limit -> one give-up record
     assert gave_up[0]["action_taken"].startswith("give_up") and restarts == ["bridge", "bridge"]
     assert h.handle([f]) == []
-    clock.t += 200                                       # window passed: allowed again
+    clock.t += 200  # window passed: allowed again
     h.handle([f])
     assert restarts == ["bridge"] * 3
 
     lines = [json.loads(x) for x in (tmp_path / "logs" / "heal_log.jsonl").read_text().splitlines()]
-    assert {"timestamp", "error_signature", "action_taken", "success", "evidence", "note"} <= set(lines[0])
+    assert {"timestamp", "error_signature", "action_taken", "success", "evidence", "note"} <= set(
+        lines[0]
+    )
     assert lines[0]["error_signature"] == "unlinked_scan: ros_gz_bridge not running"
 
 
@@ -132,19 +175,26 @@ def test_missing_package_is_reported_once_never_installed(tmp_path):
     h = SelfHealer(tmp_path, restart_node=lambda n: restarts.append(n) or True)
     f = Fault("missing_package", "turtlebot4_description", "package not found")
     ev = h.handle([f, f])
-    assert len(ev) == 1 and ev[0]["success"] is False and "never" in ev[0]["note"] or "nothing is installed" in ev[0]["note"]
+    assert (
+        len(ev) == 1
+        and ev[0]["success"] is False
+        and "never" in ev[0]["note"]
+        or "nothing is installed" in ev[0]["note"]
+    )
     assert h.handle([f]) == [] and restarts == []
 
 
 def test_failed_recovery_is_logged_not_raised(tmp_path):
     def boom(_):
         raise RuntimeError("pkill failed")
+
     h = SelfHealer(tmp_path, restart_node=boom)
     ev = h.handle([Fault("missing_tf", "robot_state_publisher not running", "")])
     assert ev[0]["success"] is False and "pkill failed" in ev[0]["note"]
 
 
 # --- goal snapping on a real map ------------------------------------------------
+
 
 def test_read_map_and_nearest_free_on_warehouse():
     m = FIXTURES / "small_warehouse" / "map.yaml"
@@ -161,17 +211,27 @@ def test_read_map_and_nearest_free_on_warehouse():
 
 def test_snap_goal_resends(tmp_path):
     sent = []
-    h = SelfHealer(tmp_path, restart_node=lambda n: True, resend_goal=lambda p: sent.append(p) or True,
-                   current_goal=lambda: Pose2D(x=-2.5, y=2.5, yaw=1.0),
-                   map_yaml=FIXTURES / "small_warehouse" / "map.yaml")
+    h = SelfHealer(
+        tmp_path,
+        restart_node=lambda n: True,
+        resend_goal=lambda p: sent.append(p) or True,
+        current_goal=lambda: Pose2D(x=-2.5, y=2.5, yaw=1.0),
+        map_yaml=FIXTURES / "small_warehouse" / "map.yaml",
+    )
     ev = h.handle([Fault("goal_in_collision", "goal not plannable", "planner failed")])
-    assert ev[0]["success"] and len(sent) == 1 and sent[0].yaw == 1.0 and "goal moved" in ev[0]["note"]
+    assert (
+        ev[0]["success"] and len(sent) == 1 and sent[0].yaw == 1.0 and "goal moved" in ev[0]["note"]
+    )
 
 
 @pytest.mark.parametrize("missing", [{"current_goal": None}, {"map_yaml": None}])
 def test_snap_goal_without_goal_or_map(tmp_path, missing):
-    kw = dict(restart_node=lambda n: True, resend_goal=lambda p: True,
-              current_goal=lambda: Pose2D(x=0, y=0), map_yaml=FIXTURES / "small_warehouse" / "map.yaml")
+    kw = dict(
+        restart_node=lambda n: True,
+        resend_goal=lambda p: True,
+        current_goal=lambda: Pose2D(x=0, y=0),
+        map_yaml=FIXTURES / "small_warehouse" / "map.yaml",
+    )
     kw.update(missing)
     ev = SelfHealer(tmp_path, **kw).handle([Fault("goal_in_collision", "g", "")])
     assert ev[0]["success"] is False
@@ -179,10 +239,10 @@ def test_snap_goal_without_goal_or_map(tmp_path, missing):
 
 # --- wired into the API server -----------------------------------------------------
 
+
 def test_server_heal_tick_restarts_dead_node_and_logs(tmp_path):
     import asyncio
     import sys
-
 
     pytest.importorskip("fastapi")
     httpx = pytest.importorskip("httpx")
@@ -192,9 +252,11 @@ def test_server_heal_tick_restarts_dead_node_and_logs(tmp_path):
 
     class DyingRsp(SimProcess):
         def build_command(self, req):
-            code = ("import time; print('[INFO] [robot_state_publisher-3]: process started', flush=True); "
-                    "time.sleep(0.3); print('[ERROR] [robot_state_publisher-3]: process has died "
-                    "[pid 41, exit code -9]', flush=True); time.sleep(60)")
+            code = (
+                "import time; print('[INFO] [robot_state_publisher-3]: process started', flush=True); "
+                "time.sleep(0.3); print('[ERROR] [robot_state_publisher-3]: process has died "
+                "[pid 41, exit code -9]', flush=True); time.sleep(60)"
+            )
             return [sys.executable, "-c", code]
 
     class FakeNodes:
@@ -223,8 +285,12 @@ def test_server_heal_tick_restarts_dead_node_and_logs(tmp_path):
     run.mkdir()
     (run / "world.sdf").write_text('<sdf version="1.9"><world name="w"></world></sdf>')
     (run / "map.yaml").write_text("image: map.pgm\n")
-    req = SimStartRequest(run_dir=str(run), world_sdf_path=str(run / "world.sdf"),
-                          map_yaml_path=str(run / "map.yaml"), initial_pose=Pose2D(x=0, y=0))
+    req = SimStartRequest(
+        run_dir=str(run),
+        world_sdf_path=str(run / "world.sdf"),
+        map_yaml_path=str(run / "map.yaml"),
+        initial_pose=Pose2D(x=0, y=0),
+    )
     sim = DyingRsp()
     app = create_app(sim, use_ros=False, node_control=factory)
 
@@ -238,9 +304,10 @@ def test_server_heal_tick_restarts_dead_node_and_logs(tmp_path):
             events = app.state.heal_tick()
             assert made["nodes"].restarted == ["robot_state_publisher"]
             assert events and events[0]["error_signature"].startswith("missing_tf")
-            assert app.state.heal_tick() == []          # healed: nothing more to do
+            assert app.state.heal_tick() == []  # healed: nothing more to do
             log = await api._request("GET", "/heal/log")
             assert log["enabled"] and log["events"][0]["success"] is True
+
     try:
         asyncio.run(go())
     finally:
@@ -251,9 +318,13 @@ def test_server_heal_tick_restarts_dead_node_and_logs(tmp_path):
 def test_two_symptoms_one_restart(tmp_path):
     restarts = []
     h = SelfHealer(tmp_path, restart_node=lambda n: restarts.append(n) or True)
-    ev = h.handle([Fault("unlinked_scan", "ros_gz_bridge not running", ""),
-                   Fault("unlinked_scan", "no /scan while the clock runs", ""),
-                   Fault("missing_tf", "robot_state_publisher died", "")])
+    ev = h.handle(
+        [
+            Fault("unlinked_scan", "ros_gz_bridge not running", ""),
+            Fault("unlinked_scan", "no /scan while the clock runs", ""),
+            Fault("missing_tf", "robot_state_publisher died", ""),
+        ]
+    )
     assert restarts == ["bridge", "robot_state_publisher"] and len(ev) == 2
 
 
@@ -261,14 +332,30 @@ def test_restarted_node_is_not_killed_again_by_lingering_warnings(tmp_path):
     """Regression (seen on macOS): Nav2 TF warnings after a restart re-triggered a restart."""
     restarts = []
     clock = Clock()
-    h = SelfHealer(tmp_path, restart_node=lambda n: restarts.append(n) or True,
-                   limit=RateLimit(cooldown_s=15, max_attempts=3, window_s=300), clock=clock)
-    died = Observation(lines=["[ERROR] [robot_state_publisher-3]: process has died [pid 41, exit code -9]"],
-                       snap=healthy_snap(), alive={**ALIVE, "robot_state_publisher": False}, was_localized=True)
+    h = SelfHealer(
+        tmp_path,
+        restart_node=lambda n: restarts.append(n) or True,
+        limit=RateLimit(cooldown_s=15, max_attempts=3, window_s=300),
+        clock=clock,
+    )
+    died = Observation(
+        lines=["[ERROR] [robot_state_publisher-3]: process has died [pid 41, exit code -9]"],
+        snap=healthy_snap(),
+        alive={**ALIVE, "robot_state_publisher": False},
+        was_localized=True,
+    )
     h.handle(classify(died))
     assert restarts == ["robot_state_publisher"]
-    for _ in range(10):                       # 10 later passes, publisher alive, warnings still coming
+    for _ in range(10):  # 10 later passes, publisher alive, warnings still coming
         clock.t += 20
-        h.handle(classify(Observation(lines=["[WARN] Timed out waiting for transform from base_link to map"],
-                                      snap=healthy_snap(), alive=ALIVE, was_localized=True)))
+        h.handle(
+            classify(
+                Observation(
+                    lines=["[WARN] Timed out waiting for transform from base_link to map"],
+                    snap=healthy_snap(),
+                    alive=ALIVE,
+                    was_localized=True,
+                )
+            )
+        )
     assert restarts == ["robot_state_publisher"]

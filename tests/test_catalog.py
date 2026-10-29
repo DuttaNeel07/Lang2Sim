@@ -4,8 +4,8 @@ File: tests/test_catalog.py
 """
 
 import unittest
-from lang2sim.world_gen.catalog_loader import catalog, SceneCatalog
-from lang2sim.core.models import Pose2D, Vector3D
+
+from lang2sim.world_gen.catalog_loader import catalog
 
 
 class TestSceneCatalog(unittest.TestCase):
@@ -53,7 +53,7 @@ class TestSceneCatalog(unittest.TestCase):
 
     def test_precomputed_map_files_exist(self):
         """Verify pre-computed map.yaml and map.pgm exist in catalog/maps/."""
-        scene = catalog.get_scene("aws_small_warehouse")
+        self.assertIsNotNone(catalog.get_scene("aws_small_warehouse"))
         yaml_path = catalog.catalog_dir / "maps" / "aws_small_warehouse.yaml"
         pgm_path = catalog.catalog_dir / "maps" / "aws_small_warehouse.pgm"
 

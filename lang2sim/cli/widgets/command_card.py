@@ -3,12 +3,13 @@ Interactive Terminal Command & Permission Card Widget
 File: lang2sim/cli/widgets/command_card.py
 """
 
-from typing import Optional, Dict, Any
-from textual.widget import Widget
-from textual.widgets import Static, Button
-from textual.containers import Horizontal, Vertical
-from textual.message import Message
+from typing import Any, Dict, Optional
+
 from textual.binding import Binding
+from textual.containers import Horizontal
+from textual.message import Message
+from textual.widget import Widget
+from textual.widgets import Button, Static
 
 
 class CommandCard(Widget):
@@ -101,6 +102,7 @@ class CommandCard(Widget):
 
     class Approved(Message):
         """User approved command execution."""
+
         def __init__(self, event_id: str, always_allow: bool = False):
             super().__init__()
             self.event_id = event_id
@@ -108,6 +110,7 @@ class CommandCard(Widget):
 
     class Rejected(Message):
         """User rejected command execution."""
+
         def __init__(self, event_id: str):
             super().__init__()
             self.event_id = event_id
@@ -136,7 +139,10 @@ class CommandCard(Widget):
     def compose(self):
         # Header: Title + Status Badge
         with Horizontal(classes="cmd-header"):
-            yield Static(f"⚡ [bold #f1f2f6]Terminal Command[/] [#747d8c]({self.tool_name})[/]", classes="cmd-title")
+            yield Static(
+                f"⚡ [bold #f1f2f6]Terminal Command[/] [#747d8c]({self.tool_name})[/]",
+                classes="cmd-title",
+            )
             yield Static(self._format_badge(), id="cmd-badge", classes="cmd-badge")
 
         # Command Code Snippet
@@ -145,8 +151,12 @@ class CommandCard(Widget):
         # Interactive Approval Buttons
         if self.status == "awaiting_permission":
             with Horizontal(id="cmd-actions", classes="cmd-actions"):
-                yield Button("Approve & Run (y)", id=f"btn-approve-{self.event_id}", variant="success")
-                yield Button("Always Allow (a)", id=f"btn-always-{self.event_id}", variant="default")
+                yield Button(
+                    "Approve & Run (y)", id=f"btn-approve-{self.event_id}", variant="success"
+                )
+                yield Button(
+                    "Always Allow (a)", id=f"btn-always-{self.event_id}", variant="default"
+                )
                 yield Button("Reject (n)", id=f"btn-reject-{self.event_id}", variant="error")
 
         # Output Terminal Container (hidden until execution completes)
@@ -239,7 +249,9 @@ class CommandCard(Widget):
         except Exception:
             pass
 
-    def set_result(self, exit_code: int, duration_str: str, stdout: str = "", stderr: str = "") -> None:
+    def set_result(
+        self, exit_code: int, duration_str: str, stdout: str = "", stderr: str = ""
+    ) -> None:
         self.status = "completed"
         self.exit_code = exit_code
         self.duration_str = duration_str

@@ -4,25 +4,28 @@ File: tests/test_agent_tui.py
 """
 
 import pytest
+
+from lang2sim.agent.tools import TOOL_REGISTRY, execute_tool
 from lang2sim.cli.app import Lang2SimApp
 from lang2sim.cli.screens.landing_screen import LandingScreen
 from lang2sim.cli.screens.workspace_screen import WorkspaceScreen
-from lang2sim.cli.widgets.thought_box import ThoughtBox
 from lang2sim.cli.widgets.action_pill import ActionPill
 from lang2sim.cli.widgets.prompt_card import PromptCard
 from lang2sim.cli.widgets.telemetry_sidebar import TelemetrySidebar
-from lang2sim.agent.tools import TOOL_REGISTRY, execute_tool
+from lang2sim.cli.widgets.thought_box import ThoughtBox
+
 
 @pytest.mark.asyncio
 async def test_landing_screen_renders_and_has_focus():
     """Verify Screen 1 launches with centered logo, prompt card, and input focus."""
     app = Lang2SimApp()
-    async with app.run_test() as pilot:
+    async with app.run_test():
         assert isinstance(app.screen, LandingScreen)
         prompt_card = app.screen.query_one(PromptCard)
         assert prompt_card is not None
         input_widget = app.screen.query_one("#landing-prompt-input")
         assert input_widget.has_focus
+
 
 @pytest.mark.asyncio
 async def test_submitting_prompt_switches_to_workspace():
@@ -38,6 +41,7 @@ async def test_submitting_prompt_switches_to_workspace():
         assert app.screen.query_one("#chat-scroll") is not None
         assert app.screen.query_one(TelemetrySidebar) is not None
 
+
 @pytest.mark.asyncio
 async def test_thought_box_collapsible():
     """Verify ThoughtBox expands and collapses properly."""
@@ -48,16 +52,17 @@ async def test_thought_box_collapsible():
         await pilot.pause()
 
         assert thought.is_collapsed is True
-        
+
         # Toggle to expand
         thought.toggle()
         assert thought.is_collapsed is False
         assert thought.query_one("#thought-body").display is True
-        
+
         # Toggle to collapse
         thought.toggle()
         assert thought.is_collapsed is True
         assert thought.query_one("#thought-body").display is False
+
 
 @pytest.mark.asyncio
 async def test_action_pill_status():
@@ -73,6 +78,7 @@ async def test_action_pill_status():
         assert pill.status == "completed"
         assert pill.duration_str == "0.5s"
 
+
 @pytest.mark.asyncio
 async def test_telemetry_sidebar_updates():
     """Verify TelemetrySidebar reflects live coordinates, velocities, and collisions."""
@@ -86,6 +92,7 @@ async def test_telemetry_sidebar_updates():
         assert sidebar.data.robot_x == 7.50
         assert sidebar.data.robot_y == 3.00
         assert sidebar.data.collision_count == 1
+
 
 def test_tool_registry_has_all_14_tools():
     """Verify all 14 tools are registered and return valid typed payloads."""
@@ -125,13 +132,19 @@ def test_tool_registry_has_all_14_tools():
             child_frame="odom",
         )
         assert isinstance(res, dict)
-        assert res.get("status") in ["success", "healthy", "repaired"] or "x" in res
+        # query_robot_telemetry reads the live control API: "unavailable" when no sim is running.
+        assert (
+            res.get("status") in ["success", "healthy", "repaired", "ok", "unavailable"]
+            or "x" in res
+        )
+
 
 @pytest.mark.asyncio
 async def test_command_palette_modal_open_and_filter():
     """Verify CommandPaletteModal opens on ctrl+p, filters dynamically, and dismisses on esc."""
-    from lang2sim.cli.screens.command_palette_modal import CommandPaletteModal
     from textual.widgets import Input
+
+    from lang2sim.cli.screens.command_palette_modal import CommandPaletteModal
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:
@@ -180,7 +193,7 @@ async def test_nemotron_client_config():
 @pytest.mark.asyncio
 async def test_workspace_screen_conversation_flow():
     """Verify WorkspaceScreen accumulates multi-turn conversation and updates status."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:
@@ -197,8 +210,10 @@ async def test_workspace_screen_conversation_flow():
             for word in ["Gazebo ", "Harmonic ", "is ", "running."]:
                 yield word
 
-        with patch.object(workspace.client, "is_configured", return_value=True), \
-             patch.object(workspace.client, "stream_chat", side_effect=mock_stream):
+        with (
+            patch.object(workspace.client, "is_configured", return_value=True),
+            patch.object(workspace.client, "stream_chat", side_effect=mock_stream),
+        ):
             workspace.handle_user_prompt("What is running?")
             await pilot.pause()
             for _ in range(10):
@@ -218,7 +233,7 @@ async def test_workspace_screen_conversation_flow():
 @pytest.mark.asyncio
 async def test_session_manager_persistence_and_grouping(tmp_path):
     """Verify session manager creates, saves, lists, pins, and groups sessions."""
-    from lang2sim.core.session_manager import SessionManager, ChatMessage
+    from lang2sim.core.session_manager import ChatMessage, SessionManager
 
     mgr = SessionManager(sessions_dir=tmp_path)
     s1 = mgr.create_session(title="Review ROS 2 SLAM pipeline architecture")
@@ -250,18 +265,20 @@ async def test_session_manager_persistence_and_grouping(tmp_path):
 @pytest.mark.asyncio
 async def test_sessions_modal_flow():
     """Verify SessionsModal opens on ctrl+s, filters dynamically, and switches sessions."""
-    from lang2sim.cli.screens.sessions_modal import SessionsModal
-    from lang2sim.core.session_manager import session_manager
+    import uuid
+
     from textual.widgets import Input
 
-    import uuid
+    from lang2sim.cli.screens.sessions_modal import SessionsModal
+    from lang2sim.core.session_manager import session_manager
+
     unique_tag = str(uuid.uuid4())[:6]
     title1 = f"Test SLAM Exploration {unique_tag}"
     title2 = f"Investigate TF discontinuity {unique_tag}"
 
     # Ensure test sessions exist
     s1 = session_manager.create_session(title=title1)
-    s2 = session_manager.create_session(title=title2)
+    session_manager.create_session(title=title2)
 
     app = Lang2SimApp()
     async with app.run_test() as pilot:
@@ -286,7 +303,6 @@ async def test_sessions_modal_flow():
 
         assert len(modal.filtered_sessions) == 1
         assert modal.filtered_sessions[0].title == title1
-
 
         # Select with enter
         await pilot.press("enter")
@@ -325,8 +341,8 @@ async def test_command_palette_switch_session_enter_opens_sessions_modal():
 
 def test_search_catalog_and_scenario_detection():
     """Verify search_catalog tool returns 3D basic blocks & scenes, and ReAct supervisor detects option choices."""
-    from lang2sim.agent.tools import search_catalog
     from lang2sim.agent.react_loop import ReActSupervisor
+    from lang2sim.agent.tools import search_catalog
 
     # Test catalog search
     res = search_catalog(query="", category="all")

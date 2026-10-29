@@ -13,6 +13,11 @@ It starts: Gazebo server (+ optional GUI that may be closed without stopping the
 sim), robot_state_publisher, the TurtleBot3 Waffle spawned at the manifest's
 pose, ros_gz_bridge (+ optional camera bridge), Nav2 with this run's map and AMCL
 seeded at the spawn pose, and optional RViz2.
+
+With telemetry on, the robot is spawned from the run's robot.l2s.sdf (chassis
+bumper + ground-truth pose, see robot_instrument.py) and the bridge loads
+bridge.l2s.yaml (stock topics + /lang2sim/contact_states and
+/lang2sim/ground_truth/odom).
 """
 
 from __future__ import annotations
@@ -27,8 +32,8 @@ LAUNCH_FILE = "sim_launch.py"
 
 @dataclass(frozen=True)
 class LaunchConfig:
-    run_dir: str                       # container path; logs and generated params go here
-    world_sdf: str                     # container path, already checked/normalized
+    run_dir: str  # container path; logs and generated params go here
+    world_sdf: str  # container path, already checked/normalized
     world_name: str
     map_yaml: str
     x: float = 0.0
@@ -36,11 +41,17 @@ class LaunchConfig:
     yaw: float = 0.0
     gui: bool = True
     rviz: bool = True
-    camera: bool = True                # image bridge; heavy under software rendering
-    nav2_params: str = ""              # "" -> TurtleBot3 Waffle params
+    camera: bool = True  # image bridge; heavy under software rendering
+    nav2_params: str = ""  # "" -> TurtleBot3 Waffle params
     nav2_delay_s: float = 5.0
     resource_paths: List[str] = field(default_factory=list)  # extra GZ_SIM_RESOURCE_PATH entries
     robot: str = "waffle"
+    robot_sdf: str = (
+        ""  # "" -> stock TurtleBot3 model.sdf; else robot.l2s.sdf (bumper + ground truth)
+    )
+    bridge_config: str = (
+        ""  # "" -> stock TurtleBot3 bridge yaml; else bridge.l2s.yaml (+ telemetry topics)
+    )
 
 
 _TEMPLATE = '''\
@@ -100,11 +111,11 @@ def generate_launch_description():
     actions.append(Node(
         package="ros_gz_sim", executable="create", output="screen",
         arguments=["-world", CONFIG["world_name"], "-name", CONFIG["robot"],
-                   "-file", os.path.join(tb3_gz, "models", model, "model.sdf"),
+                   "-file", CONFIG["robot_sdf"] or os.path.join(tb3_gz, "models", model, "model.sdf"),
                    "-x", str(CONFIG["x"]), "-y", str(CONFIG["y"]), "-z", "0.01", "-Y", str(CONFIG["yaw"])]))
     actions.append(Node(
         package="ros_gz_bridge", executable="parameter_bridge", name="ros_gz_bridge", output="screen",
-        parameters=[{"config_file": os.path.join(tb3_gz, "params", model + "_bridge.yaml"),
+        parameters=[{"config_file": CONFIG["bridge_config"] or os.path.join(tb3_gz, "params", model + "_bridge.yaml"),
                      "use_sim_time": True}]))
     if CONFIG["camera"]:
         actions.append(Node(package="ros_gz_image", executable="image_bridge", name="ros_gz_image_bridge",

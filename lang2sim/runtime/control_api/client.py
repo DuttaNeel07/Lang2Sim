@@ -30,6 +30,9 @@ from lang2sim.core.models import (
     SimStatus,
     SimStatusResponse,
     SimStopRequest,
+    TelemetryLive,
+    TelemetryRecordRequest,
+    TelemetryRecordResult,
 )
 from lang2sim.runtime.control_api import API_PREFIX
 
@@ -53,13 +56,18 @@ def default_base_url() -> str:
 
 
 class ControlClient:
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 10.0,
-                 transport: Optional[httpx.AsyncBaseTransport] = None):
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        timeout: float = 10.0,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
         self.base_url = (base_url or default_base_url()).rstrip("/")
-        self._http = httpx.AsyncClient(base_url=self.base_url + API_PREFIX,
-                                       timeout=timeout, transport=transport)
+        self._http = httpx.AsyncClient(
+            base_url=self.base_url + API_PREFIX, timeout=timeout, transport=transport
+        )
 
-    async def __aenter__(self) -> "ControlClient":
+    async def __aenter__(self) -> ControlClient:
         return self
 
     async def __aexit__(self, *exc: Any) -> None:
@@ -71,8 +79,12 @@ class ControlClient:
     async def _request(self, method: str, path: str, **kw: Any) -> Any:
         try:
             r = await self._http.request(method, path, **kw)
-        except (httpx.ConnectError, httpx.ReadError, httpx.RemoteProtocolError,
-                httpx.ConnectTimeout) as e:
+        except (
+            httpx.ConnectError,
+            httpx.ReadError,
+            httpx.RemoteProtocolError,
+            httpx.ConnectTimeout,
+        ) as e:
             raise ControlAPIUnavailable(f"control API not reachable at {self.base_url}: {e}") from e
         if r.status_code >= 400:
             try:
@@ -97,8 +109,9 @@ class ControlClient:
         return SimStatusResponse.model_validate(data)
 
     async def sim_stop(self, force: bool = False) -> SimStatusResponse:
-        data = await self._request("POST", "/sim/stop",
-                                   json=SimStopRequest(force=force).model_dump(mode="json"))
+        data = await self._request(
+            "POST", "/sim/stop", json=SimStopRequest(force=force).model_dump(mode="json")
+        )
         return SimStatusResponse.model_validate(data)
 
     async def sim_logs(self, tail: int = 200) -> List[str]:
@@ -125,16 +138,25 @@ class ControlClient:
 
     # --- navigation and telemetry -----------------------------------------------
     async def nav_initial_pose(self, pose: Pose2D) -> NavStatus:
-        data = await self._request("POST", "/nav/initial_pose",
-                                   json=NavInitialPoseRequest(pose=pose).model_dump(mode="json"))
+        data = await self._request(
+            "POST",
+            "/nav/initial_pose",
+            json=NavInitialPoseRequest(pose=pose).model_dump(mode="json"),
+        )
         return NavStatus.model_validate(data)
 
     async def nav_goal(self, goal: Pose2D, timeout_seconds: float = 120.0) -> NavStatus:
-        body = NavGoalRequest(goal_pose=goal, timeout_seconds=timeout_seconds).model_dump(mode="json")
+        body = NavGoalRequest(goal_pose=goal, timeout_seconds=timeout_seconds).model_dump(
+            mode="json"
+        )
         return NavStatus.model_validate(await self._request("POST", "/nav/goal", json=body))
 
-    async def nav_waypoints(self, waypoints: Sequence[Pose2D], timeout_seconds: float = 180.0) -> NavStatus:
-        body = NavWaypointsRequest(waypoints=list(waypoints), timeout_seconds=timeout_seconds).model_dump(mode="json")
+    async def nav_waypoints(
+        self, waypoints: Sequence[Pose2D], timeout_seconds: float = 180.0
+    ) -> NavStatus:
+        body = NavWaypointsRequest(
+            waypoints=list(waypoints), timeout_seconds=timeout_seconds
+        ).model_dump(mode="json")
         return NavStatus.model_validate(await self._request("POST", "/nav/waypoints", json=body))
 
     async def nav_cancel(self) -> NavStatus:
@@ -146,11 +168,31 @@ class ControlClient:
     async def telemetry(self) -> SimStatus:
         return SimStatus.model_validate(await self._request("GET", "/telemetry"))
 
+    # --- telemetry engine ------------------------------------------------
+    async def telemetry_live(self) -> TelemetryLive:
+        return TelemetryLive.model_validate(await self._request("GET", "/telemetry/live"))
+
+    async def telemetry_setup(self) -> Dict[str, Any]:
+        return await self._request("GET", "/telemetry/setup")
+
+    async def record_start(
+        self, label: str = "run", goal: Optional[Pose2D] = None, rate_hz: float = 20.0
+    ) -> TelemetryLive:
+        req = TelemetryRecordRequest(label=label, goal=goal, rate_hz=rate_hz)
+        return TelemetryLive.model_validate(
+            await self._request("POST", "/telemetry/record/start", json=req.model_dump(mode="json"))
+        )
+
+    async def record_stop(self) -> TelemetryRecordResult:
+        return TelemetryRecordResult.model_validate(
+            await self._request("POST", "/telemetry/record/stop")
+        )
+
     async def nav_feedback(self, hz: float = 5.0) -> AsyncIterator[Dict[str, Any]]:
         """Stream {"nav": NavStatus, "telemetry": SimStatus, "sim": {...}} dicts from WS /v1/nav/feedback.
 
-            async for msg in api.nav_feedback():
-                print(msg["nav"]["distance_remaining"])
+        async for msg in api.nav_feedback():
+            print(msg["nav"]["distance_remaining"])
         """
         import json
 
@@ -174,7 +216,9 @@ class ControlClient:
             await asyncio.sleep(poll_s)
 
     # --- helpers ---------------------------------------------------------
-    async def wait_until_ready(self, timeout: float = 60.0, interval: float = 0.5) -> Dict[str, Any]:
+    async def wait_until_ready(
+        self, timeout: float = 60.0, interval: float = 0.5
+    ) -> Dict[str, Any]:
         """Poll /health until it answers (container boot + uvicorn start)."""
         deadline = time.monotonic() + timeout
         last: Optional[Exception] = None

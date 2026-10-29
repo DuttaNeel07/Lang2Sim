@@ -21,9 +21,9 @@ import os
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Deque, Mapping, Optional, Sequence
+from typing import Any, Deque, Optional, Sequence
 
 import numpy as np
 
@@ -55,7 +55,9 @@ class CollisionCounter:
     ) -> None:
         self.threshold_n = threshold_n
         self.cooldown_s = cooldown_s
-        self.ignored = {e.lower() for e in (ignored_entities or ["ground_plane", "floor", "ground", "world"])}
+        self.ignored = {
+            e.lower() for e in (ignored_entities or ["ground_plane", "floor", "ground", "world"])
+        }
         self.collision_count = 0
         self.last_collision_time = 0.0
         self.in_collision = False
@@ -70,7 +72,11 @@ class CollisionCounter:
     ) -> bool:
         """Process a contact force sample. Returns True if a new structural collision is registered."""
         t_now = time.time() if timestamp is None else timestamp
-        mag = float(math.hypot(force_vector[0], force_vector[1], force_vector[2] if len(force_vector) > 2 else 0.0))
+        mag = float(
+            math.hypot(
+                force_vector[0], force_vector[1], force_vector[2] if len(force_vector) > 2 else 0.0
+            )
+        )
         self.last_force_n = mag
         self.last_contact_entity = entity_name
 
@@ -137,9 +143,7 @@ class TelemetryCollector:
         self.sim_time: float = 0.0
         self.poll_interval = poll_interval
         self.api_base_url = (
-            api_base_url
-            or os.environ.get("LANG2SIM_CONTROL_API")
-            or "http://127.0.0.1:9090"
+            api_base_url or os.environ.get("LANG2SIM_CONTROL_API") or "http://127.0.0.1:9090"
         )
         # SLAM drift tracking metrics
         self.latest_slam_pose: Optional[tuple[float, float, float]] = None
@@ -147,6 +151,7 @@ class TelemetryCollector:
         self.max_ate: float = 0.0
         self.ate_history: list[float] = []
         self.ate_divergence_threshold: float = 0.35
+        self._api_live: Optional[dict[str, Any]] = None  # last TelemetryLive from the control API
 
         self._init_ros()
         if not self._ros_ok:
@@ -192,6 +197,7 @@ class TelemetryCollector:
                 pass
 
             from rclpy.executors import MultiThreadedExecutor  # type: ignore[import-not-found]
+
             self._executor = MultiThreadedExecutor()
             self._executor.add_node(node)
             self._thread = threading.Thread(target=self._executor.spin, daemon=True)
@@ -253,7 +259,7 @@ class TelemetryCollector:
 
     def record_slam_pose(self, t: float, x: float, y: float, yaw: float) -> float:
         """Record SLAM estimated pose and update real-time ATE drift tracking.
-        
+
         ATE = ||p_gt - p_slam||_2
         Returns the instantaneous ATE drift in meters.
         """
@@ -332,28 +338,36 @@ class TelemetryCollector:
         self._api_thread.start()
 
     def _api_worker(self) -> None:
-        import json
-        import urllib.request
-        target_url = f"{self.api_base_url.rstrip('/')}/v1/sim/status"
+        """Control-API backend for hosts without rclpy (the normal case: ROS lives in the container).
+
+        Polls GET /v1/telemetry/live (falls back to /v1/telemetry on older images). Samples are
+        stamped in sim time when the API reports it, and collisions/clearance come from the
+        container's bumper and lidar, so snapshot() matches what the recorder scores.
+        """
+        from lang2sim.telemetry.live import fetch_live
+
         while self._api_running:
-            try:
-                req = urllib.request.Request(target_url, headers={"User-Agent": "Lang2Sim-Telemetry"})
-                with urllib.request.urlopen(req, timeout=0.8) as resp:
-                    if resp.status == 200:
-                        payload = json.loads(resp.read().decode("utf-8"))
-                        self._api_ok = True
-                        self.rtf = float(payload.get("real_time_factor") or 1.0)
-                        self.sim_time = float(payload.get("sim_time") or 0.0)
-                        pose = payload.get("robot_pose") or {}
-                        vel = payload.get("robot_velocity") or {}
-                        px = float(pose.get("x", 0.0))
-                        py = float(pose.get("y", 0.0))
-                        yaw = float(pose.get("yaw", 0.0))
-                        vx = float(vel.get("x", 0.0)) if isinstance(vel, dict) else 0.0
-                        wz = float(vel.get("yaw", 0.0)) if isinstance(vel, dict) else 0.0
-                        self.record_kinematics(time.time(), px, py, yaw, vx, wz)
-            except Exception:
+            live = fetch_live(self.api_base_url, timeout=0.8)
+            if live is None or live.get("pose") is None:
                 self._api_ok = False
+            else:
+                self._api_ok = True
+                self._api_live = live
+                self.rtf = float(live.get("real_time_factor") or 0.0)
+                self.sim_time = float(live.get("sim_time") or 0.0)
+                pose = live["pose"]
+                t = self.sim_time if self.sim_time > 0 else time.time()
+                with self.lock:
+                    last_t = self.ring_buffer[-1].t if self.ring_buffer else None
+                if last_t is None or t > last_t:  # sim paused: no duplicate stamps
+                    self.record_kinematics(
+                        t,
+                        float(pose["x"]),
+                        float(pose["y"]),
+                        float(pose.get("yaw", 0.0)),
+                        float(live.get("linear_speed") or 0.0),
+                        float(live.get("angular_speed") or 0.0),
+                    )
             time.sleep(self.poll_interval)
 
     def close(self) -> None:
@@ -376,6 +390,18 @@ class TelemetryCollector:
                 x, y, yaw, v, w = 0.0, 0.0, 0.0, 0.0, 0.0
             backend = "ros2" if self._ros_ok else ("control_api" if self._api_ok else "mock")
             mean_ate = (sum(self.ate_history) / len(self.ate_history)) if self.ate_history else 0.0
+            live = self._api_live if (self._api_ok and not self._ros_ok) else None
+            collisions = (
+                int(live.get("collision_count") or 0) if live else self.bumper.collision_count
+            )
+            force = (
+                float(live.get("last_contact_force_n") or 0.0) if live else self.bumper.last_force_n
+            )
+            entity = (
+                str(live.get("last_contact_entity") or "")
+                if live
+                else self.bumper.last_contact_entity
+            )
             return {
                 "active": self._ros_ok or self._api_ok,
                 "backend": backend,
@@ -386,9 +412,12 @@ class TelemetryCollector:
                 "w": round(w, 2),
                 "rtf": round(self.rtf, 2),
                 "sim_time": round(self.sim_time, 2),
-                "collisions": self.bumper.collision_count,
-                "last_force_n": round(self.bumper.last_force_n, 1),
-                "last_contact_entity": self.bumper.last_contact_entity,
+                "collisions": collisions,
+                "last_force_n": round(force, 1),
+                "last_contact_entity": entity,
+                "pose_source": live.get("pose_source") if live else backend,
+                "obstacle_clearance_m": live.get("obstacle_clearance_m") if live else None,
+                "distance_to_goal_m": live.get("distance_to_goal_m") if live else None,
                 "samples_buffered": len(self.ring_buffer),
                 "ate": round(self.current_ate, 3),
                 "max_ate": round(self.max_ate, 3),
@@ -410,13 +439,21 @@ class ReplaySource:
         self.t_start = time.time()
 
     @classmethod
-    def from_json(cls, json_path: str | Path) -> "ReplaySource":
+    def from_json(cls, json_path: str | Path) -> ReplaySource:
         traj = Trajectory.from_json(json_path)
         return cls(traj)
 
     def snapshot(self) -> dict[str, Any]:
         if self.trajectory is None or self.trajectory.n == 0:
-            return {"active": False, "x": 0.0, "y": 0.0, "yaw": 0.0, "v": 0.0, "w": 0.0, "collisions": 0}
+            return {
+                "active": False,
+                "x": 0.0,
+                "y": 0.0,
+                "yaw": 0.0,
+                "v": 0.0,
+                "w": 0.0,
+                "collisions": 0,
+            }
         elapsed = time.time() - self.t_start
         # Find closest sample
         dt_arr = np.abs((self.trajectory.t - self.trajectory.t[0]) - elapsed)
@@ -451,11 +488,17 @@ async def query_robot_telemetry() -> dict[str, Any]:
 
 # --------------------------------------------------------------------------- CLI
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Lang2Sim Telemetry Subscriber & Collision Monitor")
-    parser.add_argument("--live", action="store_true", help="Monitor live /odom and /lang2sim/contact_states")
+    parser = argparse.ArgumentParser(
+        description="Lang2Sim Telemetry Subscriber & Collision Monitor"
+    )
+    parser.add_argument(
+        "--live", action="store_true", help="Monitor live /odom and /lang2sim/contact_states"
+    )
     parser.add_argument("--print-hz", type=float, default=2.0, help="Print rate in Hz")
     parser.add_argument("--record", help="Record live run to JSON file on exit")
-    parser.add_argument("--goal", nargs=2, type=float, metavar=("X", "Y"), help="Mission goal for recorded run")
+    parser.add_argument(
+        "--goal", nargs=2, type=float, metavar=("X", "Y"), help="Mission goal for recorded run"
+    )
     args = parser.parse_args()
 
     collector = get_telemetry_collector()

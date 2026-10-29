@@ -2,6 +2,48 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "version": "2.2.0",
   "scenes": {
+    "aws_small_warehouse": {
+      "display_name": "AWS RoboMaker Small Warehouse",
+      "description": "Standard AWS Small Warehouse logistics facility.",
+      "environment_type": "indoor_warehouse",
+      "fixture_path": "catalog/fixtures/small_warehouse",
+      "base_world": "catalog/fixtures/small_warehouse/world.sdf",
+      "map_yaml": "catalog/maps/aws_small_warehouse.yaml",
+      "map_pgm": "catalog/maps/aws_small_warehouse.pgm",
+      "dimensions": {
+        "x": 14.0,
+        "y": 10.0,
+        "z": 4.0
+      },
+      "difficulty": "Intermediate",
+      "tags": ["warehouse", "racks", "pallets", "narrow_aisles", "logistics"],
+      "recommended_robot": "turtlebot3_waffle",
+      "surface_friction": 0.8,
+      "anchors": {
+        "dock": [0.0, 0.0, 0.0],
+        "rack_1": [2.5, 3.0, 0.0],
+        "rack_2": [-2.5, 3.0, 0.0],
+        "rack_3": [5.0, 3.0, 0.0],
+        "rack_5": [7.5, 3.0, 0.0],
+        "pallet_stack": [-3.0, -2.0, 0.0],
+        "packaging_bench": [-3.0, 2.0, 0.0]
+      }
+    },
+    "robotics_lab": {
+      "display_name": "Robotics Research Workshop",
+      "environment_type": "indoor_office",
+      "dimensions": {
+        "x": 18.0,
+        "y": 12.0,
+        "z": 3.5
+      },
+      "surface_friction": 0.8,
+      "anchors": {
+        "origin": [0.0, 0.0, 0.0],
+        "bench_1": [3.0, 2.0, 0.0],
+        "charging_dock": [-4.0, -3.0, 0.0]
+      }
+    },
     "small_warehouse": {
       "display_name": "Industrial Logistics Warehouse",
       "description": "14x10 m warehouse with 4 pallet racks, 2 wooden pallet stacks, and a central conveyor. Tests tight aisle clearance (1.2m) and 90-degree corridor navigation.",
@@ -226,6 +268,33 @@
     }
   },
   "models": {
+    "aws_warehouse_rack": {
+      "display_name": "Industrial Pallet Rack (4-tier)",
+      "description": "Heavy-duty industrial pallet rack with crossbeams and upright support frame.",
+      "category": "logistics",
+      "dimensions": { "x": 2.8, "y": 1.2, "z": 3.6 },
+      "mass": 180.0,
+      "is_static": true,
+      "path": "catalog/models/warehouse_rack"
+    },
+    "wooden_crate": {
+      "display_name": "Standard Wood Storage Crate",
+      "description": "Standard wooden storage shipping crate for logistics navigation.",
+      "category": "logistics",
+      "dimensions": { "x": 0.8, "y": 0.8, "z": 0.8 },
+      "mass": 25.0,
+      "is_static": false,
+      "path": "catalog/models/cardboard_box"
+    },
+    "workbench": {
+      "display_name": "Heavy-Duty Steel Workbench",
+      "description": "Heavy-duty industrial workshop workbench desk.",
+      "category": "industrial",
+      "dimensions": { "x": 1.8, "y": 0.9, "z": 0.9 },
+      "mass": 65.0,
+      "is_static": true,
+      "path": "catalog/models/office_desk"
+    },
     "tree": {
       "display_name": "Pine Tree",
       "description": "Coniferous pine tree with solid trunk and evergreen foliage crown for outdoor robotics benchmarks.",

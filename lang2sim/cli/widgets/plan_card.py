@@ -3,10 +3,11 @@ Stage-wise Execution Plan Card Widget
 File: lang2sim/cli/widgets/plan_card.py
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List
+
+from textual.containers import Horizontal
 from textual.widget import Widget
 from textual.widgets import Static
-from textual.containers import Horizontal, Vertical
 
 
 class PlanCard(Widget):
@@ -68,7 +69,7 @@ class PlanCard(Widget):
             yield Static(f"📋 [bold #f1f2f6]{self.plan_title}[/]", classes="plan-title")
             yield Static(self._format_counter(), id="plan-counter", classes="plan-counter")
 
-        for i, step in enumerate(self.steps):
+        for i in range(len(self.steps)):
             yield Static(self._format_step(i), id=f"step-{i}", classes="plan-step")
 
     def _format_counter(self) -> str:
