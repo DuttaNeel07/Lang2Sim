@@ -195,16 +195,9 @@ class ReActSupervisor:
         plan_step_idx: int = 0
         plan_emitted = False
 
-        # Build initial prompt messages ensuring SUPERVISOR_SYSTEM_PROMPT is present
-        messages = []
-        has_system = False
-        for m in conversation_history:
-            if m.get("role") == "system":
-                messages.append({"role": "system", "content": SUPERVISOR_SYSTEM_PROMPT})
-                has_system = True
-            else:
-                messages.append(m)
-        if not has_system:
+        # Build initial prompt messages ensuring base system prompt is present
+        messages = list(conversation_history)
+        if not messages or messages[0].get("role") != "system":
             messages.insert(0, {"role": "system", "content": SUPERVISOR_SYSTEM_PROMPT})
 
         thought_tag_re = re.compile(r"<thought>(.*?)(?:</thought>|$)", re.DOTALL | re.IGNORECASE)
@@ -737,8 +730,15 @@ class ReActSupervisor:
 
     def _detect_requested_tools(self, prompt: str) -> List[tuple]:
         """Detects standard robotics simulation actions and terminal commands implied by prompt."""
-        p = prompt.lower()
+        p = prompt.lower().strip()
         actions = []
+
+        # If the user is asking an informational/reasoning question, let the LLM answer from context
+        if p.endswith("?") or any(
+            p.startswith(q)
+            for q in ["why", "what", "how", "explain", "who", "where", "tell me", "can you tell"]
+        ):
+            return actions
 
         # 0. Scenario Selection (e.g., "option 1", "option 2", "option 3", "3", "multi-room office")
         opt_match = re.search(r"\b(?:option|scenario|choice|#)\s*([1-5])\b|^([1-5])$", p.strip())

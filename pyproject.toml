@@ -100,4 +100,3 @@ testpaths = ["tests"]
 [tool.codespell]
 skip = "*.pgm,*.json,*.lock,.venv,_ref"
 ignore-words-list = "renderd,unparseable"
-
