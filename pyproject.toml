@@ -46,6 +46,8 @@ include = ["lang2sim*"]
 
 [tool.setuptools.package-data]
 "lang2sim.runtime" = ["static/*.html"]
+"lang2sim.cli" = ["styles/*.tcss"]
+"lang2sim.compiler" = ["templates/*.jinja"]
 
 [tool.ruff]
 target-version = "py310"
