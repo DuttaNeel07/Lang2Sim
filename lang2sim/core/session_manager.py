@@ -6,10 +6,12 @@ File: lang2sim/core/session_manager.py
 import json
 import time
 import uuid
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, Field
+
 from .config import DEFAULT_LANG2SIM_ROOT
 
 SESSIONS_DIR = DEFAULT_LANG2SIM_ROOT / "sessions"
@@ -26,7 +28,9 @@ class ChatMessage(BaseModel):
 
 class ChatSession(BaseModel):
     id: str = Field(
-        default_factory=lambda: datetime.now().strftime("session_%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:4]
+        default_factory=lambda: (
+            datetime.now().strftime("session_%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:4]
+        )
     )
     title: str = "New Session"
     created_at: float = Field(default_factory=time.time)
@@ -112,16 +116,14 @@ class SessionManager:
                 s = ChatSession.model_validate(data)
                 if workspace_name is None or s.workspace_name == workspace_name:
                     sessions.append(s)
-            except Exception:
+            except Exception:  # noqa: S112 - ignore corrupted session files
                 continue
 
         # Sort: pinned first (True > False), then updated_at descending
         sessions.sort(key=lambda s: (not s.pinned, -s.updated_at))
         return sessions
 
-    def group_sessions_by_date(
-        self, sessions: List[ChatSession]
-    ) -> Dict[str, List[ChatSession]]:
+    def group_sessions_by_date(self, sessions: List[ChatSession]) -> Dict[str, List[ChatSession]]:
         """
         Groups sessions chronologically matching OpenCode:
         - "Today"

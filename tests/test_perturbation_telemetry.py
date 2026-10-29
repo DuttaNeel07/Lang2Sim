@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import base64
 import io
-import json
 import math
 from pathlib import Path
 
@@ -22,28 +21,19 @@ from PIL import Image
 
 from lang2sim.perturbation._compat import Pose2D
 from lang2sim.perturbation.gazebo_bridge import (
-    ClassicBridge,
     DryRunBridge,
-    HarmonicBridge,
-    get_bridge,
     reset_bridge_instance,
 )
 from lang2sim.perturbation.mcp_server import (
     call_tool_inprocess,
-    mcp,
 )
 from lang2sim.telemetry.nqi_scorer import (
     NQIParams,
     build_report,
-    compute_nqi,
     min_clearance,
-    mission_success,
-    optimal_length,
-    path_efficiency,
     path_length,
     render_comparison_table,
     score_trajectory,
-    trajectory_smoothness,
 )
 from lang2sim.telemetry.ros_subscribers import (
     CollisionCounter,
@@ -145,7 +135,9 @@ class TestNQIEvaluator:
     def test_benchmark_report_and_rich_table(self):
         t = np.arange(0.0, 10.0 + 1e-9, 0.1)
         nom_traj = Trajectory(t=t, x=t, y=np.zeros_like(t), goal=(10.0, 0.0), label="nominal")
-        adv_traj = Trajectory(t=t, x=t, y=0.2 * np.sin(t), goal=(10.0, 0.0), collisions=0, label="adversarial")
+        adv_traj = Trajectory(
+            t=t, x=t, y=0.2 * np.sin(t), goal=(10.0, 0.0), collisions=0, label="adversarial"
+        )
 
         nom = score_trajectory(nom_traj)
         adv = score_trajectory(adv_traj)
@@ -212,7 +204,10 @@ class TestMutationBridge:
     @pytest.mark.asyncio
     async def test_fastmcp_inprocess_tool_calls(self):
         # Invoke all tools via in-process FastMCP call
-        r1 = await call_tool_inprocess("spawn_dynamic_entity", {"model_name": "cargo_box", "pose": {"x": 2.0, "y": 3.0, "yaw": 0.0}})
+        r1 = await call_tool_inprocess(
+            "spawn_dynamic_entity",
+            {"model_name": "cargo_box", "pose": {"x": 2.0, "y": 3.0, "yaw": 0.0}},
+        )
         assert r1["ok"] is True
         assert r1["data"]["model_name"] == "cargo_box"
 
@@ -224,7 +219,9 @@ class TestMutationBridge:
         assert r3["ok"] is True
         assert "reset_ms" in r3["data"]
 
-        r4 = await call_tool_inprocess("apply_chassis_perturbation", {"velocity_bias": {"x": -0.2, "y": 0.0, "yaw": 0.1}})
+        r4 = await call_tool_inprocess(
+            "apply_chassis_perturbation", {"velocity_bias": {"x": -0.2, "y": 0.0, "yaw": 0.1}}
+        )
         assert r4["ok"] is True
 
         r5 = await call_tool_inprocess("list_spawned_entities", {})
@@ -363,8 +360,9 @@ class TestWorldRouterAndClient:
     @pytest.mark.asyncio
     async def test_control_client_world_mutation_endpoints(self):
         import httpx
-        from lang2sim.runtime.control_api.server import create_app
+
         from lang2sim.runtime.control_api.client import ControlClient
+        from lang2sim.runtime.control_api.server import create_app
 
         app = create_app()
         transport = httpx.ASGITransport(app=app)
@@ -375,13 +373,15 @@ class TestWorldRouterAndClient:
             assert "backend" in health
 
             # 2. Spawn
-            spawn_res = await client.world_spawn({
-                "model_name": "wooden_crate",
-                "x": 2.5,
-                "y": 1.0,
-                "z": 0.5,
-                "yaw": 0.0,
-            })
+            spawn_res = await client.world_spawn(
+                {
+                    "model_name": "wooden_crate",
+                    "x": 2.5,
+                    "y": 1.0,
+                    "z": 0.5,
+                    "yaw": 0.0,
+                }
+            )
             assert spawn_res["ok"] is True
             assert "spawn" in spawn_res["tool"]
 
@@ -391,18 +391,22 @@ class TestWorldRouterAndClient:
             assert any("wooden_crate" in e for e in entities_res["entities"])
 
             # 4. Light
-            light_res = await client.world_light({
-                "diffuse": 0.3,
-                "specular": 0.1,
-                "intensity": 0.5,
-            })
+            light_res = await client.world_light(
+                {
+                    "diffuse": 0.3,
+                    "specular": 0.1,
+                    "intensity": 0.5,
+                }
+            )
             assert light_res["ok"] is True
 
             # 5. Chassis
-            chassis_res = await client.world_chassis({
-                "force_x": 15.0,
-                "duration_s": 0.2,
-            })
+            chassis_res = await client.world_chassis(
+                {
+                    "force_x": 15.0,
+                    "duration_s": 0.2,
+                }
+            )
             assert chassis_res["ok"] is True
 
             # 6. Reset
@@ -416,6 +420,7 @@ class TestReportPathIntegration:
     def test_default_report_path_resolves_to_run_dir(self, tmp_path, monkeypatch):
         monkeypatch.setenv("HOME", str(tmp_path))
         from lang2sim.telemetry.nqi_scorer import default_report_path
+
         path = default_report_path(project_name="test_proj", timestamp="run_042")
         assert path.name == "benchmark_report.json"
         assert "run_042" in str(path)
@@ -458,9 +463,36 @@ class TestSLAMTelemetryAndBenchmark:
     def test_nqi_scorer_slam_metrics_and_table(self):
         # Create synthetic trajectory with SLAM drift
         samples = [
-            {"t": 0.0, "x": 0.0, "y": 0.0, "yaw": 0.0, "v": 0.5, "w": 0.0, "slam_x": 0.01, "slam_y": 0.0},
-            {"t": 1.0, "x": 1.0, "y": 0.0, "yaw": 0.0, "v": 0.5, "w": 0.0, "slam_x": 1.10, "slam_y": 0.0},
-            {"t": 2.0, "x": 2.0, "y": 0.0, "yaw": 0.0, "v": 0.5, "w": 0.0, "slam_x": 2.45, "slam_y": 0.0},
+            {
+                "t": 0.0,
+                "x": 0.0,
+                "y": 0.0,
+                "yaw": 0.0,
+                "v": 0.5,
+                "w": 0.0,
+                "slam_x": 0.01,
+                "slam_y": 0.0,
+            },
+            {
+                "t": 1.0,
+                "x": 1.0,
+                "y": 0.0,
+                "yaw": 0.0,
+                "v": 0.5,
+                "w": 0.0,
+                "slam_x": 1.10,
+                "slam_y": 0.0,
+            },
+            {
+                "t": 2.0,
+                "x": 2.0,
+                "y": 0.0,
+                "yaw": 0.0,
+                "v": 0.5,
+                "w": 0.0,
+                "slam_x": 2.45,
+                "slam_y": 0.0,
+            },
         ]
         traj = Trajectory.from_samples(samples, goal=(2.0, 0.0), label="drift_run")
         scored = score_trajectory(traj)
@@ -477,5 +509,3 @@ class TestSLAMTelemetryAndBenchmark:
         assert table is not None
         table_titles = [col.header for col in table.columns]
         assert "Evaluation Metric" in table_titles
-
-

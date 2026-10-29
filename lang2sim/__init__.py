@@ -29,7 +29,7 @@ class _Sim2LangRedirectFinder(MetaPathFinder):
 
     def find_spec(self, fullname: str, path: Any, target: Any = None) -> Any:
         if fullname == "sim2lang" or fullname.startswith("sim2lang."):
-            target_name = "lang2sim" + fullname[len("sim2lang"):]
+            target_name = "lang2sim" + fullname[len("sim2lang") :]
             try:
                 target_mod = importlib.import_module(target_name)
                 sys.modules[fullname] = target_mod

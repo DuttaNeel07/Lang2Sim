@@ -3,17 +3,19 @@ Screen 2: 80/20 Workspace Screen
 File: lang2sim/cli/screens/workspace_screen.py
 """
 
-from typing import List, Dict, Any, Optional
-from textual.screen import Screen
-from textual.widgets import Static, Markdown
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.binding import Binding
-from textual import work
+from typing import Any, Dict, List, Optional
+
 from rich.markup import escape
+from textual import work
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import Screen
+from textual.widgets import Markdown, Static
+
+from ...agent.nemotron_client import NemotronClient
+from ...core.session_manager import ChatMessage, session_manager
 from ..widgets.prompt_card import PromptCard
 from ..widgets.telemetry_sidebar import TelemetrySidebar
-from ...agent.nemotron_client import NemotronClient
-from ...core.session_manager import session_manager, ChatSession, ChatMessage
 
 SYSTEM_PROMPT = (
     "You are Sim2Lang Copilot, an expert AI robotics simulation assistant. "
@@ -68,7 +70,10 @@ class WorkspaceScreen(Screen):
         self.total_tokens_used: int = self.session.total_tokens
         self.is_streaming: bool = False
         from ..demo_commands import DemoRunner
-        self.demo = DemoRunner(say=self._demo_say, show=self._demo_show, progress=self._demo_progress)
+
+        self.demo = DemoRunner(
+            say=self._demo_say, show=self._demo_show, progress=self._demo_progress
+        )
         self._progress_line: Optional[Static] = None
 
     def compose(self):
@@ -82,7 +87,7 @@ class WorkspaceScreen(Screen):
                 with VerticalScroll(id="chat-scroll"):
                     yield Static("", id="scroll-anchor")
                 yield PromptCard(
-                    placeholder='lang2sim > Ask, or /mission · /stress · /benchmark · /report · /help',
+                    placeholder="lang2sim > Ask, or /mission · /stress · /benchmark · /report · /help",
                     card_id="sticky-prompt-input",
                     id="sticky-input-card",
                 )
@@ -133,6 +138,7 @@ class WorkspaceScreen(Screen):
     def action_open_sessions(self) -> None:
         """Open custom floating sessions modal."""
         from .sessions_modal import SessionsModal
+
         self.app.push_screen(
             SessionsModal(workspace_name=self.session.workspace_name),
             callback=self.on_session_switched,
@@ -166,9 +172,7 @@ class WorkspaceScreen(Screen):
                 chat_scroll.mount(resp_md)
 
         # Update header and sidebar
-        self.query_one("#workspace-header", Static).update(
-            f"S2L | {self.session.title} — lang2sim"
-        )
+        self.query_one("#workspace-header", Static).update(f"S2L | {self.session.title} — lang2sim")
         sidebar = self.query_one(TelemetrySidebar)
         capacity_pct = min(100, max(1, self.total_tokens_used // 1000))
         sidebar.update_telemetry(
@@ -199,13 +203,19 @@ class WorkspaceScreen(Screen):
         # Demo commands (/mission, /stress, /benchmark, ...) and plain-language stress requests act on
         # the running simulation directly; they never wait for (or depend on) the LLM.
         from ..demo_commands import parse_command, parse_stress_intent
+
         command = parse_command(cleaned_prompt) or parse_stress_intent(cleaned_prompt)
         if command is not None:
             chat_scroll = self.query_one("#chat-scroll", VerticalScroll)
-            chat_scroll.mount(Static(f"[bold #ffffff]{escape(cleaned_prompt)}[/]", classes="user-prompt-card"))
+            chat_scroll.mount(
+                Static(f"[bold #ffffff]{escape(cleaned_prompt)}[/]", classes="user-prompt-card")
+            )
             chat_scroll.scroll_end(animate=False)
-            self.session.messages.append(ChatMessage(role="user", content=cleaned_prompt,
-                                                     tokens=max(1, len(cleaned_prompt) // 4)))
+            self.session.messages.append(
+                ChatMessage(
+                    role="user", content=cleaned_prompt, tokens=max(1, len(cleaned_prompt) // 4)
+                )
+            )
             session_manager.save_session(self.session)
             self.run_demo_command(command)
             return
@@ -313,13 +323,16 @@ class WorkspaceScreen(Screen):
         try:
             # Ground the answer in the running simulation (live telemetry + latest NQI report).
             import asyncio
+
             from ...agent.grounding import fetch_context, with_context
 
             try:
                 context = await asyncio.wait_for(asyncio.to_thread(fetch_context), timeout=3.0)
             except Exception:  # noqa: BLE001 - no sim context is fine
                 context = None
-            async for chunk in self.client.stream_chat(with_context(self.conversation_history, context)):
+            async for chunk in self.client.stream_chat(
+                with_context(self.conversation_history, context)
+            ):
                 chunks.append(chunk)
                 await response_widget.update("".join(chunks))
                 chat_scroll.scroll_end(animate=False)

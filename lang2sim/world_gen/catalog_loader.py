@@ -5,10 +5,10 @@ File: lang2sim/world_gen/catalog_loader.py
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any, Dict, List, Optional
 
-from lang2sim.core.models import Pose2D, Vector3D, ObjectSpec
 from lang2sim.core.config import get_catalog_dir
+from lang2sim.core.models import ObjectSpec, Pose2D, Vector3D
 
 
 class SceneCatalog:
@@ -22,7 +22,7 @@ class SceneCatalog:
     def _load(self) -> Dict[str, Any]:
         if not self.catalog_file.exists():
             raise FileNotFoundError(f"Catalog file not found: {self.catalog_file}")
-        with open(self.catalog_file, "r", encoding="utf-8") as f:
+        with open(self.catalog_file, encoding="utf-8") as f:
             return json.load(f)
 
     def list_scenes(self) -> List[str]:
@@ -61,13 +61,17 @@ class SceneCatalog:
         """List all physical object blueprints in the catalog."""
         return list(self._data.get("models", {}).keys())
 
-    def get_model_spec(self, model_id: str, object_id: str, pose: Optional[Pose2D] = None) -> ObjectSpec:
+    def get_model_spec(
+        self, model_id: str, object_id: str, pose: Optional[Pose2D] = None
+    ) -> ObjectSpec:
         """
         Builds a typed ObjectSpec from catalog blueprints, ensuring exact physical dimensions and mass.
         """
         models = self._data.get("models", {})
         if model_id not in models:
-            raise KeyError(f"Model '{model_id}' not found in catalog. Available: {self.list_models()}")
+            raise KeyError(
+                f"Model '{model_id}' not found in catalog. Available: {self.list_models()}"
+            )
         m = models[model_id]
         dims = m["dimensions"]
         return ObjectSpec(

@@ -130,7 +130,11 @@ class Trajectory:
 
     @property
     def ate_rmse(self) -> float:
-        return float(np.sqrt(np.mean(self.ate ** 2))) if self.ate is not None and len(self.ate) > 0 else 0.0
+        return (
+            float(np.sqrt(np.mean(self.ate**2)))
+            if self.ate is not None and len(self.ate) > 0
+            else 0.0
+        )
 
     @property
     def n(self) -> int:
@@ -154,7 +158,7 @@ class Trajectory:
         return float(self.x[-1]), float(self.y[-1])
 
     # ------------------------------------------------------------ transforms
-    def resample(self, dt: float = 0.05) -> "Trajectory":
+    def resample(self, dt: float = 0.05) -> Trajectory:
         """Return a copy linearly interpolated onto a uniform grid of step ``dt``."""
         if dt <= 0:
             raise ValueError("dt must be positive")
@@ -182,7 +186,7 @@ class Trajectory:
         cls,
         samples: Sequence[Mapping[str, float]],
         **kwargs: Any,
-    ) -> "Trajectory":
+    ) -> Trajectory:
         """Build from a list of dicts with keys ``t, x, y`` and optional ``yaw, v, w``."""
         if len(samples) < 2:
             raise ValueError("need at least 2 samples")
@@ -226,7 +230,7 @@ class Trajectory:
         return res
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "Trajectory":
+    def from_dict(cls, data: Mapping[str, Any]) -> Trajectory:
         goal = data.get("goal")
         return cls.from_samples(
             data["samples"],
@@ -244,11 +248,11 @@ class Trajectory:
         return path
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "Trajectory":
+    def from_json(cls, path: str | Path) -> Trajectory:
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
     @classmethod
-    def from_csv(cls, path: str | Path, **kwargs: Any) -> "Trajectory":
+    def from_csv(cls, path: str | Path, **kwargs: Any) -> Trajectory:
         """Load a CSV with a header row containing at least ``t,x,y``."""
         with Path(path).open(newline="", encoding="utf-8") as fh:
             rows = [

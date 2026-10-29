@@ -19,7 +19,9 @@ ALL_PLUGINS = "".join(f'<plugin filename="{f}" name="{c}"/>' for _, f, c, _ in R
 
 
 def sdf(body: str, version: str = "1.9", name: str = "w") -> str:
-    return f'<?xml version="1.0"?><sdf version="{version}"><world name="{name}">{body}</world></sdf>'
+    return (
+        f'<?xml version="1.0"?><sdf version="{version}"><world name="{name}">{body}</world></sdf>'
+    )
 
 
 def codes(report):
@@ -49,14 +51,19 @@ def test_malformed_pose_is_error(pose):
 
 
 def test_quaternion_pose_allowed():
-    r = check_world(sdf(ALL_PLUGINS + '<model name="m"><pose rotation_format="quat_xyzw">0 0 0 0 0 0 1</pose></model>'))
+    r = check_world(
+        sdf(
+            ALL_PLUGINS
+            + '<model name="m"><pose rotation_format="quat_xyzw">0 0 0 0 0 0 1</pose></model>'
+        )
+    )
     assert r.ok
 
 
 def test_robot_in_world_rejected_but_tb3_world_model_allowed():
-    r = check_world(sdf(ALL_PLUGINS + '<include><uri>model://turtlebot3_waffle</uri></include>'))
+    r = check_world(sdf(ALL_PLUGINS + "<include><uri>model://turtlebot3_waffle</uri></include>"))
     assert "robot-in-world" in codes(r)
-    r = check_world(sdf(ALL_PLUGINS + '<include><uri>model://turtlebot3_world</uri></include>'))
+    r = check_world(sdf(ALL_PLUGINS + "<include><uri>model://turtlebot3_world</uri></include>"))
     assert "robot-in-world" not in codes(r)
 
 
@@ -70,11 +77,21 @@ def test_structure_errors_and_versions():
 
 def test_model_resolution(tmp_path):
     (tmp_path / "rack").mkdir()
-    body = ALL_PLUGINS + "<include><uri>model://rack</uri></include><include><uri>model://ghost</uri></include>"
+    body = (
+        ALL_PLUGINS
+        + "<include><uri>model://rack</uri></include><include><uri>model://ghost</uri></include>"
+    )
     r = check_world(sdf(body), model_paths=[tmp_path])
-    assert [i.message for i in r.errors if i.code == "model-missing"] == [f"model://ghost not found in {tmp_path}"]
+    assert [i.message for i in r.errors if i.code == "model-missing"] == [
+        f"model://ghost not found in {tmp_path}"
+    ]
     assert check_world(sdf(body)).ok  # no search paths given: not checked
-    fuel = check_world(sdf(ALL_PLUGINS + "<include><uri>https://fuel.gazebosim.org/1.0/x/models/Sun</uri></include>"))
+    fuel = check_world(
+        sdf(
+            ALL_PLUGINS
+            + "<include><uri>https://fuel.gazebosim.org/1.0/x/models/Sun</uri></include>"
+        )
+    )
     assert fuel.ok and "fuel" in codes(fuel)
 
 
@@ -103,8 +120,10 @@ def test_part1_compiled_world_passes_after_normalizing(tmp_path):
         Vector3D,
     )
 
-    spec = SimSpec(environment=EnvironmentSpec(room_dimensions=Vector3D(x=10, y=8, z=3)),
-                   mission=MissionSpec(initial_pose=Pose2D(x=-3, y=-2), goal_pose=Pose2D(x=3, y=2)))
+    spec = SimSpec(
+        environment=EnvironmentSpec(room_dimensions=Vector3D(x=10, y=8, z=3)),
+        mission=MissionSpec(initial_pose=Pose2D(x=-3, y=-2), goal_pose=Pose2D(x=3, y=2)),
+    )
     world = compile_world_sdf(spec, tmp_path / "world.sdf", "warehouse")
     report, path = prepare_world(world)
     assert report.ok, report.summary()

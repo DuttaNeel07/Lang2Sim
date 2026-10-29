@@ -38,8 +38,12 @@ class FakeNav:
             return False
 
     def getFeedback(self):
-        return SimpleNamespace(distance_remaining=float(self._left), navigation_time=self._t,
-                               estimated_time_remaining=float(self._left), number_of_recoveries=0)
+        return SimpleNamespace(
+            distance_remaining=float(self._left),
+            navigation_time=self._t,
+            estimated_time_remaining=float(self._left),
+            number_of_recoveries=0,
+        )
 
     def getResult(self):
         return SimpleNamespace(name="CANCELED" if self._canceled else self.result)

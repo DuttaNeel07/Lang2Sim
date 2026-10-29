@@ -42,8 +42,10 @@ def test_manifest_round_trip(tmp_path):
 
 def test_manifest_inferred_from_spec(tmp_path):
     run = _run(tmp_path)
-    spec = SimSpec(environment=EnvironmentSpec(room_dimensions=Vector3D(x=10, y=8, z=3)),
-                   mission=MissionSpec(initial_pose=Pose2D(x=-3, y=-2), goal_pose=Pose2D(x=3, y=2)))
+    spec = SimSpec(
+        environment=EnvironmentSpec(room_dimensions=Vector3D(x=10, y=8, z=3)),
+        mission=MissionSpec(initial_pose=Pose2D(x=-3, y=-2), goal_pose=Pose2D(x=3, y=2)),
+    )
     (run / "spec.json").write_text(spec.model_dump_json())
     assert load_manifest(run).initial_pose == Pose2D(x=-3, y=-2)
 
@@ -53,7 +55,9 @@ def test_missing_files_and_bad_manifest(tmp_path):
     write_manifest(run, RunManifest(initial_pose=Pose2D(x=0, y=0)))
     with pytest.raises(RunFolderError, match="map.yaml"):
         load_manifest(run)
-    (run / "manifest.json").write_text(json.dumps({"initial_pose": {"x": 0, "y": 0}, "robot_model": "ridgeback"}))
+    (run / "manifest.json").write_text(
+        json.dumps({"initial_pose": {"x": 0, "y": 0}, "robot_model": "ridgeback"})
+    )
     with pytest.raises(RunFolderError, match="invalid"):
         load_manifest(run)
     with pytest.raises(RunFolderError, match="neither"):

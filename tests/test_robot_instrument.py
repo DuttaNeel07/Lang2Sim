@@ -6,9 +6,10 @@ import xml.etree.ElementTree as ET
 import pytest
 import yaml
 
-from lang2sim.runtime import launch_builder, robot_instrument as ri
-from lang2sim.runtime.control_api.server import SimProcess
 from lang2sim.core.models import Pose2D, SimStartRequest
+from lang2sim.runtime import launch_builder
+from lang2sim.runtime import robot_instrument as ri
+from lang2sim.runtime.control_api.server import SimProcess
 
 # Shape of turtlebot3_gazebo/models/turtlebot3_waffle/model.sdf (Jazzy), trimmed.
 STOCK_MODEL = """<?xml version="1.0" ?>
@@ -33,10 +34,20 @@ STOCK_MODEL = """<?xml version="1.0" ?>
 """
 
 STOCK_BRIDGE = [
-    {"ros_topic_name": "clock", "gz_topic_name": "clock", "ros_type_name": "rosgraph_msgs/msg/Clock",
-     "gz_type_name": "gz.msgs.Clock", "direction": "GZ_TO_ROS"},
-    {"ros_topic_name": "odom", "gz_topic_name": "odom", "ros_type_name": "nav_msgs/msg/Odometry",
-     "gz_type_name": "gz.msgs.Odometry", "direction": "GZ_TO_ROS"},
+    {
+        "ros_topic_name": "clock",
+        "gz_topic_name": "clock",
+        "ros_type_name": "rosgraph_msgs/msg/Clock",
+        "gz_type_name": "gz.msgs.Clock",
+        "direction": "GZ_TO_ROS",
+    },
+    {
+        "ros_topic_name": "odom",
+        "gz_topic_name": "odom",
+        "ros_type_name": "nav_msgs/msg/Odometry",
+        "gz_type_name": "gz.msgs.Odometry",
+        "direction": "GZ_TO_ROS",
+    },
 ]
 
 
@@ -53,11 +64,13 @@ def test_adds_bumper_on_chassis_and_ground_truth_publisher():
     assert sensor.get("type") == "contact" and sensor.get("name") == ri.SENSOR_NAME
     assert sensor.find("contact/collision").text == "base_collision"
     assert sensor.find("topic").text == ri.CONTACT_GZ_TOPIC
-    odom = [p for p in m.findall("plugin") if p.get("name") == "gz::sim::systems::OdometryPublisher"]
+    odom = [
+        p for p in m.findall("plugin") if p.get("name") == "gz::sim::systems::OdometryPublisher"
+    ]
     assert len(odom) == 1
     assert odom[0].find("odom_frame").text == "world"
     assert odom[0].find("odom_topic").text == ri.GROUND_TRUTH_TOPIC
-    assert odom[0].find("tf_topic").text != "/tf"            # never fight AMCL over /tf
+    assert odom[0].find("tf_topic").text != "/tf"  # never fight AMCL over /tf
     # The stock content is untouched: mesh URIs and diff drive survive.
     assert "model://turtlebot3_common/meshes/bases/waffle_base.stl" in text
     assert any(p.get("name") == "gz::sim::systems::DiffDrive" for p in m.findall("plugin"))
@@ -99,9 +112,14 @@ def test_write_instrumented_files(tmp_path):
     (share / "bridge.yaml").write_text(yaml.safe_dump(STOCK_BRIDGE))
     run = tmp_path / "run"
     run.mkdir()
-    sdf, yml, coll = ri.write_instrumented(run, share / "model.sdf", share / "bridge.yaml",
-                                           world="w", robot="waffle")
-    assert sdf.name == ri.ROBOT_SDF_NAME and yml.name == ri.BRIDGE_YAML_NAME and coll == "base_collision"
+    sdf, yml, coll = ri.write_instrumented(
+        run, share / "model.sdf", share / "bridge.yaml", world="w", robot="waffle"
+    )
+    assert (
+        sdf.name == ri.ROBOT_SDF_NAME
+        and yml.name == ri.BRIDGE_YAML_NAME
+        and coll == "base_collision"
+    )
     topics = [e["ros_topic_name"] for e in yaml.safe_load(yml.read_text())]
     assert "clock" in topics and ri.CONTACT_ROS_TOPIC in topics and ri.GROUND_TRUTH_TOPIC in topics
 
@@ -114,24 +132,41 @@ def _config(src):
 
 
 def test_launch_uses_instrumented_files_when_given():
-    cfg = launch_builder.LaunchConfig(run_dir="/r", world_sdf="/r/w.sdf", world_name="w", map_yaml="/r/m.yaml",
-                                      robot_sdf="/r/robot.l2s.sdf", bridge_config="/r/bridge.l2s.yaml")
+    cfg = launch_builder.LaunchConfig(
+        run_dir="/r",
+        world_sdf="/r/w.sdf",
+        world_name="w",
+        map_yaml="/r/m.yaml",
+        robot_sdf="/r/robot.l2s.sdf",
+        bridge_config="/r/bridge.l2s.yaml",
+    )
     src = launch_builder.render(cfg)
     conf = _config(src)
     assert conf["robot_sdf"] == "/r/robot.l2s.sdf" and conf["bridge_config"] == "/r/bridge.l2s.yaml"
     assert 'CONFIG["robot_sdf"] or' in src and 'CONFIG["bridge_config"] or' in src
-    stock = _config(launch_builder.render(launch_builder.LaunchConfig(
-        run_dir="/r", world_sdf="/r/w.sdf", world_name="w", map_yaml="/r/m.yaml")))
+    stock = _config(
+        launch_builder.render(
+            launch_builder.LaunchConfig(
+                run_dir="/r", world_sdf="/r/w.sdf", world_name="w", map_yaml="/r/m.yaml"
+            )
+        )
+    )
     assert stock["robot_sdf"] == "" and stock["bridge_config"] == ""
 
 
 def _req(tmp_path):
     run = tmp_path / "run"
     run.mkdir(parents=True)
-    (run / "world.sdf").write_text('<?xml version="1.0"?><sdf version="1.9"><world name="w"></world></sdf>')
+    (run / "world.sdf").write_text(
+        '<?xml version="1.0"?><sdf version="1.9"><world name="w"></world></sdf>'
+    )
     (run / "map.yaml").write_text("image: map.pgm\n")
-    return SimStartRequest(run_dir=str(run), world_sdf_path=str(run / "world.sdf"),
-                           map_yaml_path=str(run / "map.yaml"), initial_pose=Pose2D(x=1, y=2, yaw=0.5))
+    return SimStartRequest(
+        run_dir=str(run),
+        world_sdf_path=str(run / "world.sdf"),
+        map_yaml_path=str(run / "map.yaml"),
+        initial_pose=Pose2D(x=1, y=2, yaw=0.5),
+    )
 
 
 def test_server_prepare_instruments_robot(tmp_path, monkeypatch):
@@ -144,7 +179,9 @@ def test_server_prepare_instruments_robot(tmp_path, monkeypatch):
     req = _req(tmp_path)
     sim = SimProcess()
     conf = _config(sim.prepare(req).read_text())
-    assert conf["robot_sdf"].endswith(ri.ROBOT_SDF_NAME) and conf["bridge_config"].endswith(ri.BRIDGE_YAML_NAME)
+    assert conf["robot_sdf"].endswith(ri.ROBOT_SDF_NAME) and conf["bridge_config"].endswith(
+        ri.BRIDGE_YAML_NAME
+    )
     assert sim.telemetry_setup["enabled"] and sim.telemetry_setup["collision"] == "base_collision"
     assert "instrumented" in (tmp_path / "run" / "logs" / "telemetry_setup.txt").read_text()
     # The world gets the Contact system the bumper needs.

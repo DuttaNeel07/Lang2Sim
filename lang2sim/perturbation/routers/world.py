@@ -10,6 +10,7 @@ import math
 import threading
 import time
 from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
@@ -28,11 +29,12 @@ SPAWN_FOOTPRINTS: Dict[str, tuple] = {
 }
 # Bounding radius of each footprint (kept for consumers that only handle circles).
 SPAWN_FOOTPRINT_RADIUS: Dict[str, float] = {
-    k: (math.hypot(v[1] / 2, v[2] / 2) if v[0] == "box" else v[1]) for k, v in SPAWN_FOOTPRINTS.items()
+    k: (math.hypot(v[1] / 2, v[2] / 2) if v[0] == "box" else v[1])
+    for k, v in SPAWN_FOOTPRINTS.items()
 }
 _SPAWN_LOG: List[Dict[str, Any]] = []
 _SPAWN_LOCK = threading.Lock()
-_SPAWN_FILE: Dict[str, Any] = {"path": None}   # <run>/logs/spawns.jsonl, set per run by the server
+_SPAWN_FILE: Dict[str, Any] = {"path": None}  # <run>/logs/spawns.jsonl, set per run by the server
 
 
 def set_spawn_log_file(path: Optional[str]) -> None:
@@ -44,6 +46,7 @@ def set_spawn_log_file(path: Optional[str]) -> None:
     if path:
         try:
             import json
+
             with open(path, "a", encoding="utf-8") as f:
                 f.write(json.dumps({"type": "session_start", "wall_time": time.time()}) + "\n")
         except OSError:
@@ -52,15 +55,23 @@ def set_spawn_log_file(path: Optional[str]) -> None:
 
 def record_spawn(name: str, model: str, x: float, y: float, yaw: float = 0.0) -> Dict[str, Any]:
     shape = SPAWN_FOOTPRINTS.get(model, SPAWN_FOOTPRINTS["wooden_crate"])
-    entry = {"name": name, "model": model, "x": float(x), "y": float(y), "yaw": float(yaw),
-             "shape": shape[0], "size": [float(v) for v in shape[1:]],
-             "r": round(SPAWN_FOOTPRINT_RADIUS.get(model, SPAWN_FOOTPRINT_RADIUS["wooden_crate"]), 4),
-             "wall_time": time.time()}
+    entry = {
+        "name": name,
+        "model": model,
+        "x": float(x),
+        "y": float(y),
+        "yaw": float(yaw),
+        "shape": shape[0],
+        "size": [float(v) for v in shape[1:]],
+        "r": round(SPAWN_FOOTPRINT_RADIUS.get(model, SPAWN_FOOTPRINT_RADIUS["wooden_crate"]), 4),
+        "wall_time": time.time(),
+    }
     with _SPAWN_LOCK:
         _SPAWN_LOG.append(entry)
         if _SPAWN_FILE["path"]:
             try:
                 import json
+
                 with open(_SPAWN_FILE["path"], "a", encoding="utf-8") as f:
                     f.write(json.dumps(entry) + "\n")
             except OSError:
@@ -93,7 +104,9 @@ class SpawnRequest(BaseModel):
 class LightRequest(BaseModel):
     diffuse: float = Field(0.5, ge=0.0, le=1.0, description="Sun diffuse reflectance")
     specular: float = Field(0.1, ge=0.0, le=1.0, description="Sun specular reflectance")
-    intensity: Optional[float] = Field(None, ge=0.0, le=1.0, description="Overall luminance multiplier")
+    intensity: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Overall luminance multiplier"
+    )
     light_name: str = Field("sun", description="Target light entity")
 
 
@@ -118,8 +131,9 @@ async def spawn_entity(req: SpawnRequest) -> dict[str, Any]:
     )
     if not res.ok:
         raise HTTPException(status_code=500, detail=res.to_dict())
-    name = (res.data or {}).get("entity_name") or (bridge.spawned_entities[-1] if bridge.spawned_entities
-                                                     else req.model_name)
+    name = (res.data or {}).get("entity_name") or (
+        bridge.spawned_entities[-1] if bridge.spawned_entities else req.model_name
+    )
     out = res.to_dict()
     out["footprint"] = record_spawn(name, req.model_name, req.x, req.y, req.yaw)
     return out

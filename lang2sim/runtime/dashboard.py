@@ -58,14 +58,14 @@ def read_pgm(path: Path) -> tuple:
     tokens: List[bytes] = []
     i = 0
     while len(tokens) < 4:
-        while i < len(data) and data[i:i + 1].isspace():
+        while i < len(data) and data[i : i + 1].isspace():
             i += 1
-        if i < len(data) and data[i:i + 1] == b"#":
-            while i < len(data) and data[i:i + 1] not in (b"\n", b"\r"):
+        if i < len(data) and data[i : i + 1] == b"#":
+            while i < len(data) and data[i : i + 1] not in (b"\n", b"\r"):
                 i += 1
             continue
         j = i
-        while j < len(data) and not data[j:j + 1].isspace():
+        while j < len(data) and not data[j : j + 1].isspace():
             j += 1
         if j == i:
             raise MapError(f"{path}: truncated PGM header")
@@ -75,7 +75,7 @@ def read_pgm(path: Path) -> tuple:
     if magic == b"P5":
         if maxval > 255:
             raise MapError(f"{path}: 16-bit PGM not supported")
-        pixels = data[i + 1:i + 1 + w * h]
+        pixels = data[i + 1 : i + 1 + w * h]
     elif magic == b"P2":
         pixels = bytes(int(v) * 255 // maxval for v in data[i:].split()[: w * h])
         maxval = 255
@@ -95,14 +95,22 @@ def read_map(run_dir: Path, map_name: str = "map.yaml") -> Dict[str, Any]:
         image = yaml_path.parent / image
     w, h, maxval, pixels = read_pgm(image)
     negate = int(float(meta.get("negate", "0")))
-    occ_t, free_t = float(meta.get("occupied_thresh", "0.65")), float(meta.get("free_thresh", "0.25"))
+    occ_t, free_t = (
+        float(meta.get("occupied_thresh", "0.65")),
+        float(meta.get("free_thresh", "0.25")),
+    )
     cells = bytearray(w * h)
     for k, px in enumerate(pixels):
-        p = px / maxval if negate else (maxval - px) / maxval      # occupancy probability
+        p = px / maxval if negate else (maxval - px) / maxval  # occupancy probability
         cells[k] = 1 if p > occ_t else (0 if p < free_t else 2)
     origin = [float(v) for v in meta.get("origin", "[0, 0, 0]").strip("[]").split(",")]
-    return {"width": w, "height": h, "resolution": float(meta["resolution"]),
-            "origin": origin[:2], "cells_b64": base64.b64encode(bytes(cells)).decode("ascii")}
+    return {
+        "width": w,
+        "height": h,
+        "resolution": float(meta["resolution"]),
+        "origin": origin[:2],
+        "cells_b64": base64.b64encode(bytes(cells)).decode("ascii"),
+    }
 
 
 def read_mission(run_dir: Path) -> Optional[Dict[str, Any]]:
@@ -112,9 +120,12 @@ def read_mission(run_dir: Path) -> Optional[Dict[str, Any]]:
         return None
     m = spec.get("mission") or {}
     pose = lambda p: {"x": p.get("x", 0.0), "y": p.get("y", 0.0), "yaw": p.get("yaw", 0.0)}  # noqa: E731
-    return {"initial_pose": pose(m.get("initial_pose") or {}), "goal_pose": pose(m.get("goal_pose") or {}),
-            "waypoints": [pose(p) for p in m.get("waypoints") or []],
-            "timeout_seconds": m.get("timeout_seconds")}
+    return {
+        "initial_pose": pose(m.get("initial_pose") or {}),
+        "goal_pose": pose(m.get("goal_pose") or {}),
+        "waypoints": [pose(p) for p in m.get("waypoints") or []],
+        "timeout_seconds": m.get("timeout_seconds"),
+    }
 
 
 def downsample(samples: List[Dict[str, float]], max_points: int = MAX_POINTS) -> List[List[float]]:
@@ -124,8 +135,16 @@ def downsample(samples: List[Dict[str, float]], max_points: int = MAX_POINTS) ->
     idx = list(range(0, n, step))
     if n and idx[-1] != n - 1:
         idx.append(n - 1)
-    return [[round(samples[i]["t"], 3), round(samples[i]["x"], 4), round(samples[i]["y"], 4),
-             round(samples[i].get("yaw", 0.0), 4), round(samples[i].get("v", 0.0), 4)] for i in idx]
+    return [
+        [
+            round(samples[i]["t"], 3),
+            round(samples[i]["x"], 4),
+            round(samples[i]["y"], 4),
+            round(samples[i].get("yaw", 0.0), 4),
+            round(samples[i].get("v", 0.0), 4),
+        ]
+        for i in idx
+    ]
 
 
 def trajectories_payload(run_dir: Path, max_points: int = MAX_POINTS) -> Dict[str, Any]:
@@ -133,11 +152,14 @@ def trajectories_payload(run_dir: Path, max_points: int = MAX_POINTS) -> Dict[st
     out = {}
     for label, data in runs.items():
         meta = data.get("meta") or {}
-        out[label] = {"label": label, "partial": bool(meta.get("partial")),
-                      "pose_source": meta.get("pose_source"),
-                      "samples": downsample(data.get("samples") or [], max_points),
-                      "spawned_entities": meta.get("spawned_entities") or [],
-                      "contact_events": meta.get("contact_events") or []}
+        out[label] = {
+            "label": label,
+            "partial": bool(meta.get("partial")),
+            "pose_source": meta.get("pose_source"),
+            "samples": downsample(data.get("samples") or [], max_points),
+            "spawned_entities": meta.get("spawned_entities") or [],
+            "contact_events": meta.get("contact_events") or [],
+        }
     return {"runs": out}
 
 
@@ -159,9 +181,12 @@ def project_path(run_dir: Path, projects_dir: Optional[str] = None) -> Optional[
         return None
 
 
-def make_router(get_run_dir: Callable[[], Optional[Path]], mode: str,
-                get_world: Callable[[], str] = lambda: "",
-                get_spawned: Callable[[], List[Dict[str, Any]]] = lambda: []):
+def make_router(
+    get_run_dir: Callable[[], Optional[Path]],
+    mode: str,
+    get_world: Callable[[], str] = lambda: "",
+    get_spawned: Callable[[], List[Dict[str, Any]]] = lambda: [],
+):
     """FastAPI router with the page and the /v1/run data routes for whatever run get_run_dir() names."""
     from fastapi import APIRouter, HTTPException
     from fastapi.responses import HTMLResponse
@@ -176,8 +201,9 @@ def make_router(get_run_dir: Callable[[], Optional[Path]], mode: str,
 
     @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
     def dashboard() -> HTMLResponse:
-        return HTMLResponse(DASHBOARD_HTML.read_text(encoding="utf-8"),
-                            headers={"Cache-Control": "no-store"})
+        return HTMLResponse(
+            DASHBOARD_HTML.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"}
+        )
 
     @router.get("/v1/run")
     def run_info() -> Dict[str, Any]:
@@ -185,17 +211,24 @@ def make_router(get_run_dir: Callable[[], Optional[Path]], mode: str,
         if d is None:
             return {"loaded": False, "mode": mode}
         report = read_report(d)
-        return {"loaded": True, "mode": mode, "run_dir": str(d), "project_path": project_path(d),
-                "world_name": get_world(), "mission": read_mission(d),
-                "spawned_entities": get_spawned(), "has_report": report is not None,
-                "report_generated_at": (report or {}).get("generated_at")}
+        return {
+            "loaded": True,
+            "mode": mode,
+            "run_dir": str(d),
+            "project_path": project_path(d),
+            "world_name": get_world(),
+            "mission": read_mission(d),
+            "spawned_entities": get_spawned(),
+            "has_report": report is not None,
+            "report_generated_at": (report or {}).get("generated_at"),
+        }
 
     @router.get("/v1/run/map")
     def run_map() -> Dict[str, Any]:
         try:
             return read_map(run_dir_or_404())
         except (OSError, MapError, KeyError, ValueError) as e:
-            raise HTTPException(404, f"map not readable: {e}")
+            raise HTTPException(404, f"map not readable: {e}") from e
 
     @router.get("/v1/run/trajectories")
     def run_trajectories() -> Dict[str, Any]:

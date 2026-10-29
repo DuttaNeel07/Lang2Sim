@@ -20,13 +20,11 @@ lang2sim
 pip install -e ".[sim,dev]"
 python scripts/run_sim.py --fixture small_warehouse --mission
 ```
-Per-OS setup, the run-folder contract, the control API and troubleshooting:
-[docs/part3-runtime.md](docs/part3-runtime.md).
-
-
 ## Benchmark and demo
 - Live dashboard: `http://localhost:9090/dashboard` while a sim runs
 - In the TUI: `/mission`, `/stress`, `/benchmark`, `/report`, `/dashboard`, `/replay demo`, `/help`
 - Score a run folder (also recovers runs cut short by a crash): `python -m lang2sim.telemetry.benchmark <run_dir>`
 - Replay fallback, no Docker needed: `python -m lang2sim.telemetry.replay catalog/demo_runs/empty_room_benchmark --loop`
-- Pitch runbook: [docs/demo.md](docs/demo.md) · telemetry internals: [docs/telemetry.md](docs/telemetry.md)
+
+## Contributing
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local environment setup, code style, pre-commit hooks, and pull request guidelines. AI agents should consult [AGENTS.md](AGENTS.md).

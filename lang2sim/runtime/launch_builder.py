@@ -32,8 +32,8 @@ LAUNCH_FILE = "sim_launch.py"
 
 @dataclass(frozen=True)
 class LaunchConfig:
-    run_dir: str                       # container path; logs and generated params go here
-    world_sdf: str                     # container path, already checked/normalized
+    run_dir: str  # container path; logs and generated params go here
+    world_sdf: str  # container path, already checked/normalized
     world_name: str
     map_yaml: str
     x: float = 0.0
@@ -41,13 +41,17 @@ class LaunchConfig:
     yaw: float = 0.0
     gui: bool = True
     rviz: bool = True
-    camera: bool = True                # image bridge; heavy under software rendering
-    nav2_params: str = ""              # "" -> TurtleBot3 Waffle params
+    camera: bool = True  # image bridge; heavy under software rendering
+    nav2_params: str = ""  # "" -> TurtleBot3 Waffle params
     nav2_delay_s: float = 5.0
     resource_paths: List[str] = field(default_factory=list)  # extra GZ_SIM_RESOURCE_PATH entries
     robot: str = "waffle"
-    robot_sdf: str = ""                # "" -> stock TurtleBot3 model.sdf; else robot.l2s.sdf (bumper + ground truth)
-    bridge_config: str = ""            # "" -> stock TurtleBot3 bridge yaml; else bridge.l2s.yaml (+ telemetry topics)
+    robot_sdf: str = (
+        ""  # "" -> stock TurtleBot3 model.sdf; else robot.l2s.sdf (bumper + ground truth)
+    )
+    bridge_config: str = (
+        ""  # "" -> stock TurtleBot3 bridge yaml; else bridge.l2s.yaml (+ telemetry topics)
+    )
 
 
 _TEMPLATE = '''\

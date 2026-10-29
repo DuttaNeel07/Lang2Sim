@@ -24,9 +24,11 @@ def api_base_url(base_url: Optional[str] = None) -> str:
 
 
 def _get_json(url: str, timeout: float) -> Optional[Dict[str, Any]]:
-    req = urllib.request.Request(url, headers={"User-Agent": "Lang2Sim-Telemetry"})
+    if not url.startswith(("http://", "https://")):
+        return None
+    req = urllib.request.Request(url, headers={"User-Agent": "Lang2Sim-Telemetry"})  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
             if resp.status != 200:
                 return None
             data = json.loads(resp.read().decode("utf-8"))
@@ -73,7 +75,10 @@ def sidebar_fields(live: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         return {"sim_state": "No simulation"}
     pose = live.get("pose")
     if pose is None:
-        return {"sim_state": "Starting", "sim_time": _fmt_sim_time(float(live.get("sim_time") or 0.0))}
+        return {
+            "sim_state": "Starting",
+            "sim_time": _fmt_sim_time(float(live.get("sim_time") or 0.0)),
+        }
     clearance = live.get("obstacle_clearance_m")
     return {
         "sim_state": "Active (recording)" if live.get("recording") else "Active",
@@ -91,7 +96,10 @@ def sidebar_fields(live: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 def agent_view(live: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """query_robot_telemetry() result (architecture §3.5: speed, distance to goal, bumper forces)."""
     if live is None:
-        return {"status": "unavailable", "reason": "no simulation running (control API not reachable)"}
+        return {
+            "status": "unavailable",
+            "reason": "no simulation running (control API not reachable)",
+        }
     pose = live.get("pose") or {}
     return {
         "status": "ok",

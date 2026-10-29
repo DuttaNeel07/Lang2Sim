@@ -3,12 +3,14 @@ Sessions Modal (ctrl+s / Command Palette)
 File: lang2sim/cli/screens/sessions_modal.py
 """
 
-from typing import List, Dict, Optional
-from textual.screen import ModalScreen
-from textual.widgets import Static, Input
-from textual.containers import Vertical, Horizontal, VerticalScroll
+from typing import List, Optional
+
 from textual.binding import Binding
-from ...core.session_manager import session_manager, ChatSession
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
+from textual.widgets import Input, Static
+
+from ...core.session_manager import ChatSession, session_manager
 
 
 class RenameModal(ModalScreen[Optional[str]]):
@@ -129,14 +131,11 @@ class SessionsModal(ModalScreen[Optional[str]]):
         if event.input.id == "sessions-search":
             self.action_submit_selected()
 
-
     def filter_sessions(self, query: str) -> None:
         if not query:
             self.filtered_sessions = list(self.all_sessions)
         else:
-            self.filtered_sessions = [
-                s for s in self.all_sessions if query in s.title.lower()
-            ]
+            self.filtered_sessions = [s for s in self.all_sessions if query in s.title.lower()]
 
         if self.selected_index >= len(self.filtered_sessions):
             self.selected_index = max(0, len(self.filtered_sessions) - 1)
@@ -165,7 +164,7 @@ class SessionsModal(ModalScreen[Optional[str]]):
             await list_container.mount(header_row)
 
             for s in sessions:
-                is_selected = (current_item_idx == self.selected_index)
+                is_selected = current_item_idx == self.selected_index
                 item_classes = "session-item -selected" if is_selected else "session-item"
                 bullet = "● " if is_selected else "  "
                 title_text = s.title
@@ -180,7 +179,7 @@ class SessionsModal(ModalScreen[Optional[str]]):
     def update_selection(self) -> None:
         rows = list(self.query("#sessions-list .session-item"))
         for idx, row in enumerate(rows):
-            is_selected = (idx == self.selected_index)
+            is_selected = idx == self.selected_index
             row.set_class(is_selected, "-selected")
             try:
                 txt_widget = row.query_one(".session-item-text", Static)

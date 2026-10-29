@@ -43,10 +43,16 @@ NAME = "lang2sim-demo"
 
 def main() -> int:
     sys.stdout.reconfigure(line_buffering=True)  # keep our lines in order with `docker logs -f`
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--display", choices=DISPLAY_MODES, help="override the auto-chosen display mode")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--display", choices=DISPLAY_MODES, help="override the auto-chosen display mode"
+    )
     ap.add_argument("--software", action="store_true", help="force CPU rendering")
-    ap.add_argument("--image", default=None, help="sim image (default: $L2S_IMAGE or lang2sim-sim:dev)")
+    ap.add_argument(
+        "--image", default=None, help="sim image (default: $L2S_IMAGE or lang2sim-sim:dev)"
+    )
     ap.add_argument("--loop", type=int, default=1, help="tours to drive (0 = forever)")
     ap.add_argument("--hold", action="store_true", help="keep the sim open after the mission")
     ap.add_argument("--no-rviz", action="store_true")
@@ -79,9 +85,12 @@ def main() -> int:
     if a.no_gazebo_gui or not plan.has_gui:
         env["L2S_DEMO_GUI"] = "false"
 
-    opts = default_run_options(plan, image=image, project_src=REPO, host_env=plat.env, has_dxg=hw.has_dxg)
-    opts = dataclasses.replace(opts, name=NAME, extra_env=env,
-                               command=("bash", "-c", " ".join(inside)))
+    opts = default_run_options(
+        plan, image=image, project_src=REPO, host_env=plat.env, has_dxg=hw.has_dxg
+    )
+    opts = dataclasses.replace(
+        opts, name=NAME, extra_env=env, command=("bash", "-c", " ".join(inside))
+    )
 
     runner = DockerRunner()
     print(f"[demo] starting {opts.image} as '{NAME}'")

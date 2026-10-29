@@ -42,9 +42,13 @@ def generate_launch_description():
     args = [
         DeclareLaunchArgument("gui", default_value="true", description="Gazebo GUI window"),
         DeclareLaunchArgument("rviz", default_value="true", description="RViz2 with Nav2 panels"),
-        DeclareLaunchArgument("world", default_value=os.path.join(tb3_gz, "worlds", "turtlebot3_world.world")),
+        DeclareLaunchArgument(
+            "world", default_value=os.path.join(tb3_gz, "worlds", "turtlebot3_world.world")
+        ),
         DeclareLaunchArgument("map", default_value=os.path.join(tb3_nav, "map", "map.yaml")),
-        DeclareLaunchArgument("params_file", default_value=os.path.join(tb3_nav, "param", "waffle.yaml")),
+        DeclareLaunchArgument(
+            "params_file", default_value=os.path.join(tb3_nav, "param", "waffle.yaml")
+        ),
         DeclareLaunchArgument("x_pose", default_value="-2.0"),
         DeclareLaunchArgument("y_pose", default_value="-0.5"),
     ]
@@ -62,7 +66,9 @@ def generate_launch_description():
     )
     # robot_state_publisher (URDF -> /tf_static, /robot_description)
     rsp = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(tb3_gz, "launch", "robot_state_publisher.launch.py")),
+        PythonLaunchDescriptionSource(
+            os.path.join(tb3_gz, "launch", "robot_state_publisher.launch.py")
+        ),
         launch_arguments={"use_sim_time": "true"}.items(),
     )
     # Spawn the waffle + ros_gz_bridge (/clock /scan /odom /tf /cmd_vel /joint_states /imu)
@@ -73,20 +79,41 @@ def generate_launch_description():
     )
     # Nav2: map_server + AMCL (map->odom) + planner/controller/BT navigator.
     # Delayed so /clock and the robot's TF exist before the lifecycle manager activates.
-    nav2 = TimerAction(period=5.0, actions=[IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(os.path.join(nav2_bringup, "launch", "bringup_launch.py")),
-        launch_arguments={"map": map_yaml, "use_sim_time": "true",
-                          "params_file": params, "autostart": "true"}.items(),
-    )])
+    nav2 = TimerAction(
+        period=5.0,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(nav2_bringup, "launch", "bringup_launch.py")
+                ),
+                launch_arguments={
+                    "map": map_yaml,
+                    "use_sim_time": "true",
+                    "params_file": params,
+                    "autostart": "true",
+                }.items(),
+            )
+        ],
+    )
     rviz_node = Node(
-        package="rviz2", executable="rviz2", name="rviz2", output="log",
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2",
+        output="log",
         arguments=["-d", os.path.join(tb3_nav, "rviz", "tb3_navigation2.rviz")],
         parameters=[{"use_sim_time": True}],
         condition=IfCondition(rviz),
     )
 
-    return LaunchDescription([
-        *args,
-        AppendEnvironmentVariable("GZ_SIM_RESOURCE_PATH", os.path.join(tb3_gz, "models")),
-        gz_server, gz_gui, rsp, spawn, nav2, rviz_node,
-    ])
+    return LaunchDescription(
+        [
+            *args,
+            AppendEnvironmentVariable("GZ_SIM_RESOURCE_PATH", os.path.join(tb3_gz, "models")),
+            gz_server,
+            gz_gui,
+            rsp,
+            spawn,
+            nav2,
+            rviz_node,
+        ]
+    )

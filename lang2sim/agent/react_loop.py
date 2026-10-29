@@ -4,10 +4,11 @@ File: lang2sim/agent/react_loop.py
 """
 
 import json
-from typing import List, Dict, Any, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from .nemotron_client import NemotronClient
-from .tools import TOOL_REGISTRY, execute_tool
+from .tools import execute_tool
 
 SYSTEM_PROMPT = """You are the Sim2Lang Autonomous Simulation Supervisor Agent.
 Your role is to translate natural language robotics requests into validated, collision-free Gazebo simulations and Nav2 missions.
@@ -23,15 +24,16 @@ Available Tools:
 - query_robot_telemetry()
 """
 
+
 class ReActSupervisor:
     """Manages multi-turn conversation memory and tool execution."""
 
-    def __init__(self, client: Optional[NemotronClient] = None, workspace_root: Optional[Path] = None):
+    def __init__(
+        self, client: Optional[NemotronClient] = None, workspace_root: Optional[Path] = None
+    ):
         self.client = client or NemotronClient()
         self.workspace_root = workspace_root or Path.cwd()
-        self.messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT}
-        ]
+        self.messages: List[Dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     def add_user_message(self, content: str) -> None:
         self.messages.append({"role": "user", "content": content})
@@ -43,11 +45,7 @@ class ReActSupervisor:
 
     def run_tool(self, tool_name: str, **kwargs) -> Dict[str, Any]:
         result = execute_tool(tool_name, **kwargs)
-        self.messages.append({
-            "role": "tool",
-            "name": tool_name,
-            "content": json.dumps(result)
-        })
+        self.messages.append({"role": "tool", "name": tool_name, "content": json.dumps(result)})
         self._persist_context()
         return result
 

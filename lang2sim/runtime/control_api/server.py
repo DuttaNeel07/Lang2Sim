@@ -100,21 +100,26 @@ def read_runtime_env(path: Path = RUNTIME_ENV_FILE) -> Dict[str, str]:
 def model_search_paths(run_dir: Path) -> List[Path]:
     """Where model:// URIs may resolve: Gazebo's path, TurtleBot3 models, catalog, the run's own models/."""
     paths = world_check.default_model_paths()
-    for p in (os.getenv("L2S_CATALOG_DIR", "/lang2sim/catalog") + "/models",
-              str(run_dir / "models"),
-              f"/opt/ros/{os.getenv('ROS_DISTRO', 'jazzy')}/share/turtlebot3_gazebo/models"):
+    for p in (
+        os.getenv("L2S_CATALOG_DIR", "/lang2sim/catalog") + "/models",
+        str(run_dir / "models"),
+        f"/opt/ros/{os.getenv('ROS_DISTRO', 'jazzy')}/share/turtlebot3_gazebo/models",
+    ):
         if Path(p).is_dir():
             paths.append(Path(p))
     return paths
 
 
-ROBOT_NAME = "waffle"   # TurtleBot3 variant, and the entity name it is spawned under
+ROBOT_NAME = "waffle"  # TurtleBot3 variant, and the entity name it is spawned under
 
 
 def tb3_gazebo_share() -> Optional[Path]:
     """turtlebot3_gazebo's share directory inside the container, or None."""
     try:
-        from ament_index_python.packages import get_package_share_directory  # type: ignore[import-not-found]
+        from ament_index_python.packages import (  # type: ignore[import-not-found]
+            get_package_share_directory,
+        )
+
         return Path(get_package_share_directory("turtlebot3_gazebo"))
     except Exception:  # noqa: BLE001 - no ament index (host tests) or package missing
         p = Path(f"/opt/ros/{os.getenv('ROS_DISTRO', 'jazzy')}/share/turtlebot3_gazebo")
@@ -139,10 +144,14 @@ class SimProcess:
         self.was_ready = False
         self.world_report: Optional[world_check.WorldReport] = None
         self.launch_file: Optional[Path] = None
-        self.telemetry_setup: Dict[str, Any] = {"enabled": False, "collision": None, "reason": "not started"}
+        self.telemetry_setup: Dict[str, Any] = {
+            "enabled": False,
+            "collision": None,
+            "reason": "not started",
+        }
         self.world_name: str = ""
         self.log: Deque[str] = collections.deque(maxlen=LOG_RING_LINES)
-        self.lines_total = 0                      # monotonic, unlike the ring's length
+        self.lines_total = 0  # monotonic, unlike the ring's length
         self._log_file: Optional[Path] = None
 
     # --- preparation ---------------------------------------------------------
@@ -167,7 +176,9 @@ class SimProcess:
             world_sdf=str(world_to_load),
             world_name=world_name,
             map_yaml=req.map_yaml_path,
-            x=req.initial_pose.x, y=req.initial_pose.y, yaw=req.initial_pose.yaw,
+            x=req.initial_pose.x,
+            y=req.initial_pose.y,
+            yaw=req.initial_pose.yaw,
             gui=req.use_gui and has_display,
             rviz=req.use_rviz and has_display,
             camera=os.getenv("L2S_CAMERA", "1") != "0",
@@ -201,14 +212,19 @@ class SimProcess:
             else:
                 try:
                     sdf, yml, coll = robot_instrument.write_instrumented(
-                        run_dir, stock_sdf, stock_bridge, world=world_name, robot=ROBOT_NAME)
+                        run_dir, stock_sdf, stock_bridge, world=world_name, robot=ROBOT_NAME
+                    )
                     self.telemetry_setup.update(enabled=True, collision=coll, reason="ok")
-                    log.write_text(f"telemetry: instrumented {model} (bumper on {coll}, ground truth)\n"
-                                   f"robot: {sdf}\nbridge: {yml}\n")
+                    log.write_text(
+                        f"telemetry: instrumented {model} (bumper on {coll}, ground truth)\n"
+                        f"robot: {sdf}\nbridge: {yml}\n"
+                    )
                     return str(sdf), str(yml)
                 except (OSError, robot_instrument.InstrumentError) as e:
                     self.telemetry_setup["reason"] = f"instrumentation failed: {e}"
-        log.write_text(f"telemetry: stock robot, no bumper/ground truth: {self.telemetry_setup['reason']}\n")
+        log.write_text(
+            f"telemetry: stock robot, no bumper/ground truth: {self.telemetry_setup['reason']}\n"
+        )
         return "", ""
 
     # Overridden in tests.
@@ -254,10 +270,16 @@ class SimProcess:
             self.started_at = time.time()
             self.proc = subprocess.Popen(
                 self.build_command(req),
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
-                cwd=str(run_dir), start_new_session=True,  # own process group for clean stop
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=str(run_dir),
+                start_new_session=True,  # own process group for clean stop
             )
-            threading.Thread(target=self._pump, args=(self.proc, self._log_file), daemon=True).start()
+            threading.Thread(
+                target=self._pump, args=(self.proc, self._log_file), daemon=True
+            ).start()
 
     def _pump(self, proc: subprocess.Popen, log_file: Optional[Path]) -> None:
         assert proc.stdout is not None
@@ -276,7 +298,7 @@ class SimProcess:
         with self._lock:
             proc = self.proc
             self.stopped = True
-            if proc is None or proc.poll() is not None:   # never started, or already exited
+            if proc is None or proc.poll() is not None:  # never started, or already exited
                 return
             if hasattr(os, "killpg"):
                 sig_kill = getattr(signal, "SIGKILL", signal.SIGTERM)
@@ -320,8 +342,12 @@ def _pose(x: float, y: float, yaw: float) -> Pose2D:
 HEAL_PERIOD_S = 2.0
 
 
-def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any = None,
-               node_control: Optional[Callable[[Path], Any]] = None) -> FastAPI:
+def create_app(
+    sim: Optional[SimProcess] = None,
+    use_ros: bool = True,
+    nav: Any = None,
+    node_control: Optional[Callable[[Path], Any]] = None,
+) -> FastAPI:
     """`use_ros=False` (tests) skips the rclpy bridge and the healer thread; both are also
     skipped where ROS is absent.
 
@@ -329,8 +355,15 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     Self-healing is on unless L2S_SELF_HEAL=0.
     """
     sim = sim or SimProcess()
-    state: Dict[str, Any] = {"bridge": None, "nav": nav, "healer": None, "nodes": None,
-                             "seen": 0, "localized": False, "record": None}
+    state: Dict[str, Any] = {
+        "bridge": None,
+        "nav": nav,
+        "healer": None,
+        "nodes": None,
+        "seen": 0,
+        "localized": False,
+        "record": None,
+    }
     monitor = HealthMonitor()
     make_nodes = node_control or (lambda run_dir: NodeControl(run_dir))
     heal_enabled = os.getenv("L2S_SELF_HEAL", "1") != "0"
@@ -340,14 +373,17 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         stop = threading.Event()
         if use_ros:
             from lang2sim.runtime.ros_bridge import RosBridge
+
             state["bridge"] = RosBridge.try_create()
             if state["bridge"] and heal_enabled:
+
                 def loop() -> None:
                     while not stop.wait(HEAL_PERIOD_S):
                         try:
                             heal_tick()
                         except Exception:  # noqa: BLE001 - the healer must never kill the API
                             pass
+
                 threading.Thread(target=loop, name="l2s-heal", daemon=True).start()
         yield
         stop.set()
@@ -377,7 +413,8 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             ready=bool(ready) and st == "running",
             readiness=checks,
             world_report=[f"[{i.level}] {i.code}: {i.message}" for i in sim.world_report.issues]
-            if sim.world_report else [],
+            if sim.world_report
+            else [],
         )
 
     def telemetry_now() -> SimStatus:
@@ -388,7 +425,9 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         if env.get("L2S_EFFECTIVE_DISPLAY_MODE") == "headless":
             render = "headless"
         else:
-            render = {"nvidia": "gpu", "dri": "dri"}.get(env.get("L2S_EFFECTIVE_GPU", ""), "software")
+            render = {"nvidia": "gpu", "dri": "dri"}.get(
+                env.get("L2S_EFFECTIVE_GPU", ""), "software"
+            )
         pose = (snap.map_pose or snap.odom_pose) if snap else None
         vel = snap.velocity if snap else None
         health = monitor.evaluate(st.status, snap).health
@@ -405,6 +444,7 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def dispatcher():
         if state["nav"] is None:
             from lang2sim.runtime.nav2_dispatcher import NavDispatcher
+
             state["nav"] = NavDispatcher()
         return state["nav"]
 
@@ -412,8 +452,11 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         st = current_status()
         if not st.ready:
             failed = [k for k, v in st.readiness.items() if not v]
-            raise HTTPException(409, f"simulation is {st.status}, not ready"
-                                     + (f" (waiting for: {', '.join(failed)})" if failed else ""))
+            raise HTTPException(
+                409,
+                f"simulation is {st.status}, not ready"
+                + (f" (waiting for: {', '.join(failed)})" if failed else ""),
+            )
 
     def heal_tick() -> List[dict]:
         """One supervisor pass: observe, classify, recover. Called every HEAL_PERIOD_S."""
@@ -425,9 +468,14 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         if snap is not None and snap.map_pose is not None:
             state["localized"] = True
         lines, state["seen"] = sim.lines_since(state["seen"])
-        obs = Observation(lines=lines, snap=snap, alive=state["nodes"].alive(),
-                          nav=state["nav"].status() if state["nav"] else None,
-                          sim_running=True, was_localized=state["localized"] or sim.was_ready)
+        obs = Observation(
+            lines=lines,
+            snap=snap,
+            alive=state["nodes"].alive(),
+            nav=state["nav"].status() if state["nav"] else None,
+            sim_running=True,
+            was_localized=state["localized"] or sim.was_ready,
+        )
         return healer.handle(classify(obs))
 
     def new_healer(req: SimStartRequest) -> None:
@@ -439,18 +487,29 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
             st = state["nav"].status() if state["nav"] else None
             return st.target_pose if st and (st.is_active or st.status == "failed") else None
 
-        state.update(nodes=nodes, seen=0, localized=False, healer=SelfHealer(
-            Path(req.run_dir), restart_node=nodes.restart, current_goal=current_goal,
-            resend_goal=lambda p: bool(dispatcher().resume_with(p)),
-            map_yaml=Path(req.map_yaml_path)))
+        state.update(
+            nodes=nodes,
+            seen=0,
+            localized=False,
+            healer=SelfHealer(
+                Path(req.run_dir),
+                restart_node=nodes.restart,
+                current_goal=current_goal,
+                resend_goal=lambda p: bool(dispatcher().resume_with(p)),
+                map_yaml=Path(req.map_yaml_path),
+            ),
+        )
 
     app.state.heal_tick = heal_tick
 
     @v1.get("/health")
     def health() -> dict:
-        return {"status": "ok", "version": lang2sim.__version__,
-                "uptime_s": round(time.time() - _STARTED_AT, 1),
-                "ros": state["bridge"] is not None}
+        return {
+            "status": "ok",
+            "version": lang2sim.__version__,
+            "uptime_s": round(time.time() - _STARTED_AT, 1),
+            "ros": state["bridge"] is not None,
+        }
 
     @v1.get("/info")
     def info() -> dict:
@@ -482,12 +541,17 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         try:
             sim.start(req)
         except RuntimeError as e:
-            raise HTTPException(409, str(e))
+            raise HTTPException(409, str(e)) from e
         except FileNotFoundError as e:
-            raise HTTPException(404, f"not found in container: {e}")
+            raise HTTPException(404, f"not found in container: {e}") from e
         except WorldRejected as e:
-            raise HTTPException(422, {"message": "world rejected by pre-flight check",
-                                      "issues": [vars(i) for i in e.report.issues]})
+            raise HTTPException(
+                422,
+                {
+                    "message": "world rejected by pre-flight check",
+                    "issues": [vars(i) for i in e.report.issues],
+                },
+            ) from e
         new_healer(req)
         if state["bridge"]:
             state["bridge"].expect_ground_truth = bool(sim.telemetry_setup.get("enabled"))
@@ -503,8 +567,13 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def sim_health() -> dict:
         bridge = state["bridge"]
         r = monitor.evaluate(current_status().status, bridge.snapshot() if bridge else None)
-        return {"health": r.health, "issues": r.issues, "rtf": r.rtf, "sim_time": r.sim_time,
-                "readiness": r.readiness}
+        return {
+            "health": r.health,
+            "issues": r.issues,
+            "rtf": r.rtf,
+            "sim_time": r.sim_time,
+            "readiness": r.readiness,
+        }
 
     @v1.get("/heal/log")
     def heal_log(tail: int = Query(100, ge=1, le=1000)) -> dict:
@@ -571,7 +640,9 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def recording_bridge():
         bridge = state["bridge"]
         if bridge is None or not hasattr(bridge, "record_start"):
-            raise HTTPException(503, "telemetry needs the ROS bridge (not available in this container)")
+            raise HTTPException(
+                503, "telemetry needs the ROS bridge (not available in this container)"
+            )
         return bridge
 
     @v1.get("/telemetry/live", response_model=TelemetryLive)
@@ -592,10 +663,11 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         stream = None
         if sim.request is not None:
             from lang2sim.runtime.telemetry_recorder import partial_path
+
             stream = partial_path(Path(sim.request.run_dir) / "logs", req.label)
         try:
             bridge.record_start(req.label, goal=goal, rate_hz=req.rate_hz, stream_path=stream)
-        except TypeError:   # bridge without streaming support
+        except TypeError:  # bridge without streaming support
             bridge.record_start(req.label, goal=goal, rate_hz=req.rate_hz)
         state["record"] = {"label": req.label, "wall0": time.time(), "partial": stream}
         return live_now()
@@ -613,9 +685,12 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         state["record"] = None
         try:
             from lang2sim.perturbation.routers.world import spawned_since
+
             # Everything spawned in this sim session so far is still in the world (nothing deletes
             # entities), so a crate left from an earlier run is an obstacle for this one too.
-            spawned = [{**e, "during_run": e["wall_time"] >= rec["wall0"]} for e in spawned_since(0.0)]
+            spawned = [
+                {**e, "during_run": e["wall_time"] >= rec["wall0"]} for e in spawned_since(0.0)
+            ]
         except ImportError:
             spawned = []
         data["meta"]["spawned_entities"] = spawned
@@ -627,15 +702,20 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_text(json.dumps(data, indent=1), encoding="utf-8")
                 path = str(out)
-                if rec.get("partial"):                       # final file is safe: drop the stream
+                if rec.get("partial"):  # final file is safe: drop the stream
                     Path(rec["partial"]).unlink(missing_ok=True)
             except OSError:
                 path = None
         return TelemetryRecordResult(
-            label=data["label"], samples=len(samples),
+            label=data["label"],
+            samples=len(samples),
             duration_s=round(samples[-1]["t"] - samples[0]["t"], 3) if len(samples) >= 2 else 0.0,
-            collisions=data["collisions"], pose_source=data["meta"]["pose_source"], path=path,
-            trajectory=data, spawned_entities=spawned)
+            collisions=data["collisions"],
+            pose_source=data["meta"]["pose_source"],
+            path=path,
+            trajectory=data,
+            spawned_entities=spawned,
+        )
 
     @v1.websocket("/nav/feedback")
     async def nav_feedback(ws: WebSocket, hz: float = 5.0) -> None:
@@ -644,18 +724,21 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
         try:
             while True:
                 st = current_status()
-                await ws.send_json({
-                    "nav": nav_status().model_dump(mode="json"),
-                    "telemetry": telemetry_now().model_dump(mode="json"),
-                    "live": live_now().model_dump(mode="json"),
-                    "sim": {"status": st.status, "ready": st.ready, "rtf": st.rtf},
-                })
+                await ws.send_json(
+                    {
+                        "nav": nav_status().model_dump(mode="json"),
+                        "telemetry": telemetry_now().model_dump(mode="json"),
+                        "live": live_now().model_dump(mode="json"),
+                        "sim": {"status": st.status, "ready": st.ready, "rtf": st.rtf},
+                    }
+                )
                 await asyncio.sleep(period)
         except (WebSocketDisconnect, RuntimeError):
             pass
 
     try:
         from lang2sim.perturbation.routers.world import router as world_router
+
         v1.include_router(world_router)
     except ImportError:
         pass
@@ -666,14 +749,21 @@ def create_app(sim: Optional[SimProcess] = None, use_ros: bool = True, nav: Any 
     def spawned_now() -> List[Dict[str, Any]]:
         try:
             from lang2sim.perturbation.routers.world import spawned_since
+
             return spawned_since(0.0)
         except ImportError:
             return []
 
     from lang2sim.runtime.dashboard import make_router as dashboard_router
-    app.include_router(dashboard_router(
-        lambda: Path(sim.request.run_dir) if sim.request is not None else None, mode="live",
-        get_world=lambda: sim.world_name, get_spawned=spawned_now))
+
+    app.include_router(
+        dashboard_router(
+            lambda: Path(sim.request.run_dir) if sim.request is not None else None,
+            mode="live",
+            get_world=lambda: sim.world_name,
+            get_spawned=spawned_now,
+        )
+    )
     return app
 
 

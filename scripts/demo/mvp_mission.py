@@ -76,9 +76,11 @@ def main() -> int:
                 fb = nav.getFeedback()
                 if fb and time.monotonic() - last > 2.0:
                     last = time.monotonic()
-                    log(f"    {fb.distance_remaining:5.2f} m to go, "
+                    log(
+                        f"    {fb.distance_remaining:5.2f} m to go, "
                         f"nav time {Duration.from_msg(fb.navigation_time).nanoseconds / 1e9:5.1f}s, "
-                        f"recoveries {fb.number_of_recoveries}")
+                        f"recoveries {fb.number_of_recoveries}"
+                    )
                     if Duration.from_msg(fb.navigation_time) > Duration(seconds=a.goal_timeout):
                         log("    goal timeout: cancelling")
                         nav.cancelTask()

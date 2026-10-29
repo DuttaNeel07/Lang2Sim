@@ -61,15 +61,18 @@ class DisplayPlan:
         return f"{view}{extra} [render: {self.gpu}]"
 
 
-def _gpu_for_linux_host(platform: HostPlatform, hw: HardwareInfo,
-                        reasons: List[str]) -> GpuMode:
+def _gpu_for_linux_host(platform: HostPlatform, hw: HardwareInfo, reasons: List[str]) -> GpuMode:
     nv = hw.nvidia
     if nv is not None:
         if not platform.docker.has_nvidia_runtime:
-            reasons.append("NVIDIA GPU found but Docker has no nvidia runtime "
-                           "(install nvidia-container-toolkit)")
+            reasons.append(
+                "NVIDIA GPU found but Docker has no nvidia runtime "
+                "(install nvidia-container-toolkit)"
+            )
         elif nv.vram_total_mb is not None and nv.vram_total_mb < LOW_VRAM_MB:
-            reasons.append(f"NVIDIA VRAM {nv.vram_total_mb} MB < {LOW_VRAM_MB} MB: software rendering")
+            reasons.append(
+                f"NVIDIA VRAM {nv.vram_total_mb} MB < {LOW_VRAM_MB} MB: software rendering"
+            )
             return "software"
         else:
             reasons.append(f"NVIDIA GPU: {nv.name or 'detected'}")
@@ -81,10 +84,13 @@ def _gpu_for_linux_host(platform: HostPlatform, hw: HardwareInfo,
     return "software"
 
 
-def choose_display(platform: HostPlatform, hw: HardwareInfo,
-                   prefer: Optional[DisplayMode] = None,
-                   force_software: bool = False,
-                   foxglove: Optional[bool] = None) -> DisplayPlan:
+def choose_display(
+    platform: HostPlatform,
+    hw: HardwareInfo,
+    prefer: Optional[DisplayMode] = None,
+    force_software: bool = False,
+    foxglove: Optional[bool] = None,
+) -> DisplayPlan:
     """Pick the display/GPU plan for this host. `prefer` overrides the mode."""
     reasons: List[str] = []
     if prefer is not None and prefer not in DISPLAY_MODES:
@@ -104,8 +110,10 @@ def choose_display(platform: HostPlatform, hw: HardwareInfo,
         reasons.append(f"X11 display {platform.display}")
     elif platform.os == "macos":
         mode = "headless"
-        reasons.append("macOS: Docker has no GPU/X11 passthrough; Foxglove by default "
-                       "(use --display vnc for the real Gazebo GUI)")
+        reasons.append(
+            "macOS: Docker has no GPU/X11 passthrough; Foxglove by default "
+            "(use --display vnc for the real Gazebo GUI)"
+        )
     elif platform.os == "windows":
         mode = "vnc"
         reasons.append("Windows outside WSL2: noVNC (run from WSL2 for WSLg)")
@@ -117,7 +125,9 @@ def choose_display(platform: HostPlatform, hw: HardwareInfo,
         gpu = _gpu_for_linux_host(platform, hw, reasons)
     elif mode == "wslg":
         gpu = "dri" if hw.has_dxg else "software"
-        reasons.append("WSL GPU via /dev/dxg (d3d12)" if hw.has_dxg else "no /dev/dxg: software rendering")
+        reasons.append(
+            "WSL GPU via /dev/dxg (d3d12)" if hw.has_dxg else "no /dev/dxg: software rendering"
+        )
     else:
         gpu = "software"
 

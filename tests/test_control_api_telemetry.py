@@ -64,9 +64,11 @@ def make_bridge():
 
 
 def odom(t, x, y=0.0):
-    return NS(header=NS(stamp=NS(sec=int(t), nanosec=int(round((t % 1) * 1e9)))),
-              pose=NS(pose=NS(position=NS(x=x, y=y, z=0.0), orientation=NS(x=0.0, y=0.0, z=0.0, w=1.0))),
-              twist=NS(twist=NS(linear=NS(x=0.2, y=0.0, z=0.0), angular=NS(x=0.0, y=0.0, z=0.0))))
+    return NS(
+        header=NS(stamp=NS(sec=int(t), nanosec=int(round((t % 1) * 1e9)))),
+        pose=NS(pose=NS(position=NS(x=x, y=y, z=0.0), orientation=NS(x=0.0, y=0.0, z=0.0, w=1.0))),
+        twist=NS(twist=NS(linear=NS(x=0.2, y=0.0, z=0.0), angular=NS(x=0.0, y=0.0, z=0.0))),
+    )
 
 
 @pytest.fixture
@@ -75,8 +77,12 @@ def setup(tmp_path):
     run.mkdir()
     (run / "world.sdf").write_text(WORLD)
     (run / "map.yaml").write_text("image: map.pgm\n")
-    req = SimStartRequest(run_dir=str(run), world_sdf_path=str(run / "world.sdf"),
-                          map_yaml_path=str(run / "map.yaml"), initial_pose=Pose2D(x=-2, y=-0.5))
+    req = SimStartRequest(
+        run_dir=str(run),
+        world_sdf_path=str(run / "world.sdf"),
+        map_yaml_path=str(run / "map.yaml"),
+        initial_pose=Pose2D(x=-2, y=-0.5),
+    )
     sim = FakeSim()
     app = create_app(sim, use_ros=False)
     bridge = make_bridge()
@@ -89,13 +95,21 @@ def setup(tmp_path):
 def test_live_and_record_roundtrip_writes_trajectory(setup):
     app, bridge, req, run = setup
     with TestClient(app) as c:
-        assert c.post("/v1/telemetry/record/start", json={"label": "nominal"}).status_code == 409  # no sim
+        assert (
+            c.post("/v1/telemetry/record/start", json={"label": "nominal"}).status_code == 409
+        )  # no sim
         assert c.post("/v1/sim/start", json=req.model_dump(mode="json")).status_code == 202
-        assert bridge._s.spawn == (-2.0, -0.5, 0.0)          # odom origin handed to the bridge
-        r = c.post("/v1/telemetry/record/start",
-                   json={"label": "nominal", "goal": {"x": 3.0, "y": -0.5, "yaw": 0.0}, "rate_hz": 10})
-        assert r.status_code == 202 and r.json()["recording"] and r.json()["recording_label"] == "nominal"
-        for i in range(30):                                 # 3 s of /odom at 10 Hz
+        assert bridge._s.spawn == (-2.0, -0.5, 0.0)  # odom origin handed to the bridge
+        r = c.post(
+            "/v1/telemetry/record/start",
+            json={"label": "nominal", "goal": {"x": 3.0, "y": -0.5, "yaw": 0.0}, "rate_hz": 10},
+        )
+        assert (
+            r.status_code == 202
+            and r.json()["recording"]
+            and r.json()["recording_label"] == "nominal"
+        )
+        for i in range(30):  # 3 s of /odom at 10 Hz
             bridge._on_odom(odom(100.0 + 0.1 * i, 0.1 * i))
         live = c.get("/v1/telemetry/live").json()
         assert live["pose_source"] == "map" and live["samples_recorded"] >= 29
@@ -114,7 +128,7 @@ def test_record_stop_reports_every_obstacle_in_the_world(setup):
     app, bridge, req, run = setup
     with TestClient(app) as c:
         c.post("/v1/sim/start", json=req.model_dump(mode="json"))
-        world_router.record_spawn("old_box", "cargo_box", 9.0, 9.0)   # before the recording
+        world_router.record_spawn("old_box", "cargo_box", 9.0, 9.0)  # before the recording
         time.sleep(0.01)
         c.post("/v1/telemetry/record/start", json={"label": "adversarial"})
         world_router.record_spawn("wooden_crate_1", "wooden_crate", 3.5, 2.0)
@@ -123,7 +137,9 @@ def test_record_stop_reports_every_obstacle_in_the_world(setup):
         res = c.post("/v1/telemetry/record/stop").json()
         # The box from before the recording is still in the world: an obstacle for this run too.
         assert [(e["name"], e["during_run"]) for e in res["spawned_entities"]] == [
-            ("old_box", False), ("wooden_crate_1", True)]
+            ("old_box", False),
+            ("wooden_crate_1", True),
+        ]
         assert res["spawned_entities"][1]["r"] == pytest.approx(0.4243)
         assert res["trajectory"]["meta"]["spawned_entities"][1]["x"] == 3.5
 
@@ -157,7 +173,7 @@ def test_client_methods(setup):
             for i in range(4):
                 bridge._on_odom(odom(1.0 + 0.1 * i, 0.0))
             res = await api.record_stop()
-            assert res.samples == 4 and res.pose_source == "odom"   # recording uses TF, absent here
+            assert res.samples == 4 and res.pose_source == "odom"  # recording uses TF, absent here
             assert (await api.telemetry_live()).recording is False
             with pytest.raises(ControlAPIError):
                 await api.record_stop()

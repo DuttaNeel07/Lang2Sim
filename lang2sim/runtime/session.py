@@ -21,7 +21,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
 
-from lang2sim.core.models import NavStatus, Pose2D, SimSpec, SimStatusResponse, TelemetryRecordResult
+from lang2sim.core.models import (
+    NavStatus,
+    SimSpec,
+    SimStatusResponse,
+    TelemetryRecordResult,
+)
 from lang2sim.runtime.control_api.client import ControlClient
 from lang2sim.runtime.display import DisplayPlan
 from lang2sim.runtime.docker_runner import DockerRunner, RunOptions, default_run_options
@@ -32,11 +37,15 @@ cfg = importlib.import_module("lang2sim.core.config")
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "catalog" / "fixtures"
 ProgressFn = Callable[[SimStatusResponse, float], None]
 NavProgressFn = Callable[[NavStatus], None]
-TriggerFn = Callable[[Dict[str, Any], Optional[str]], None]   # (trigger, error or None)
+TriggerFn = Callable[[Dict[str, Any], Optional[str]], None]  # (trigger, error or None)
 
 
-def due_triggers(triggers: Sequence[Mapping[str, Any]], fired: Set[int], elapsed_s: float,
-                 distance_remaining: Optional[float]) -> List[int]:
+def due_triggers(
+    triggers: Sequence[Mapping[str, Any]],
+    fired: Set[int],
+    elapsed_s: float,
+    distance_remaining: Optional[float],
+) -> List[int]:
     """Indices of adversarial triggers (DynamicObstacleTrigger dicts) that should fire now.
 
     immediate: at once; time: `trigger_value` sim seconds after the run started;
@@ -48,10 +57,16 @@ def due_triggers(triggers: Sequence[Mapping[str, Any]], fired: Set[int], elapsed
         if i in fired:
             continue
         kind, value = tr.get("trigger_type"), float(tr.get("trigger_value", 0.0))
-        if (kind == "immediate"
-                or (kind == "time" and elapsed_s >= value)
-                or (kind == "waypoint_distance" and distance_remaining is not None
-                    and elapsed_s > 0 and distance_remaining <= value)):
+        if (
+            kind == "immediate"
+            or (kind == "time" and elapsed_s >= value)
+            or (
+                kind == "waypoint_distance"
+                and distance_remaining is not None
+                and elapsed_s > 0
+                and distance_remaining <= value
+            )
+        ):
             due.append(i)
     return due
 
@@ -59,6 +74,7 @@ def due_triggers(triggers: Sequence[Mapping[str, Any]], fired: Set[int], elapsed
 @dataclasses.dataclass
 class RecordedRun:
     """One mission driven with telemetry recording on, and its NQI score."""
+
     nav: NavStatus
     result: TelemetryRecordResult
     scored: Dict[str, Any]
@@ -92,28 +108,43 @@ def copy_fixture(name: str, project: Optional[str] = None) -> Path:
     """Copy catalog/fixtures/<name> into a fresh ~/.lang2sim/projects/<project>/runs/<ts>/."""
     src = FIXTURES_DIR / name
     if not src.is_dir():
-        available = sorted(p.name for p in FIXTURES_DIR.iterdir() if p.is_dir()) if FIXTURES_DIR.is_dir() else []
-        raise FileNotFoundError(f"no fixture '{name}' (available: {', '.join(available) or 'none'})")
+        available = (
+            sorted(p.name for p in FIXTURES_DIR.iterdir() if p.is_dir())
+            if FIXTURES_DIR.is_dir()
+            else []
+        )
+        raise FileNotFoundError(
+            f"no fixture '{name}' (available: {', '.join(available) or 'none'})"
+        )
     run = cfg.get_run_dir(project or name)
     shutil.copytree(src, run, dirs_exist_ok=True)
     return run
 
 
 class SimSession:
-    def __init__(self, plan: DisplayPlan, *, image: Optional[str] = None, dev_src: Optional[Path] = None,
-                 host_env: Optional[Dict[str, str]] = None, has_dxg: bool = False,
-                 extra_env: Optional[Dict[str, str]] = None, runner: Optional[DockerRunner] = None,
-                 opts: Optional[RunOptions] = None):
+    def __init__(
+        self,
+        plan: DisplayPlan,
+        *,
+        image: Optional[str] = None,
+        dev_src: Optional[Path] = None,
+        host_env: Optional[Dict[str, str]] = None,
+        has_dxg: bool = False,
+        extra_env: Optional[Dict[str, str]] = None,
+        runner: Optional[DockerRunner] = None,
+        opts: Optional[RunOptions] = None,
+    ):
         self.plan = plan
         self.runner = runner or DockerRunner()
-        base = opts or default_run_options(plan, image=image, project_src=dev_src,
-                                           host_env=host_env, has_dxg=has_dxg)
+        base = opts or default_run_options(
+            plan, image=image, project_src=dev_src, host_env=host_env, has_dxg=has_dxg
+        )
         self.opts = dataclasses.replace(base, extra_env={**base.extra_env, **(extra_env or {})})
         self.api = ControlClient(f"http://127.0.0.1:{self.opts.api_port}", timeout=30)
         self.run_dir: Optional[Path] = None
 
     @classmethod
-    def attach(cls, base_url: Optional[str] = None, run_dir: Optional[Path] = None) -> "SimSession":
+    def attach(cls, base_url: Optional[str] = None, run_dir: Optional[Path] = None) -> SimSession:
         """A session bound to an already-running control API (live sim or replay), e.g. from the TUI.
 
         It does not own the container: stop() only closes the client."""
@@ -139,14 +170,26 @@ class SimSession:
         self.runner.start(self.opts)
         return await self.api.wait_until_ready(timeout=wait_s)
 
-    async def open_run(self, run_dir: Path, *, gui: bool = True, rviz: bool = True,
-                       timeout: float = 300, poll_s: float = 2.0,
-                       on_progress: Optional[ProgressFn] = None) -> SimStatusResponse:
+    async def open_run(
+        self,
+        run_dir: Path,
+        *,
+        gui: bool = True,
+        rviz: bool = True,
+        timeout: float = 300,
+        poll_s: float = 2.0,
+        on_progress: Optional[ProgressFn] = None,
+    ) -> SimStatusResponse:
         """Start the run and wait until every readiness check passes."""
         run_dir = Path(run_dir).resolve()
         manifest = load_manifest(run_dir)
-        req = to_start_request(run_dir, manifest, projects_dir=self.opts.projects_dir,
-                               gui=gui and self.plan.has_gui, rviz=rviz and self.plan.has_gui)
+        req = to_start_request(
+            run_dir,
+            manifest,
+            projects_dir=self.opts.projects_dir,
+            gui=gui and self.plan.has_gui,
+            rviz=rviz and self.plan.has_gui,
+        )
         self.run_dir = run_dir
         await self.api.sim_start(req)
         t0 = time.monotonic()
@@ -161,8 +204,13 @@ class SimSession:
                 raise SimNotReady(st, "\n".join(lines))
             await asyncio.sleep(poll_s)
 
-    async def run_mission(self, run_dir: Optional[Path] = None, *, on_progress: Optional[NavProgressFn] = None,
-                          poll_s: float = 2.0) -> NavStatus:
+    async def run_mission(
+        self,
+        run_dir: Optional[Path] = None,
+        *,
+        on_progress: Optional[NavProgressFn] = None,
+        poll_s: float = 2.0,
+    ) -> NavStatus:
         """Drive the run's spec.json mission (waypoints, then the goal) and wait for the result."""
         run_dir = Path(run_dir or self.run_dir or ".")
         spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text())
@@ -181,11 +229,18 @@ class SimSession:
             await asyncio.sleep(poll_s)
 
     # --- telemetry engine: recorded, scored missions -------------------------------------
-    async def run_recorded_mission(self, run_dir: Optional[Path] = None, *, label: str = "nominal",
-                                   triggers: Sequence[Mapping[str, Any]] = (), rate_hz: float = 20.0,
-                                   on_progress: Optional[NavProgressFn] = None,
-                                   on_trigger: Optional[TriggerFn] = None, poll_s: float = 0.5,
-                                   params: Any = None) -> RecordedRun:
+    async def run_recorded_mission(
+        self,
+        run_dir: Optional[Path] = None,
+        *,
+        label: str = "nominal",
+        triggers: Sequence[Mapping[str, Any]] = (),
+        rate_hz: float = 20.0,
+        on_progress: Optional[NavProgressFn] = None,
+        on_trigger: Optional[TriggerFn] = None,
+        poll_s: float = 0.5,
+        params: Any = None,
+    ) -> RecordedRun:
         """Drive spec.json's mission with telemetry recording, fire adversarial triggers on the way,
         and score the run (NQI). Recording always stops, even if the mission errors."""
         from lang2sim.telemetry.benchmark import score_recorded_run
@@ -210,15 +265,22 @@ class SimSession:
                     last = key
                 if triggers and len(fired) < len(triggers):
                     now = (await self.api.telemetry_live()).sim_time
-                    for i in due_triggers(triggers, fired, now - t0, st.distance_remaining if st.is_active else None):
+                    for i in due_triggers(
+                        triggers, fired, now - t0, st.distance_remaining if st.is_active else None
+                    ):
                         fired.add(i)
                         tr = triggers[i]
                         pose = tr.get("spawn_pose") or {}
                         err = None
                         try:
-                            await self.api.world_spawn({"model_name": tr.get("model_name", "wooden_crate"),
-                                                        "x": pose.get("x", 0.0), "y": pose.get("y", 0.0),
-                                                        "yaw": pose.get("yaw", 0.0)})
+                            await self.api.world_spawn(
+                                {
+                                    "model_name": tr.get("model_name", "wooden_crate"),
+                                    "x": pose.get("x", 0.0),
+                                    "y": pose.get("y", 0.0),
+                                    "yaw": pose.get("yaw", 0.0),
+                                }
+                            )
                         except Exception as e:  # noqa: BLE001 - a failed spawn must not abort the run
                             err = str(e)
                         fired_log.append({**tr, "fired_at_s": round(now - t0, 2), "error": err})
@@ -229,60 +291,108 @@ class SimSession:
                 await asyncio.sleep(poll_s)
         finally:
             result = await self.api.record_stop()
-        scored = score_recorded_run(result.trajectory, run_dir=run_dir, spec=spec, spawned=result.spawned_entities,
-                                    nav_status=st.status, params=params)
+        scored = score_recorded_run(
+            result.trajectory,
+            run_dir=run_dir,
+            spec=spec,
+            spawned=result.spawned_entities,
+            nav_status=st.status,
+            params=params,
+        )
         return RecordedRun(nav=st, result=result, scored=scored, triggers_fired=fired_log)
 
-    async def return_to_start(self, run_dir: Optional[Path] = None, *, timeout_s: float = 180.0) -> NavStatus:
+    async def return_to_start(
+        self, run_dir: Optional[Path] = None, *, timeout_s: float = 180.0
+    ) -> NavStatus:
         """Drive back to the mission's initial pose (unrecorded), e.g. between benchmark runs."""
         run_dir = Path(run_dir or self.run_dir or ".")
         spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text())
         await self.api.nav_goal(spec.mission.initial_pose, timeout_seconds=timeout_s)
         return await self.api.wait_nav_done(poll_s=1.0, timeout=timeout_s + 30)
 
-    async def run_benchmark(self, run_dir: Optional[Path] = None, *, light: Optional[float] = None,
-                            on_progress: Optional[NavProgressFn] = None, on_trigger: Optional[TriggerFn] = None,
-                            on_phase: Optional[Callable[[str], None]] = None, params: Any = None,
-                            poll_s: float = 0.5, goal_tolerance: Optional[float] = None) -> Dict[str, Any]:
+    async def run_benchmark(
+        self,
+        run_dir: Optional[Path] = None,
+        *,
+        light: Optional[float] = None,
+        on_progress: Optional[NavProgressFn] = None,
+        on_trigger: Optional[TriggerFn] = None,
+        on_phase: Optional[Callable[[str], None]] = None,
+        params: Any = None,
+        poll_s: float = 0.5,
+        goal_tolerance: Optional[float] = None,
+    ) -> Dict[str, Any]:
         """Nominal run, back to start, adversarial run; writes <run>/benchmark_report.json.
 
         The adversarial run uses spec.json's adversarial_triggers, or (none given) the
         Archetype 4 default: a wooden crate dropped onto the nominal path ahead of the
         robot. `light` dims the sun (0..1) for the adversarial run and restores it after.
         """
-        from lang2sim.telemetry.benchmark import default_stress_trigger, mission_targets, scoring_params, write_benchmark
+        from lang2sim.telemetry.benchmark import (
+            default_stress_trigger,
+            mission_targets,
+            scoring_params,
+            write_benchmark,
+        )
 
         run_dir = Path(run_dir or self.run_dir or ".")
-        params, scoring = (params, None) if params is not None else scoring_params(run_dir, goal_tolerance)
+        params, scoring = (
+            (params, None) if params is not None else scoring_params(run_dir, goal_tolerance)
+        )
         spec = SimSpec.model_validate_json((run_dir / "spec.json").read_text())
         phase = on_phase or (lambda _m: None)
 
         phase("nominal run")
-        nominal = await self.run_recorded_mission(run_dir, label="nominal", on_progress=on_progress, params=params,
-                                                  poll_s=poll_s)
+        nominal = await self.run_recorded_mission(
+            run_dir, label="nominal", on_progress=on_progress, params=params, poll_s=poll_s
+        )
         phase("returning to start")
         await self.return_to_start(run_dir)
-        triggers = ([t.model_dump(mode="json") for t in spec.adversarial_triggers] if spec.adversarial_triggers
-                    else [default_stress_trigger(nominal.result.trajectory, targets=mission_targets(spec))])
+        triggers = (
+            [t.model_dump(mode="json") for t in spec.adversarial_triggers]
+            if spec.adversarial_triggers
+            else [default_stress_trigger(nominal.result.trajectory, targets=mission_targets(spec))]
+        )
         if light is not None:
             await self.api.world_light({"intensity": light})
         try:
             phase("adversarial run")
-            adversarial = await self.run_recorded_mission(run_dir, label="adversarial", triggers=triggers,
-                                                          on_progress=on_progress, on_trigger=on_trigger,
-                                                          params=params, poll_s=poll_s)
+            adversarial = await self.run_recorded_mission(
+                run_dir,
+                label="adversarial",
+                triggers=triggers,
+                on_progress=on_progress,
+                on_trigger=on_trigger,
+                params=params,
+                poll_s=poll_s,
+            )
         finally:
             if light is not None:
                 try:
                     await self.api.world_light({"intensity": 1.0})
                 except Exception:  # noqa: BLE001
                     pass
-        path, report = write_benchmark(run_dir, nominal.scored, adversarial.scored, params, scoring=scoring, extra={
-            "run_dir": str(run_dir),
-            "stress": {"triggers": adversarial.triggers_fired, "light": light,
-                       "source": "spec.adversarial_triggers" if spec.adversarial_triggers else "default_crate"},
-            "trajectories": {"nominal": nominal.result.path, "adversarial": adversarial.result.path},
-        })
+        path, report = write_benchmark(
+            run_dir,
+            nominal.scored,
+            adversarial.scored,
+            params,
+            scoring=scoring,
+            extra={
+                "run_dir": str(run_dir),
+                "stress": {
+                    "triggers": adversarial.triggers_fired,
+                    "light": light,
+                    "source": "spec.adversarial_triggers"
+                    if spec.adversarial_triggers
+                    else "default_crate",
+                },
+                "trajectories": {
+                    "nominal": nominal.result.path,
+                    "adversarial": adversarial.result.path,
+                },
+            },
+        )
         report["path"] = str(path)
         return report
 
@@ -296,14 +406,20 @@ class SimSession:
             params, scoring = scoring_params(run_dir, kw.pop("goal_tolerance", None))
         kw.pop("goal_tolerance", None)
         run = await self.run_recorded_mission(run_dir, label="nominal", params=params, **kw)
-        path, report = write_benchmark(run_dir, run.scored, None, params, scoring=scoring, extra={
-            "run_dir": str(run_dir), "trajectories": {"nominal": run.result.path}})
+        path, report = write_benchmark(
+            run_dir,
+            run.scored,
+            None,
+            params,
+            scoring=scoring,
+            extra={"run_dir": str(run_dir), "trajectories": {"nominal": run.result.path}},
+        )
         report["path"] = str(path)
         report["nav"] = run.nav.model_dump(mode="json")
         return report
 
     async def stop(self) -> None:
-        if self.runner is None:          # attached session: the sim is not ours to stop
+        if self.runner is None:  # attached session: the sim is not ours to stop
             await self.api.aclose()
             return
         try:
@@ -313,7 +429,7 @@ class SimSession:
         await self.api.aclose()
         self.runner.remove(self.opts.name)
 
-    async def __aenter__(self) -> "SimSession":
+    async def __aenter__(self) -> SimSession:
         await self.start()
         return self
 

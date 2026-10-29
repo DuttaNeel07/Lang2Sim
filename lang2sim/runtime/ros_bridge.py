@@ -35,10 +35,12 @@ from lang2sim.runtime.telemetry_recorder import (
     min_valid_range,
 )
 
-FRESH_S = 3.0          # a topic counts as alive if a message arrived this recently (wall time)
+FRESH_S = 3.0  # a topic counts as alive if a message arrived this recently (wall time)
 RTF_WINDOW_S = 5.0
 NAV2_NODES = ("amcl", "bt_navigator", "controller_server", "planner_server")
-GROUND_TRUTH_STALE_S = 1.0  # fall back to map/odom poses when ground truth stops arriving (wall time)
+GROUND_TRUTH_STALE_S = (
+    1.0  # fall back to map/odom poses when ground truth stops arriving (wall time)
+)
 
 
 def yaw_from_quaternion(x: float, y: float, z: float, w: float) -> float:
@@ -57,20 +59,20 @@ def rtf_from_samples(samples: Sequence[Tuple[float, float]]) -> Optional[float]:
 
 @dataclass
 class RosSnapshot:
-    now: float = 0.0                      # wall time of the snapshot
-    clock_wall: Optional[float] = None    # wall time of the last /clock
+    now: float = 0.0  # wall time of the snapshot
+    clock_wall: Optional[float] = None  # wall time of the last /clock
     sim_time: float = 0.0
     odom_wall: Optional[float] = None
     scan_wall: Optional[float] = None
-    odom_pose: Optional[Tuple[float, float, float]] = None   # x, y, yaw in odom
-    map_pose: Optional[Tuple[float, float, float]] = None    # x, y, yaw in map (TF)
-    velocity: Optional[Tuple[float, float, float]] = None    # vx, vy, wz
+    odom_pose: Optional[Tuple[float, float, float]] = None  # x, y, yaw in odom
+    map_pose: Optional[Tuple[float, float, float]] = None  # x, y, yaw in map (TF)
+    velocity: Optional[Tuple[float, float, float]] = None  # vx, vy, wz
     lifecycle: Dict[str, str] = field(default_factory=dict)  # node -> "active", ...
     rtf: Optional[float] = None
     ground_truth: Optional[Tuple[float, float, float]] = None  # x, y, yaw in world (Gazebo)
     ground_truth_wall: Optional[float] = None
-    scan_min: Optional[float] = None                         # closest valid lidar return, m
-    spawn: Optional[Tuple[float, float, float]] = None       # odom frame origin in world
+    scan_min: Optional[float] = None  # closest valid lidar return, m
+    spawn: Optional[Tuple[float, float, float]] = None  # odom frame origin in world
 
     def fresh(self, t: Optional[float]) -> bool:
         return t is not None and self.now - t <= FRESH_S
@@ -81,7 +83,9 @@ def stamp_s(stamp: Any) -> float:
     return float(stamp.sec) + float(stamp.nanosec) * 1e-9
 
 
-def contact_pairs(entries: Sequence[Tuple[str, str, Optional[float]]], robot: str) -> List[Tuple[str, Optional[float]]]:
+def contact_pairs(
+    entries: Sequence[Tuple[str, str, Optional[float]]], robot: str
+) -> List[Tuple[str, Optional[float]]]:
     """(collision1, collision2, force) -> [(the entity that is not the robot, force)].
 
     Names are Gazebo-scoped ("waffle::base_link::base_collision"); a contact whose
@@ -131,7 +135,7 @@ class RosBridge:
         self._clock_samples: Deque[Tuple[float, float]] = collections.deque(maxlen=400)
         self.robot_name = robot_name
         self.recorder = TelemetryRecorder(ContactMonitor(robot_name=robot_name))
-        self.expect_ground_truth = False   # set per run: the robot was instrumented
+        self.expect_ground_truth = False  # set per run: the robot was instrumented
         self._record_wall0 = 0.0
 
         node = Node("l2s_control_api", parameter_overrides=[Parameter("use_sim_time", value=True)])
@@ -139,12 +143,21 @@ class RosBridge:
         node.create_subscription(Clock, "/clock", self._on_clock, qos_profile_sensor_data)
         node.create_subscription(Odometry, "/odom", self._on_odom, qos_profile_sensor_data)
         node.create_subscription(LaserScan, "/scan", self._on_scan, qos_profile_sensor_data)
-        node.create_subscription(Odometry, robot_instrument.GROUND_TRUTH_TOPIC, self._on_ground_truth,
-                                 qos_profile_sensor_data)
+        node.create_subscription(
+            Odometry,
+            robot_instrument.GROUND_TRUTH_TOPIC,
+            self._on_ground_truth,
+            qos_profile_sensor_data,
+        )
         try:  # ros_gz_interfaces ships with ros_gz_bridge; tolerate its absence
             from ros_gz_interfaces.msg import Contacts  # type: ignore[import-not-found]
-            node.create_subscription(Contacts, robot_instrument.CONTACT_ROS_TOPIC, self._on_contacts,
-                                     qos_profile_sensor_data)
+
+            node.create_subscription(
+                Contacts,
+                robot_instrument.CONTACT_ROS_TOPIC,
+                self._on_contacts,
+                qos_profile_sensor_data,
+            )
         except ImportError:
             pass
         self._tf = Buffer()
@@ -159,7 +172,7 @@ class RosBridge:
         self._thread.start()
 
     @classmethod
-    def try_create(cls) -> Optional["RosBridge"]:
+    def try_create(cls) -> Optional[RosBridge]:
         try:
             return cls()
         except Exception:  # noqa: BLE001 - no ROS here (host tests) or rclpy failed to init
@@ -228,6 +241,7 @@ class RosBridge:
     def _map_pose_now(self) -> Optional[Tuple[float, float, float]]:
         try:
             from rclpy.time import Time
+
             tr = self._tf.lookup_transform("map", "base_footprint", Time())
         except Exception:  # noqa: BLE001 - not localized yet
             return None
@@ -243,8 +257,10 @@ class RosBridge:
         with self._lock:
             gt, odom, spawn = self._s.ground_truth, self._s.odom_pose, self._s.spawn
             vel, scan_min = self._s.velocity, self._s.scan_min
-            gt_fresh = (self._s.ground_truth_wall is not None
-                        and time.time() - self._s.ground_truth_wall <= GROUND_TRUTH_STALE_S)
+            gt_fresh = (
+                self._s.ground_truth_wall is not None
+                and time.time() - self._s.ground_truth_wall <= GROUND_TRUTH_STALE_S
+            )
         pose, source = best_pose(gt if gt_fresh else None, map_pose, odom, spawn)
         v, w = (vel[0], vel[2]) if vel else (0.0, 0.0)
         self.recorder.offer(t, pose, source, v, w, estimate=map_pose, scan_min=scan_min)
@@ -274,13 +290,16 @@ class RosBridge:
     # --- API ---------------------------------------------------------------
     def snapshot(self) -> RosSnapshot:
         with self._lock:
-            s = RosSnapshot(**{k: (dict(v) if isinstance(v, dict) else v) for k, v in vars(self._s).items()})
+            s = RosSnapshot(
+                **{k: (dict(v) if isinstance(v, dict) else v) for k, v in vars(self._s).items()}
+            )
             s.rtf = rtf_from_samples(list(self._clock_samples))
         s.now = time.time()
         return s
 
-    def reset(self, spawn: Optional[Tuple[float, float, float]] = None,
-              expect_ground_truth: bool = False) -> None:
+    def reset(
+        self, spawn: Optional[Tuple[float, float, float]] = None, expect_ground_truth: bool = False
+    ) -> None:
         """Forget state from a previous run (called on /sim/start with the run's spawn pose and
         whether the robot was instrumented with a ground-truth publisher)."""
         self.expect_ground_truth = expect_ground_truth
@@ -291,8 +310,13 @@ class RosBridge:
         self.recorder.contacts.reset()
 
     # --- telemetry -------------------------------------------------------------
-    def record_start(self, label: str, goal: Optional[Tuple[float, float, float]] = None,
-                     rate_hz: float = 20.0, stream_path: Any = None) -> None:
+    def record_start(
+        self,
+        label: str,
+        goal: Optional[Tuple[float, float, float]] = None,
+        rate_hz: float = 20.0,
+        stream_path: Any = None,
+    ) -> None:
         with self._lock:
             spawn = self._s.spawn
         self._record_wall0 = time.time()
@@ -306,9 +330,18 @@ class RosBridge:
         s = self.snapshot()
         gt = s.ground_truth if s.fresh(s.ground_truth_wall) else None
         pose, source = best_pose(gt, s.map_pose, s.odom_pose, s.spawn)
-        return build_live(sim_time=s.sim_time, rtf=s.rtf, pose=pose, source=source, velocity=s.velocity,
-                          ground_truth=gt, map_pose=s.map_pose, scan_min=s.scan_min,
-                          recorder=self.recorder, goal=goal)
+        return build_live(
+            sim_time=s.sim_time,
+            rtf=s.rtf,
+            pose=pose,
+            source=source,
+            velocity=s.velocity,
+            ground_truth=gt,
+            map_pose=s.map_pose,
+            scan_min=s.scan_min,
+            recorder=self.recorder,
+            goal=goal,
+        )
 
     def stop(self) -> None:
         try:

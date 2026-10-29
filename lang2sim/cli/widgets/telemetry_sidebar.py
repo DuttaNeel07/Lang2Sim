@@ -3,11 +3,13 @@ Telemetry Sidebar Widget (20% Workspace Right Pane)
 File: lang2sim/cli/widgets/telemetry_sidebar.py
 """
 
-from textual.widget import Widget
-from textual.widgets import Static
-from textual.containers import Vertical
 from dataclasses import dataclass
 from typing import Optional
+
+from textual.containers import Vertical
+from textual.widget import Widget
+from textual.widgets import Static
+
 
 @dataclass
 class TelemetryData:
@@ -23,6 +25,7 @@ class TelemetryData:
     collision_count: int = 0
     tokens_used: int = 1420
     context_capacity_pct: int = 1
+
 
 class TelemetrySidebar(Widget):
     """Right-hand sidebar displaying live simulation, robot kinematics, bumper, and context stats."""
@@ -54,7 +57,9 @@ class TelemetrySidebar(Widget):
 
             yield Static("[bold #f1f2f6]BUMPER[/]", classes="sidebar-section-title")
             yield Static(self._format_bumper_force(), id="bumper-force", classes="sidebar-metric")
-            yield Static(self._format_collision_count(), id="collision-count", classes="sidebar-metric")
+            yield Static(
+                self._format_collision_count(), id="collision-count", classes="sidebar-metric"
+            )
 
             yield Static("[bold #f1f2f6]CONTEXT[/]", classes="sidebar-section-title")
             yield Static(self._format_context(), id="token-context", classes="sidebar-metric")
@@ -96,7 +101,7 @@ class TelemetrySidebar(Widget):
         for key, value in kwargs.items():
             if hasattr(self.data, key):
                 setattr(self.data, key, value)
-        
+
         try:
             self.query_one("#sim-state", Static).update(self._format_sim_state())
             self.query_one("#sim-time", Static).update(self._format_sim_time())

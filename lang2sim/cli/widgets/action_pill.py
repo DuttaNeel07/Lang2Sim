@@ -3,9 +3,10 @@ Tool Action Status Pill Widget
 File: lang2sim/cli/widgets/action_pill.py
 """
 
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
-from textual.reactive import reactive
+
 
 class ActionPill(Widget):
     """Tool invocation status badge pill (e.g. ■ solve_spatial_layout · 0.4s · completed)."""
@@ -24,7 +25,9 @@ class ActionPill(Widget):
     duration_str = reactive("0.0s")
     status = reactive("running")  # running, completed, error
 
-    def __init__(self, tool_name: str, duration_str: str = "0.4s", status: str = "completed", **kwargs):
+    def __init__(
+        self, tool_name: str, duration_str: str = "0.4s", status: str = "completed", **kwargs
+    ):
         super().__init__(classes="action-pill", **kwargs)
         self.tool_name = tool_name
         self.duration_str = duration_str

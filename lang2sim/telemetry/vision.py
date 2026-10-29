@@ -15,15 +15,13 @@ from __future__ import annotations
 import argparse
 import base64
 import io
-import math
-import os
 import shutil
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Optional, Sequence, Tuple
 
 import numpy as np
 from PIL import Image
@@ -45,6 +43,7 @@ __all__ = [
 @dataclass
 class VisionResult:
     """Standard envelope for visual perception frames and metadata."""
+
     ok: bool
     stream: str  # "desktop_window" or "robot_camera"
     target: str  # "gazebo", "rviz", "screen", or topic name
@@ -81,7 +80,9 @@ def _to_grayscale_f32(img_arr: np.ndarray) -> np.ndarray:
     if img_arr.ndim == 2:
         return img_arr.astype(np.float32)
     # ITU-R 601-2 luma transform
-    return (0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]).astype(np.float32)
+    return (0.299 * img_arr[:, :, 0] + 0.587 * img_arr[:, :, 1] + 0.114 * img_arr[:, :, 2]).astype(
+        np.float32
+    )
 
 
 def compute_optical_metrics(img_arr: np.ndarray) -> dict[str, float]:
@@ -151,15 +152,14 @@ def _find_window_rect_x11(title_pattern: str) -> Optional[Tuple[int, int, int, i
     if not shutil.which("xdotool"):
         return None
     try:
-        cmd = f"xdotool search --onlyvisible --name '{title_pattern}'"
-        out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
+        cmd = ["xdotool", "search", "--onlyvisible", "--name", title_pattern]
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
         win_ids = [w.strip() for w in out.splitlines() if w.strip()]
         if not win_ids:
             return None
         win_id = win_ids[0]
         geom_out = subprocess.check_output(
-            f"xdotool getwindowgeometry --shell {win_id}",
-            shell=True,
+            ["xdotool", "getwindowgeometry", "--shell", win_id],
             text=True,
             stderr=subprocess.DEVNULL,
         )
@@ -177,6 +177,7 @@ def _find_window_rect_windows(title_pattern: str) -> Optional[Tuple[int, int, in
     """Locate window coordinates on Windows using Win32 API if available."""
     try:
         import win32gui
+
         matched_hwnd = None
 
         def enum_windows_callback(hwnd, extra):
@@ -228,11 +229,16 @@ def capture_desktop_window(
 
     try:
         # Use mss.MSS or mss.mss
-        mss_cls = getattr(mss, "MSS", None) or getattr(mss, "mss")
+        mss_cls = getattr(mss, "MSS", None) or mss.mss
         with mss_cls() as sct:
             if rect is not None:
                 rx, ry, rw, rh = rect
-                monitor = {"top": max(0, ry), "left": max(0, rx), "width": max(10, rw), "height": max(10, rh)}
+                monitor = {
+                    "top": max(0, ry),
+                    "left": max(0, rx),
+                    "width": max(10, rw),
+                    "height": max(10, rh),
+                }
                 sct_img = sct.grab(monitor)
                 msg = f"Captured '{title_pattern}' window ({rw}x{rh})"
             else:
@@ -301,7 +307,6 @@ def generate_synthetic_frame(
     img_arr[:horizon, :, :] = [sky_luma * 0.8, sky_luma * 0.9, sky_luma]
     # Ground tiles
     for y in range(horizon, height):
-        row_factor = (y - horizon) / (height - horizon)
         for x in range(width):
             check = ((x // 30) + (y // 30)) % 2
             col = 140.0 if check else 80.0
@@ -329,6 +334,7 @@ def generate_synthetic_frame(
     # Apply motion blur if requested
     if motion_blur > 1:
         from PIL import ImageFilter
+
         pil_img = pil_img.filter(ImageFilter.BoxBlur(motion_blur))
 
     return pil_img
@@ -389,7 +395,9 @@ class CameraSampler:
         else:
             # Fallback to realistic synthetic frame
             img = generate_synthetic_frame()
-            msg = f"ROS topic '{self.topic}' not active; generated synthetic camera perception frame"
+            msg = (
+                f"ROS topic '{self.topic}' not active; generated synthetic camera perception frame"
+            )
             fallback = "synthetic_camera"
 
         arr = np.asarray(img)
@@ -448,7 +456,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Capture target (default: screen)",
     )
     parser.add_argument("--out", help="Save captured frame to JPEG path")
-    parser.add_argument("--print-b64-len", action="store_true", help="Print length of base64 JPEG payload")
+    parser.add_argument(
+        "--print-b64-len", action="store_true", help="Print length of base64 JPEG payload"
+    )
     parser.add_argument("--topic", default="/camera/image_raw", help="Robot camera ROS topic")
     args = parser.parse_args(argv)
 
@@ -473,5 +483,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 if __name__ == "__main__":
     import warnings
+
     warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*found in sys.modules.*")
     sys.exit(main())

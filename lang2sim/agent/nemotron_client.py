@@ -5,11 +5,13 @@ File: lang2sim/agent/nemotron_client.py
 
 import os
 from pathlib import Path
-from typing import List, Dict, Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
+
 from openai import AsyncOpenAI
 
 DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_NEMOTRON_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
+
 
 def _load_env_if_present() -> None:
     """Best-effort loader for .env without external dependencies."""
@@ -31,6 +33,7 @@ def _load_env_if_present() -> None:
             except Exception:
                 pass
 
+
 _load_env_if_present()
 
 
@@ -45,7 +48,7 @@ class NemotronClient:
     ):
         _load_env_if_present()
         self.api_key = api_key or os.getenv("NVIDIA_API_KEY") or os.getenv("OPENAI_API_KEY")
-        
+
         # Auto-detect base_url and model based on key type if not explicitly passed
         if base_url:
             self.base_url = base_url
@@ -71,7 +74,9 @@ class NemotronClient:
     def client(self) -> AsyncOpenAI:
         if self._client is None:
             if not self.api_key:
-                raise ValueError("NVIDIA_API_KEY is not set. Please set the environment variable or configure .env.")
+                raise ValueError(
+                    "NVIDIA_API_KEY is not set. Please set the environment variable or configure .env."
+                )
             self._client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
@@ -102,4 +107,3 @@ class NemotronClient:
                     yield delta.content
         except Exception as e:
             yield f"\n\n[API Error: {str(e)}]"
-
